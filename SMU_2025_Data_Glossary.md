@@ -11,7 +11,7 @@ _One row = a reported vessel position/availability snapshot circulated by a brok
 | Report Month | Calendar month (e.g. "2025-01 Jan") that this vessel position report belongs to. |
 | Date Received | Timestamp when this specific version of the position report was received into the system. |
 | First Date Received | Timestamp when this vessel position was first reported, before any later updates/revisions. |
-| Vessel Name | Name/identifier of the ship (anonymized in this dataset, e.g. "VESSEL 0663"). |
+| Vessel Name | Name/Identifier of the ship (anonymized in this dataset, e.g. "VESSEL 0663"). |
 | DWT Summer | Deadweight tonnage at the summer load line — the vessel's maximum cargo + fuel + stores carrying capacity, in metric tons. |
 | Draft Summer | Summer draft — the depth of the vessel's hull below the waterline when loaded to the summer DWT, in meters. |
 | Build Year | Year the vessel was built/delivered from the shipyard. |
@@ -104,6 +104,8 @@ _One row = a reported vessel position/availability snapshot circulated by a brok
 | Live Speed | Real-time speed of the vessel over ground, in knots, from AIS tracking. |
 | Draft (% Max) | Vessel's current draft expressed as a percentage of its maximum (summer) draft — an indicator of how loaded it is. |
 | Draft (Meters) | Vessel's current draft, in meters, from AIS/reported data. |
+| Assignment (T/F)| Flag indicating whether the vessel has been assigned to an order. |
+| Order ID | Identifier of the order row this vessel has been assigned to, where applicable (matches Order ID in Order Results). |
 
 ## Order Results — Cargo / Fixture Order Data
 
@@ -166,6 +168,9 @@ _One row = a reported cargo enquiry or fixture order circulated by a broker._
 | First Date Received.1 | Duplicate/secondary capture of the order's first-received timestamp. |
 | Lead Time (Hours) | Hours elapsed between the order first being received and the point measured (e.g. fixture/update) — a measure of how quickly the order moved. |
 | Update Date | Date/time this record was last refreshed or amended in the source system. |
+| Order ID | Unique identifier for this order row. |
+| Assigned (T/F) | Flag indicating whether this order row has been assigned to a vessel. |
+| Assigned Vessel Name | Identifier of the vessel row assigned to this order, where applicable (matches Vessel Name in Tonnage Results). |
 
 ---
 
