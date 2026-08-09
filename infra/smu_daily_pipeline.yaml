@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Daily EventBridge -> Lambda -> Glue pipeline for SMU XLSX processing
+
+Parameters:
+  BronzeBucketName:
+    Type: String
+    Description: S3 bucket that stores incoming XLSX files
+  BronzePrefix:
+    Type: String
+    Default: ""
+    Description: Optional prefix inside the bronze bucket
+  SilverBucketName:
+    Type: String
+    Description: S3 bucket for cleaned JSON output
+  SilverPrefix:
+    Type: String
+    Default: ""
+    Description: Optional prefix inside the silver bucket
+  GlueScriptS3Uri:
+    Type: String
+    Description: S3 URI for scripts/glue_transform.py
+  GlueJobName:
+    Type: String
+    Default: smu-glue-transform
+  GlueDatabaseName:
+    Type: String
+    Default: silver_db
+  GlueTonnageTableName:
+    Type: String
+    Default: smu_tonnage_silver
+  GlueOrdersTableName:
+    Type: String
+    Default: smu_orders_silver
+  ProcessedTableName:
+    Type: String
+    Default: smu-processed-files
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 2 * * ? *)
+    Description: EventBridge schedule expression
+  LambdaFunctionName:
+    Type: String
+    Default: smu-daily-trigger
+
+Resources:
+  ProcessedFilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref ProcessedTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: source_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: source_key
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+
+  GlueJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${GlueJobName}-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: smu-glue-data-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${BronzeBucketName}
+                  - !Sub arn:aws:s3:::${SilverBucketName}
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub arn:aws:s3:::${BronzeBucketName}/*
+                  - !Sub arn:aws:s3:::${SilverBucketName}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:DescribeTable
+                Resource:
+                  - !GetAtt ProcessedFilesTable.Arn
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:CreateDatabase
+                  - glue:GetTable
+                  - glue:CreateTable
+                  - glue:UpdateTable
+                Resource: "*"
+
+  SMUGlueJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref GlueJobName
+      Role: !GetAtt GlueJobRole.Arn
+      GlueVersion: "5.0"
+      WorkerType: G.1X
+      NumberOfWorkers: 2
+      Timeout: 60
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Command:
+        Name: glueetl
+        ScriptLocation: !Ref GlueScriptS3Uri
+        PythonVersion: "3"
+      DefaultArguments:
+        --job-bookmark-option: job-bookmark-disable
+        --glue_database: !Ref GlueDatabaseName
+        --glue_tonnage_table: !Ref GlueTonnageTableName
+        --glue_orders_table: !Ref GlueOrdersTableName
+        --processed_table_name: !Ref ProcessedTableName
+        --silver_s3_prefix: !Sub s3://${SilverBucketName}/${SilverPrefix}
+        --additional-python-modules: openpyxl==3.1.5
+
+  TriggerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${LambdaFunctionName}-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: smu-trigger-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub arn:aws:s3:::${BronzeBucketName}
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: !GetAtt ProcessedFilesTable.Arn
+              - Effect: Allow
+                Action:
+                  - glue:StartJobRun
+                  - glue:GetJobRuns
+                Resource: !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${GlueJobName}
+
+  TriggerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt TriggerLambdaRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          GLUE_JOB_NAME: !Ref GlueJobName
+          BRONZE_BUCKET_NAME: !Ref BronzeBucketName
+          BRONZE_PREFIX: !Ref BronzePrefix
+          PROCESSED_TABLE_NAME: !Ref ProcessedTableName
+      Code:
+        ZipFile: |
+          import os
+          import boto3
+
+          def _normalized_prefix(prefix):
+              return prefix.strip("/") if prefix else ""
+
+          def _list_xlsx_keys(s3_client, bucket, prefix):
+              paginator = s3_client.get_paginator("list_objects_v2")
+              keys = []
+              for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                  for obj in page.get("Contents", []):
+                      key = obj["Key"]
+                      base = os.path.basename(key).lower()
+                      if base.endswith(".xlsx") and not base.startswith("~$"):
+                          keys.append(key)
+              return keys
+
+          def _is_processed(dynamodb_client, table_name, source_key):
+              response = dynamodb_client.get_item(
+                  TableName=table_name,
+                  Key={"source_key": {"S": source_key}},
+                  ConsistentRead=True,
+              )
+              return "Item" in response
+
+          def _job_is_running(glue_client, job_name):
+              response = glue_client.get_job_runs(JobName=job_name, MaxResults=1)
+              runs = response.get("JobRuns", [])
+              if not runs:
+                  return False
+              state = runs[0].get("JobRunState")
+              return state in {"STARTING", "RUNNING", "STOPPING"}
+
+          def handler(event, context):
+              glue_client = boto3.client("glue")
+              s3_client = boto3.client("s3")
+              dynamodb_client = boto3.client("dynamodb")
+
+              job_name = os.environ["GLUE_JOB_NAME"]
+              bucket = os.environ["BRONZE_BUCKET_NAME"]
+              prefix = _normalized_prefix(os.environ.get("BRONZE_PREFIX", ""))
+              processed_table = os.environ["PROCESSED_TABLE_NAME"]
+
+              if _job_is_running(glue_client, job_name):
+                  return {"status": "skipped", "reason": "glue_job_already_running"}
+
+              keys = _list_xlsx_keys(s3_client, bucket, prefix)
+              new_keys = [key for key in keys if not _is_processed(dynamodb_client, processed_table, key)]
+              if not new_keys:
+                  return {"status": "no_new_files", "new_files": 0}
+
+              input_files = ",".join(f"s3://{bucket}/{key}" for key in new_keys)
+              response = glue_client.start_job_run(
+                  JobName=job_name,
+                  Arguments={
+                      "--input_files": input_files,
+                      "--processed_table_name": processed_table,
+                  },
+              )
+              return {
+                  "status": "started",
+                  "job_run_id": response["JobRunId"],
+                  "new_files": len(new_keys),
+              }
+
+  DailyScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${LambdaFunctionName}-schedule
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt TriggerLambda.Arn
+          Id: TriggerLambdaTarget
+
+  AllowEventBridgeInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyScheduleRule.Arn
+
+Outputs:
+  GlueJobName:
+    Value: !Ref SMUGlueJob
+  LambdaFunctionName:
+    Value: !Ref TriggerLambda
+  ProcessedTableName:
+    Value: !Ref ProcessedFilesTable
