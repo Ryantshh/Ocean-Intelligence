@@ -6,6 +6,9 @@ type ChatResponse = {
   columns?: string[];
   rows?: Record<string, unknown>[];
   row_count?: number;
+  needs_clarification?: boolean;
+  clarifying_question?: string | null;
+  confidence?: number | null;
 };
 
 type ChatMessage = {

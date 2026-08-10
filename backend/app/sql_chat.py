@@ -4,6 +4,7 @@ import json
 import os
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -19,6 +20,11 @@ import sqlglot
 from sqlglot import exp
 
 from .openai_client import get_openai_client
+
+
+CONFIDENCE_THRESHOLD = 0.65
+MAX_SQL_RETRIES = 2
+GLOSSARY_PATH = Path(__file__).resolve().parents[2] / "Data_glossary.md"
 
 
 DISALLOWED_EXPRESSIONS = tuple(
@@ -55,6 +61,53 @@ def _env(*names: str, default: str | None = None) -> str | None:
         if value and value.strip():
             return value.strip()
     return default
+
+
+def _extract_glossary_schema_summary(glossary_text: str) -> str:
+    sections: list[str] = []
+    current_title: str | None = None
+    current_fields: list[str] = []
+
+    def flush_section() -> None:
+        nonlocal current_title, current_fields
+        if current_title and current_fields:
+            sections.append(f"{current_title}: {', '.join(current_fields)}")
+        current_title = None
+        current_fields = []
+
+    for raw_line in glossary_text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            flush_section()
+            current_title = line.removeprefix("## ").strip()
+            continue
+
+        if not current_title or not line or not line.startswith("|"):
+            continue
+        if line.startswith("| Field") or line.startswith("|---"):
+            continue
+
+        parts = [part.strip() for part in line.strip("|").split("|")]
+        if not parts:
+            continue
+        field_name = parts[0]
+        if field_name and field_name not in current_fields:
+            current_fields.append(field_name)
+
+    flush_section()
+    return "\n".join(sections)
+
+
+@lru_cache(maxsize=1)
+def load_schema_summary_from_glossary() -> str:
+    if not GLOSSARY_PATH.exists():
+        raise FileNotFoundError(f"Glossary file not found: {GLOSSARY_PATH}")
+
+    glossary_text = GLOSSARY_PATH.read_text(encoding="utf-8")
+    summary = _extract_glossary_schema_summary(glossary_text)
+    if not summary.strip():
+        raise ValueError("Could not extract schema summary from glossary.")
+    return summary
 
 
 def get_database_connection_string() -> str:
@@ -191,48 +244,75 @@ def load_schema_summary_via_rest(max_tables: int = 30, max_columns_per_table: in
 
 @lru_cache(maxsize=1)
 def get_schema_summary() -> str:
-    return load_schema_summary_via_rest()
+    try:
+        return load_schema_summary_from_glossary()
+    except Exception:
+        return load_schema_summary_via_rest()
 
 
-def generate_sql(question: str, schema_summary: str, model: str = "openai/gpt-oss-120b") -> str:
+def _parse_llm_json(response: Any) -> dict[str, Any]:
+    content = response.choices[0].message.content or "{}"
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Model did not return valid JSON: {content}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Model response must be a JSON object.")
+    return payload
+
+
+def _extract_sql_generation_prompt(question: str, schema_summary: str, attempt_error: str | None = None) -> list[dict[str, str]]:
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You convert user questions into a single PostgreSQL SELECT query for Supabase. "
+                "Only return valid JSON with one key named sql. "
+                "Never output INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, TRUNCATE, MERGE, or any other write statement. "
+                "Use only the provided schema. Prefer explicit column names. Add a sensible LIMIT if the user did not request one."
+            ),
+        },
+        {
+            "role": "system",
+            "content": f"Database schema from glossary:\n{schema_summary}",
+        },
+    ]
+
+    if attempt_error:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "The previous SQL attempt failed validation or execution. "
+                    f"Fix the issue and return a new SQL query. Previous error: {attempt_error}"
+                ),
+            }
+        )
+
+    messages.append({"role": "user", "content": question})
+    return messages
+
+
+def generate_sql(question: str, schema_summary: str, model: str = "openai/gpt-oss-120b", attempt_error: str | None = None) -> str:
     client = get_openai_client()
     response = client.chat.completions.create(
         model=model,
         temperature=0,
         response_format={"type": "json_object"},
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You convert user questions into a single PostgreSQL SELECT query for Supabase. "
-                    "Only return valid JSON with one key named sql. "
-                    "Never output INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, TRUNCATE, MERGE, or any other write statement. "
-                    "Use only the provided schema. Prefer explicit column names. Add a sensible LIMIT if the user did not request one."
-                ),
-            },
-            {
-                "role": "system",
-                "content": f"Database schema:\n{schema_summary}",
-            },
-            {
-                "role": "user",
-                "content": question,
-            },
-        ],
+        messages=_extract_sql_generation_prompt(question, schema_summary, attempt_error),
     )
 
-    content = response.choices[0].message.content or "{}"
-    payload = json.loads(content)
+    payload = _parse_llm_json(response)
     sql = payload.get("sql", "")
     if not isinstance(sql, str) or not sql.strip():
         raise ValueError("The model did not return a SQL query.")
     return sql
 
 
-def classify_query(question: str, model: str = "openai/gpt-oss-120b") -> bool:
+def classify_query(question: str, model: str = "openai/gpt-oss-120b") -> dict[str, Any]:
     """Classify if the question requires SQL query execution or just LLM response.
     
-    Returns True if SQL is needed, False if direct LLM answer is sufficient.
+    Returns structured metadata for routing.
     """
     client = get_openai_client()
     response = client.chat.completions.create(
@@ -244,9 +324,11 @@ def classify_query(question: str, model: str = "openai/gpt-oss-120b") -> bool:
                 "role": "system",
                 "content": (
                     "You classify user questions to determine if they need database SQL execution. "
-                    "Return JSON with key 'needs_sql' (boolean). "
+                    "Return JSON with keys: needs_sql (boolean), confidence (number from 0 to 1), "
+                    "needs_clarification (boolean), clarification_question (string or null). "
                     "Return true for questions about data, counts, filtering, analytics, specific records. "
-                    "Return false for general knowledge, explanations, how-to, greetings, opinions."
+                    "Return false for general knowledge, explanations, how-to, greetings, opinions. "
+                    "If the question is ambiguous or underspecified, set needs_clarification=true and provide a concise follow-up question."
                 ),
             },
             {
@@ -256,9 +338,21 @@ def classify_query(question: str, model: str = "openai/gpt-oss-120b") -> bool:
         ],
     )
 
-    content = response.choices[0].message.content or "{}"
-    payload = json.loads(content)
-    return payload.get("needs_sql", False)
+    payload = _parse_llm_json(response)
+    confidence = payload.get("confidence", 0)
+    if not isinstance(confidence, (int, float)):
+        confidence = 0
+
+    clarification_question = payload.get("clarification_question")
+    if clarification_question is not None and not isinstance(clarification_question, str):
+        clarification_question = None
+
+    return {
+        "needs_sql": bool(payload.get("needs_sql", False)),
+        "confidence": float(confidence),
+        "needs_clarification": bool(payload.get("needs_clarification", False)),
+        "clarification_question": clarification_question,
+    }
 
 
 def execute_sql(sql: str, max_rows: int) -> tuple[list[str], list[dict[str, Any]]]:
@@ -276,6 +370,23 @@ def execute_sql(sql: str, max_rows: int) -> tuple[list[str], list[dict[str, Any]
     
     # Fallback to mock data
     return _execute_sql_mock(bounded_sql)
+
+
+def run_sql_pipeline(question: str, max_rows: int = 25) -> tuple[str, list[str], list[dict[str, Any]]]:
+    schema_summary = get_schema_summary()
+    last_error: str | None = None
+
+    for _ in range(MAX_SQL_RETRIES):
+        sql = generate_sql(question, schema_summary, attempt_error=last_error)
+        try:
+            columns, rows = execute_sql(sql, max_rows)
+            return sql, columns, rows
+        except ValueError as exc:
+            last_error = str(exc)
+        except Exception as exc:  # pragma: no cover - runtime/network dependent
+            last_error = str(exc)
+
+    raise ValueError(f"Unable to produce a valid SQL query after {MAX_SQL_RETRIES} attempts. Last error: {last_error}")
 
 
 def build_answer(question: str, row_count: int) -> str:

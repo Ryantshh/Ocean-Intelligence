@@ -2,13 +2,13 @@
 
 ## Supabase SQL Chat
 
-A full-stack chatbot that uses AI to classify questions and intelligently routes them—data questions are converted to SELECT SQL and executed on Supabase, while general questions get direct LLM answers.
+A full-stack chatbot that uses AI to classify questions and intelligently routes them—data questions are converted to SELECT SQL and executed on Supabase, while general questions get direct LLM answers. Ambiguous questions now trigger a clarifying follow-up, and SQL generation retries on parse/validation failure.
 
 ### Architecture
 
 - **`backend/`**: FastAPI app with query classifier and SQL generator using Groq API
   - `app/main.py`: Routes requests through classifier
-  - `app/sql_chat.py`: Query classifier, SQL generator, SQL validator, and executor
+  - `app/sql_chat.py`: Query classifier, SQL generator, SQL validator, retry logic, and executor
   - `app/openai_client.py`: LLM client abstraction (Groq or OpenAI)
   - `requirements.txt`: Backend dependencies (FastAPI, Groq SDK, psycopg, sqlglot, etc.)
 - **`frontend/`**: Vite + React chat UI (TypeScript)
@@ -25,6 +25,7 @@ A full-stack chatbot that uses AI to classify questions and intelligently routes
 - Node.js 18+
 - **API Key**: `GROQ_API_KEY` in your `.env` (for Groq LLM) or `OPENAI_API_KEY` (fallback)
 - **Database** (optional for testing): `SUPABASE_DB_URL` in your `.env`
+- **Schema source**: `Data_glossary.md` in the repo root is used to build the schema summary for SQL generation
 
 ### Local Setup
 
@@ -93,11 +94,16 @@ Then open `http://localhost:5173` in your browser.
    - Returns conversational response from Groq
    - No database query executed
 
+If the classifier confidence is too low or the question is underspecified, the API returns a clarifying question instead of guessing.
+
 3. **SQL Execution** (if SQL needed)
-   - Groq generates PostgreSQL SELECT query
-   - Query is validated for safety (no writes, DDL, command execution)
-   - Query is executed on Supabase
-   - Results returned with SQL and row data
+
+- Schema context is loaded from `Data_glossary.md`
+- Groq generates PostgreSQL SELECT query
+- Query is validated for safety (no writes, DDL, command execution)
+- The backend retries SQL generation if the first attempt fails validation or execution
+- Query is executed on Supabase
+- Results returned with SQL and row data
 
 ### What You Can Do
 
@@ -110,6 +116,7 @@ Then open `http://localhost:5173` in your browser.
 
 - `GET /health` — Health check
 - `POST /api/chat` — Classify query, optionally execute SQL, return answer + results
+- Response may also include `needs_clarification` and `clarifying_question` when the question is ambiguous
 
 Request:
 
@@ -140,6 +147,22 @@ Response (direct LLM answer):
   "rows": null,
   "row_count": null,
   "requires_sql": false
+}
+```
+
+Response (clarification needed):
+
+```json
+{
+  "answer": "Do you want vessel data or order data?",
+  "sql": null,
+  "columns": null,
+  "rows": null,
+  "row_count": null,
+  "requires_sql": false,
+  "needs_clarification": true,
+  "clarifying_question": "Do you want vessel data or order data?",
+  "confidence": 0.42
 }
 ```
 
