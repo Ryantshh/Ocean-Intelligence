@@ -1,0 +1,6 @@
+/* Colours live in theme.json. This file is only for what CSS variables cannot express. */
+
+a[href*="chainlit.io"],
+a[href*="chainlit.io"] + * {
+  display: none !important;
+}

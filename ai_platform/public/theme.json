@@ -1,0 +1,19 @@
+{
+  "custom_fonts": [],
+  "variables": {
+    "light": {
+      "--background": "0 0% 100%",
+      "--foreground": "0 0% 5%",
+      "--primary": "175 77% 26%",
+      "--primary-foreground": "0 0% 100%",
+      "--ring": "175 77% 26%"
+    },
+    "dark": {
+      "--background": "0 0% 13%",
+      "--foreground": "0 0% 93%",
+      "--primary": "172 66% 50%",
+      "--primary-foreground": "0 0% 10%",
+      "--ring": "172 66% 50%"
+    }
+  }
+}

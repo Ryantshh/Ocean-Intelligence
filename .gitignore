@@ -222,3 +222,7 @@ todo.md
 
 #claude
 CLAUDE.md
+
+#chainlit generated
+ai_platform/.chainlit/translations/
+.files/
