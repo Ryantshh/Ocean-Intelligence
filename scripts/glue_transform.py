@@ -70,7 +70,7 @@ def resolve_default_s3_prefix(bucket_env_names: tuple[str, ...]) -> str:
     """Build an s3:// prefix from a bucket env name."""
     bucket = get_env_var(*bucket_env_names)
     if not bucket:
-        return "s3://silver-layer-ocean/"
+        return "s3://silver-ocean-layer/"
     return f"s3://{bucket.rstrip('/')}/"
 
 
@@ -411,14 +411,26 @@ def with_stable_order_id(df: DataFrame) -> DataFrame:
     # dropping any leading zeros so the value here matches what Supabase stores
     # once the column is typed int8. The coalesce is a guard for the
     # (astronomically unlikely) digest containing no digits at all.
+    #
+    # cargo_weight_min/max arrive from pandas as NaN when the Excel cell is
+    # empty, and NaN is NOT NULL -- coalesce() lets it through, so the payload
+    # picks up the literal string "NaN". Whether an empty cell reaches Spark as
+    # NaN or as NULL differs between local PySpark and Glue, which made the same
+    # 50 orders hash differently in the two environments. Normalise NaN to NULL
+    # first so both render as "".
+    numeric_key_columns = {"cargo_weight_min", "cargo_weight_max"}
+
+    def key_part(column: str):
+        col = F.col(column)
+        if column in numeric_key_columns:
+            col = F.when(F.isnan(col.cast("double")), F.lit(None)).otherwise(col)
+        return F.coalesce(col.cast("string"), F.lit(""))
+
     hash_expr = F.coalesce(
         F.substring(
             F.regexp_replace(
                 F.sha2(
-                    F.concat_ws(
-                        "||",
-                        *[F.coalesce(F.col(column).cast("string"), F.lit("")) for column in key_columns],
-                    ),
+                    F.concat_ws("||", *[key_part(column) for column in key_columns]),
                     256,
                 ),
                 "[^0-9]",
@@ -617,8 +629,8 @@ def main() -> None:
 
     args.JOB_NAME = args.JOB_NAME or get_env_var("JOB_NAME", default="smu-glue-transform")
     args.input_files = args.input_files or get_env_var("INPUT_FILES")
-    args.source_tonnage_s3 = args.source_tonnage_s3 or resolve_default_s3_uri(("S3_bucket_bronze", "S3_BUCKET_BRONZE"), "tonnage/SMU Tonnage data 2025.xlsx") or "s3://bronze-layer-ocean/tonnage/SMU Tonnage data 2025.xlsx"
-    args.source_orders_s3 = args.source_orders_s3 or resolve_default_s3_uri(("S3_bucket_bronze", "S3_BUCKET_BRONZE"), "orders/SMU Order data 2025.xlsx") or "s3://bronze-layer-ocean/orders/SMU Order data 2025.xlsx"
+    args.source_tonnage_s3 = args.source_tonnage_s3 or resolve_default_s3_uri(("S3_bucket_bronze", "S3_BUCKET_BRONZE"), "tonnage/SMU Tonnage data 2025.xlsx") or "s3://bronze-ocean-layer/tonnage/SMU Tonnage data 2025.xlsx"
+    args.source_orders_s3 = args.source_orders_s3 or resolve_default_s3_uri(("S3_bucket_bronze", "S3_BUCKET_BRONZE"), "orders/SMU Order data 2025.xlsx") or "s3://bronze-ocean-layer/orders/SMU Order data 2025.xlsx"
     args.silver_s3_prefix = args.silver_s3_prefix or resolve_default_s3_prefix(("S3_bucket_silver", "S3_BUCKET_SILVER"))
     args.glue_database = args.glue_database or get_env_var("GLUE_DATABASE", default="silver_db")
     args.glue_tonnage_table = args.glue_tonnage_table or get_env_var("GLUE_TONNAGE_TABLE", default="smu_tonnage_silver")

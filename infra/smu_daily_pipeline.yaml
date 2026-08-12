@@ -1,9 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Daily EventBridge -> Lambda -> Glue pipeline for SMU XLSX processing
+Description: >
+  Event-driven + scheduled pipeline for SMU XLSX processing.
+  S3 upload -> EventBridge -> SQS -> Lambda -> Glue, with a daily schedule as a safety net.
 
 Parameters:
   BronzeBucketName:
     Type: String
+    Default: bronze-ocean-layer
     Description: S3 bucket that stores incoming XLSX files
   BronzePrefix:
     Type: String
@@ -11,6 +14,7 @@ Parameters:
     Description: Optional prefix inside the bronze bucket
   SilverBucketName:
     Type: String
+    Default: silver-ocean-layer
     Description: S3 bucket for cleaned JSON output
   SilverPrefix:
     Type: String
@@ -36,13 +40,22 @@ Parameters:
     Default: smu-processed-files
   ScheduleExpression:
     Type: String
-    Default: cron(0 2 * * ? *)
-    Description: EventBridge schedule expression
+    Default: cron(0 22 * * ? *)
+    Description: EventBridge schedule expression (UTC). 22:00 UTC = 06:00 SGT.
   LambdaFunctionName:
     Type: String
     Default: smu-daily-trigger
+  BatchingWindowSeconds:
+    Type: Number
+    Default: 60
+    MinValue: 0
+    MaxValue: 300
+    Description: >
+      How long SQS waits to collect upload events before invoking the Lambda.
+      Lower = faster reaction, higher = better collapsing of simultaneous uploads.
 
 Resources:
+  # ---------------------------------------------------------------- state ----
   ProcessedFilesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -57,6 +70,7 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  # ------------------------------------------------------------ glue job -----
   GlueJobRole:
     Type: AWS::IAM::Role
     Properties:
@@ -125,13 +139,58 @@ Resources:
         PythonVersion: "3"
       DefaultArguments:
         --job-bookmark-option: job-bookmark-disable
+        --job_bookmark_option: job-bookmark-disable
+        --TempDir: !Sub s3://${SilverBucketName}/tmp/
+        --additional-python-modules: openpyxl==3.1.5
         --glue_database: !Ref GlueDatabaseName
         --glue_tonnage_table: !Ref GlueTonnageTableName
         --glue_orders_table: !Ref GlueOrdersTableName
         --processed_table_name: !Ref ProcessedTableName
         --silver_s3_prefix: !Sub s3://${SilverBucketName}/${SilverPrefix}
-        --additional-python-modules: openpyxl==3.1.5
+        --source_tonnage_s3: !Sub "s3://${BronzeBucketName}/tonnage/SMU Tonnage data 2025.xlsx"
+        --source_orders_s3: !Sub "s3://${BronzeBucketName}/orders/SMU Order data 2025.xlsx"
+        --tonnage_sheet_name: Tonnage Results
+        --orders_sheet_name: Order Results
+        --region: !Ref AWS::Region
 
+  # ------------------------------------------------------- upload queueing ---
+  UploadDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${LambdaFunctionName}-uploads-dlq
+      MessageRetentionPeriod: 1209600   # 14 days
+
+  UploadQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${LambdaFunctionName}-uploads
+      # Must be >= 6x the Lambda timeout (60s) so SQS does not redeliver mid-run.
+      VisibilityTimeout: 420
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt UploadDLQ.Arn
+        # ~10 retries x 7 min visibility gives the Glue job well over an hour
+        # to finish and mark its files before a message is given up on.
+        maxReceiveCount: 10
+
+  UploadQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref UploadQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowEventBridgeToSendMessage
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt UploadQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt BronzeUploadRule.Arn
+
+  # -------------------------------------------------------------- lambda -----
   TriggerLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -165,6 +224,12 @@ Resources:
                   - glue:StartJobRun
                   - glue:GetJobRuns
                 Resource: !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${GlueJobName}
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt UploadQueue.Arn
 
   TriggerLambda:
     Type: AWS::Lambda::Function
@@ -183,22 +248,43 @@ Resources:
           PROCESSED_TABLE_NAME: !Ref ProcessedTableName
       Code:
         ZipFile: |
+          """Trigger the SMU Glue job when unprocessed XLSX files exist in bronze.
+
+          Invoked two ways, both handled identically because the payload is ignored
+          and the bucket is re-scanned every time:
+            1. SQS batch, fed by an EventBridge rule on S3 "Object Created"
+            2. EventBridge schedule, as a daily safety net
+
+          Dedupe key is "s3://<bucket>/<key>#<etag>" rather than the bare URI, so
+          re-uploading a file at the SAME path with NEW contents is treated as new
+          work. The "#<etag>" suffix is a URI fragment, which urlparse strips, so
+          glue_transform.py resolves the same bucket/key without modification.
+          """
           import os
           import boto3
+
 
           def _normalized_prefix(prefix):
               return prefix.strip("/") if prefix else ""
 
-          def _list_xlsx_keys(s3_client, bucket, prefix):
+
+          def _list_xlsx_objects(s3_client, bucket, prefix):
+              """Return [(key, etag)] for every real .xlsx under the prefix."""
               paginator = s3_client.get_paginator("list_objects_v2")
-              keys = []
+              objects = []
               for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
                   for obj in page.get("Contents", []):
                       key = obj["Key"]
                       base = os.path.basename(key).lower()
-                      if base.endswith(".xlsx") and not base.startswith("~$"):
-                          keys.append(key)
-              return keys
+                      if not base.endswith(".xlsx"):
+                          continue
+                      if base.startswith("~$"):        # Excel lock file
+                          continue
+                      if obj.get("Size", 0) == 0:      # zero-byte placeholder
+                          continue
+                      objects.append((key, obj["ETag"].strip('"')))
+              return objects
+
 
           def _is_processed(dynamodb_client, table_name, source_key):
               response = dynamodb_client.get_item(
@@ -208,13 +294,14 @@ Resources:
               )
               return "Item" in response
 
+
           def _job_is_running(glue_client, job_name):
               response = glue_client.get_job_runs(JobName=job_name, MaxResults=1)
               runs = response.get("JobRuns", [])
               if not runs:
                   return False
-              state = runs[0].get("JobRunState")
-              return state in {"STARTING", "RUNNING", "STOPPING"}
+              return runs[0].get("JobRunState") in {"STARTING", "RUNNING", "STOPPING"}
+
 
           def handler(event, context):
               glue_client = boto3.client("glue")
@@ -226,32 +313,91 @@ Resources:
               prefix = _normalized_prefix(os.environ.get("BRONZE_PREFIX", ""))
               processed_table = os.environ["PROCESSED_TABLE_NAME"]
 
-              if _job_is_running(glue_client, job_name):
-                  return {"status": "skipped", "reason": "glue_job_already_running"}
+              # Work out what is outstanding BEFORE checking whether Glue is busy.
+              # If nothing is outstanding we can return cleanly and let SQS delete
+              # the message, even while a run is in flight.
+              new_uris = []
+              for key, etag in _list_xlsx_objects(s3_client, bucket, prefix):
+                  uri = f"s3://{bucket}/{key}#{etag}"
+                  if not _is_processed(dynamodb_client, processed_table, uri):
+                      new_uris.append(uri)
 
-              keys = _list_xlsx_keys(s3_client, bucket, prefix)
-              new_keys = [key for key in keys if not _is_processed(dynamodb_client, processed_table, key)]
-              if not new_keys:
+              if not new_uris:
+                  print("No unprocessed files found.")
                   return {"status": "no_new_files", "new_files": 0}
 
-              input_files = ",".join(f"s3://{bucket}/{key}" for key in new_keys)
+              # Raising (rather than returning "skipped") sends the SQS message back
+              # to the queue after the visibility timeout, so the upload is retried
+              # instead of silently dropped until the next scheduled poll.
+              if _job_is_running(glue_client, job_name):
+                  raise RuntimeError(
+                      f"Glue job {job_name} is busy; {len(new_uris)} file(s) "
+                      "pending, message returned to queue for retry."
+                  )
+
+              print(f"Starting {job_name} for {len(new_uris)} file(s): {new_uris}")
               response = glue_client.start_job_run(
                   JobName=job_name,
                   Arguments={
-                      "--input_files": input_files,
+                      "--input_files": ",".join(new_uris),
                       "--processed_table_name": processed_table,
                   },
               )
               return {
                   "status": "started",
                   "job_run_id": response["JobRunId"],
-                  "new_files": len(new_keys),
+                  "new_files": len(new_uris),
               }
 
+  TriggerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaFunctionName}
+      RetentionInDays: 30
+
+  # ------------------------------------------------- event-driven trigger ----
+  # Requires "Amazon EventBridge" notifications to be switched ON manually in
+  # the bronze bucket's Properties tab. CloudFormation cannot set this because
+  # this stack does not own the bucket.
+  BronzeUploadRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${LambdaFunctionName}-on-upload
+      Description: Fire when a new .xlsx lands in the bronze bucket
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - Object Created
+        detail:
+          bucket:
+            name:
+              - !Ref BronzeBucketName
+          object:
+            key:
+              - suffix: .xlsx
+      Targets:
+        - Arn: !GetAtt UploadQueue.Arn
+          Id: UploadQueueTarget
+
+  QueueToLambda:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt UploadQueue.Arn
+      FunctionName: !GetAtt TriggerLambda.Arn
+      Enabled: true
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: !Ref BatchingWindowSeconds
+      ScalingConfig:
+        MaximumConcurrency: 2
+
+  # ---------------------------------------------- scheduled safety net -------
   DailyScheduleRule:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub ${LambdaFunctionName}-schedule
+      Description: Daily catch-all in case an upload event was missed
       ScheduleExpression: !Ref ScheduleExpression
       State: ENABLED
       Targets:
@@ -273,3 +419,14 @@ Outputs:
     Value: !Ref TriggerLambda
   ProcessedTableName:
     Value: !Ref ProcessedFilesTable
+  UploadQueueUrl:
+    Description: Queue that buffers S3 upload events
+    Value: !Ref UploadQueue
+  UploadDLQUrl:
+    Description: Check here if uploads stop being processed
+    Value: !Ref UploadDLQ
+  BronzeEventBridgeSetupReminder:
+    Description: Manual step required after deploy
+    Value: !Sub >-
+      Enable EventBridge notifications on s3://${BronzeBucketName}
+      (Properties -> Event notifications -> Amazon EventBridge -> Edit -> On)
