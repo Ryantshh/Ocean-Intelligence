@@ -411,22 +411,32 @@ async def authenticate(username: str, password: str) -> cl.User | None:
 
 @cl.on_chat_resume
 async def resume_chat(thread: ThreadDict) -> None:
-    """Reattach to a persisted conversation.
+    """Reattach to a persisted conversation and restore the gauge.
 
     Without this callback old threads are listed and readable but cannot be
     continued. Chainlit replays the stored steps itself, so there is no state to
     rebuild until the agent carries memory.
 
+    The gauge is unpersisted, so it is rebuilt here against the last stored
+    assistant message.
+
     Parameters
     ----------
     thread : ThreadDict
-        Stored thread record supplied by the data layer. Unused, but the
-        callback must exist for resume to be offered at all.
+        Stored thread record supplied by the data layer, read here for the id of
+        the last assistant message.
 
     Returns
     -------
     None
     """
+    anchors = [
+        str(step_id)
+        for step in thread.get("steps") or []
+        if step.get("type") == "assistant_message" and (step_id := step.get("id"))
+    ]
+    if anchors:
+        await refresh_gauge(agent_history(), anchor=anchors[-1])
 
 
 @cl.on_message

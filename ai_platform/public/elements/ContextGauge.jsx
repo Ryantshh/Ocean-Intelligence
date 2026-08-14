@@ -1,17 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const COMPOSER_SELECTORS = ["#message-composer", "#chat-input"];
 const GAP_ABOVE_COMPOSER = 10;
+const FALLBACK_BOTTOM = 96;
 
 export default function ContextGauge() {
+  const anchorRef = useRef(null);
   const [box, setBox] = useState(null);
 
   useEffect(() => {
     let observed = null;
-    const observer = new ResizeObserver(() => measure());
 
-    // Re-queried every pass rather than captured once: React can replace the node,
-    // and the gauge hangs off its geometry rather than its own position in the flow.
     const findComposer = () => {
       for (const selector of COMPOSER_SELECTORS) {
         const found = document.querySelector(selector);
@@ -20,30 +19,77 @@ export default function ContextGauge() {
       return null;
     };
 
+    // Always produces a box. Anchoring to the composer lines the gauge up with
+    // the chat edge; failing that it falls back to our own anchor, which is in
+    // the flow of whatever column we were rendered into and therefore always
+    // measurable.
     const measure = () => {
       const composer = findComposer();
-      if (!composer) return;
-      if (composer !== observed) {
+      if (composer && composer !== observed) {
         if (observed) observer.unobserve(observed);
         observer.observe(composer);
         observed = composer;
       }
-      const rect = composer.getBoundingClientRect();
-      if (!rect.width) return;
-      setBox({
-        left: rect.left,
-        width: rect.width,
-        bottom: window.innerHeight - rect.top + GAP_ABOVE_COMPOSER,
-      });
+      const rect = composer?.getBoundingClientRect();
+      const own = anchorRef.current?.getBoundingClientRect();
+      const next = rect?.width
+        ? {
+            left: rect.left,
+            width: rect.width,
+            bottom: window.innerHeight - rect.top + GAP_ABOVE_COMPOSER,
+            anchored: true,
+          }
+        : {
+            left: own?.width ? own.left : 0,
+            width: own?.width || window.innerWidth,
+            bottom: FALLBACK_BOTTOM,
+            anchored: false,
+          };
+      setBox((current) =>
+        current &&
+        current.left === next.left &&
+        current.width === next.width &&
+        current.bottom === next.bottom &&
+        current.anchored === next.anchored
+          ? current
+          : next,
+      );
     };
 
+    // ResizeObserver reports size changes, never position. The composer is
+    // width-capped, so widening the window past the cap only re-centres it and
+    // the observer stays silent. Sampling while a pointer is held covers the
+    // drag of a panel divider, which is when that happens.
+    let frame = 0;
+    const followDrag = () => {
+      measure();
+      frame = requestAnimationFrame(followDrag);
+    };
+    const startFollow = () => {
+      if (!frame) frame = requestAnimationFrame(followDrag);
+    };
+    const stopFollow = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      measure();
+    };
+
+    const observer = new ResizeObserver(measure);
     measure();
-    const retry = setTimeout(measure, 300);
+    if (anchorRef.current) observer.observe(anchorRef.current);
+    const retry = setTimeout(measure, 400);
     window.addEventListener("resize", measure);
+    document.addEventListener("pointerdown", startFollow);
+    document.addEventListener("pointerup", stopFollow);
+    document.addEventListener("pointercancel", stopFollow);
     return () => {
       clearTimeout(retry);
+      if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener("resize", measure);
+      document.removeEventListener("pointerdown", startFollow);
+      document.removeEventListener("pointerup", stopFollow);
+      document.removeEventListener("pointercancel", stopFollow);
     };
   }, []);
 
@@ -61,14 +107,10 @@ export default function ContextGauge() {
 
   const label = percent > 0 && percent < 1 ? "<1%" : `${Math.round(percent)}%`;
 
-  if (!box) return null;
-
   return (
-    <div
-      className="oi-gauge-rail"
-      style={{ left: box.left, width: box.width, bottom: box.bottom }}
-    >
+    <div className="oi-gauge-anchor" ref={anchorRef}>
       <style>{`
+        .oi-gauge-anchor { height: 0; width: 100%; margin: 0; padding: 0; }
         .oi-gauge-rail {
           position: fixed;
           display: flex;
@@ -110,22 +152,36 @@ export default function ContextGauge() {
           .oi-gauge-caption { display: none; }
         }
       `}</style>
-      <div
-        className="oi-gauge"
-        title={`Conversation using ${used.toLocaleString()} of ${usable.toLocaleString()} usable tokens. Last question cost ${spent.toLocaleString()}.`}
-      >
-        <span className="oi-gauge-caption">context</span>
-        <div className="oi-gauge-track">
+      {box && (
+        <div
+          className="oi-gauge-rail"
+          style={{ left: box.left, width: box.width, bottom: box.bottom }}
+        >
           <div
-            className="oi-gauge-fill"
-            style={{
-              transform: `scaleX(${Math.max(percent, 1.5) / 100})`,
-              background: fill,
-            }}
-          />
+            className="oi-gauge"
+            title={
+              `Conversation using ${used.toLocaleString()} of ` +
+              `${usable.toLocaleString()} usable tokens. ` +
+              `Last question cost ${spent.toLocaleString()}.` +
+              (box.anchored ? "" : " Not anchored: no #message-composer found.")
+            }
+          >
+            <span className="oi-gauge-caption">
+              {box.anchored ? "context" : "context ~"}
+            </span>
+            <div className="oi-gauge-track">
+              <div
+                className="oi-gauge-fill"
+                style={{
+                  transform: `scaleX(${Math.max(percent, 1.5) / 100})`,
+                  background: fill,
+                }}
+              />
+            </div>
+            <span>{label}</span>
+          </div>
         </div>
-        <span>{label}</span>
-      </div>
+      )}
     </div>
   );
 }
