@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#todo
+todo.md
+
+#claude
+CLAUDE.md
+
+#chainlit generated
+ai_platform/.chainlit/translations/
+.files/
