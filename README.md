@@ -2,7 +2,7 @@
 
 Data pipeline for the SMU IS483 capstone with Cargill Ocean Transportation. An Excel file placed in the bronze S3 bucket is automatically transformed into cleaned JSON in the silver bucket, where it becomes available to the dashboard and chatbot.
 
-This repository covers the bronze-to-silver data layer only. The chatbot, dashboard, and RAG components are maintained elsewhere.
+This repository covers the bronze-to-silver data layer and the chat agent that queries it. The RAG components are maintained elsewhere.
 
 Status: deployed and verified end to end.
 
@@ -38,6 +38,83 @@ Files are tracked by S3 path combined with object ETag, so replacing a file at a
 **Two required columns contain no data.** `assigned` and `assigned_vessel_name` are 100% null; `commercial_status` is 79.2% null. These are deficiencies in the source workbooks rather than pipeline defects, and both affect core deliverables — vessel-order matching and US-2.2 respectively.
 
 **Date coverage differs.** Tonnage extends to 2026-04-21, orders only to 2026-01-06. Time-based joins will produce a three-month period containing vessels but no orders.
+
+## The chat agent
+
+A LangGraph agent over `public.orders` and `public.tonnage`, served by Chainlit at `/chat`. Stage one only — metadata filtering. Ranking and reranking wait for the gold layer.
+
+```mermaid
+flowchart TB
+    start(["__start__<br/><small>user message arrives</small>"]):::terminal
+    start -. "history over 80% of usable" .-> compact
+    start -. "history small" .-> extract_filters
+
+    compact["<b>compact</b><br/><small>summarise all but the last 6 messages</small><br/><small>streams into a progress step</small>"]:::llm
+    compact --> extract_filters
+
+    extract_filters{{"<b>extract_filters</b><br/><small>question → Filters object</small><br/><small>strict structured output</small>"}}:::llm
+    extract_filters -. "too vague to filter" .-> answer
+    extract_filters -. "filters ready" .-> build_query
+
+    build_query["<b>build_query</b><br/><small>Filters → parameterised SQL</small><br/><small>our code, never the model. No LIMIT</small>"]:::guard
+    build_query --> narrow
+
+    narrow["<b>① narrow</b><br/><small>dates · dwt · weights · enums</small><br/><small>every match, so len(rows) is the true count</small>"]:::tool
+    narrow --> answer
+    narrow -. "once the gold layer exists" .-> rank
+
+    rank["<b>② rank</b> the survivors<br/><small>BM25 and vector, run in parallel</small>"]:::planned
+    rank --> fuse
+    fuse["<b>③ fuse</b><br/><small>reciprocal rank fusion → top 50</small>"]:::planned
+    fuse --> rerank
+    rerank["<b>rerank</b><br/><small>cross-encoder, top 50 → top 5</small>"]:::planned
+    rerank --> answer
+
+    answer["<b>answer</b><br/><small>rows → summarise · no filters → discuss</small><br/><small>catches context overflow and says how to narrow</small>"]:::llm
+    answer --> finish(["__end__<br/><small>reply streamed, graph returns</small>"]):::terminal
+
+    classDef llm fill:#0f766e,stroke:#0b5d56,color:#fff
+    classDef tool fill:#1e40af,stroke:#1a3a94,color:#fff
+    classDef guard fill:#b45309,stroke:#92400e,color:#fff
+    classDef terminal fill:#334155,stroke:#1e293b,color:#fff
+    classDef planned fill:#334155,stroke:#64748b,color:#94a3b8,stroke-dasharray:4 3
+```
+
+Solid arrows are fixed edges, dotted are conditional or not yet built. Teal is a model call, blue a database operation, amber deterministic code. **The three greyed boxes do not exist yet** — `narrow` hands straight to `answer` today.
+
+Steps ①②③ will be one SQL statement, drawn as three boxes because they are three distinct operations. `narrow` runs first and both rankers only ever see its output.
+
+**`compact`** summarises everything but the last six messages so history stops growing. Conditional, because it costs a model call.
+
+**`extract_filters`** turns the question into a typed `Filters` object using strict structured outputs. The only place untrusted output enters the pipeline, so every failure mode is handled here and nothing downstream needs to.
+
+**`build_query`** compiles that object into parameterised SQL. Our code, never the model — a bad extraction returns wrong rows, it cannot execute anything.
+
+**`narrow`** runs the statement. There is no `LIMIT`, so the row count is the true number of matches.
+
+**`answer`** has three paths: summarise the rows, report an error, or — when nothing filterable was named — answer from the conversation instead of the database.
+
+Two routers, both plain functions that call no model:
+
+| Router | Sits on | Decides |
+|---|---|---|
+| `route_entry` | `START` | `compact` when history passes 80% of usable context, else `extract_filters` |
+| `route_after_extract` | `extract_filters` | `answer` on a clarification or an error, else `build_query` |
+
+### Limits
+
+| Limit | Detail |
+|---|---|
+| Filterable fields | Tonnage: vessel ids, open/ETA/updated/received windows, dwt, ballast or laden, commercial status. Orders: order ids, laycan, received, updated, cargo weight |
+| Not filterable | Region, port, zone, open area, destination, cargo type, cargo description, ship type, vessel status. All are shown in the results panel, which filters per column |
+| Combining conditions | AND only. No OR and no negation, so "fixed or on subs" and "everything except fixed" cannot be asked |
+| Enum arity | `ballast_laden` and `commercial_status` take one value; ids take a list |
+| Result size | Beyond roughly 950 rows the model's context is exceeded and the query fails with a message asking you to narrow. One month of tonnage is about 1,000 rows |
+| Aggregation | None. No `GROUP BY`, no averages, no top-N |
+| Joins | One table per question. `tonnage.order_id` matches no rows in `orders`, so cargo-to-vessel matching is not available |
+| Row meaning | A tonnage row is a reported position, not a vessel — 11,105 rows cover 1,037 vessels |
+| Memory | Retrieved rows do not survive the turn. Follow-ups re-query rather than recall, so "show me the third one" has no list to index |
+| Relative dates | The extraction prompt carries no current date, so "next month" is guessed rather than computed |
 
 ## Deployment
 
