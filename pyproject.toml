@@ -30,6 +30,7 @@ dependencies = [
     "chainlit>=2.11.1",
     "fastapi>=0.141.1",
     "greenlet>=3.5.4",
+    "langgraph>=1.2.11",
     "openai>=2.53.0",
     "python-dotenv>=1.2.2",
     "sqlalchemy[asyncio]>=2.0.51",

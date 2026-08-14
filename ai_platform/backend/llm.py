@@ -70,22 +70,38 @@ def get_client() -> AsyncOpenAI:
     )
 
 
-async def stream_chat(messages: list[dict[str, str]]) -> AsyncIterator[str]:
+async def stream_chat(
+    messages: list[dict[str, str]],
+    system: str = SYSTEM_PROMPT,
+    usage: dict[str, int] | None = None,
+) -> AsyncIterator[str]:
     """Stream a reply for a conversation.
 
-    The system prompt is prepended here rather than by the caller, so every
-    entry point gets the same framing.
+    The system prompt is a parameter rather than a constant because the agent's
+    answer step needs its own framing. Defaulting it here keeps every other
+    entry point on the plain-model prompt without repeating it.
+
+    Token counts cannot be returned from a generator, so a caller wanting them
+    passes a dict to be filled in. They arrive on the final chunk, which carries
+    no ``choices`` — hence the usage check sits ahead of the skip, not after it.
 
     Parameters
     ----------
     messages : list of dict
         Conversation so far in OpenAI format, oldest first.
+    system : str
+        System prompt prepended to the payload.
+    usage : dict of str to int, optional
+        Filled with ``prompt_tokens``, ``completion_tokens`` and
+        ``reasoning_tokens`` once the stream closes. Left untouched if omitted.
 
     Yields
     ------
     str
         Content deltas in arrival order. Reasoning deltas emitted by ``gpt-oss``
-        models are skipped — only ``delta.content`` is forwarded.
+        models are skipped — only ``delta.content`` is forwarded. They are still
+        billed and still occupy the window, which is what ``reasoning_tokens``
+        reports.
 
     Raises
     ------
@@ -95,15 +111,21 @@ async def stream_chat(messages: list[dict[str, str]]) -> AsyncIterator[str]:
     client = get_client()
     payload = cast(
         "list[ChatCompletionMessageParam]",
-        [{"role": "system", "content": SYSTEM_PROMPT}, *messages],
+        [{"role": "system", "content": system}, *messages],
     )
     stream = await client.chat.completions.create(
         model=get_model_name(),
         messages=payload,
         stream=True,
+        stream_options={"include_usage": True},
     )
 
     async for chunk in stream:
+        if chunk.usage is not None and usage is not None:
+            details = chunk.usage.completion_tokens_details
+            usage["prompt_tokens"] = chunk.usage.prompt_tokens
+            usage["completion_tokens"] = chunk.usage.completion_tokens
+            usage["reasoning_tokens"] = (details.reasoning_tokens or 0) if details else 0
         if not chunk.choices:
             continue
         content = chunk.choices[0].delta.content

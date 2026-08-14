@@ -124,7 +124,12 @@ cot = "tool_call"
 
 # Specify a CSS file that can be used to customize the user interface.
 # The CSS file can be served from the public directory or via an external link.
-custom_css = "/chat/public/theme.css"
+# No /chat prefix here, unlike login_page_image and header_links. Chainlit injects
+# this into the page head and then rewrites every root-relative href to prepend the
+# mount path, so a prefix written here is applied twice. The doubled URL still
+# returns 200 — it falls through to the SPA and serves HTML as text/css — so the
+# stylesheet silently never applies.
+custom_css = "/public/theme.css"
 
 # Specify additional attributes for a custom CSS file
 # custom_css_attributes = "media=\"print\""
@@ -140,11 +145,17 @@ alert_style = "classic"
 # custom_js_attributes = "async type = \"module\""
 
 # Custom login page image, relative to public directory or external URL
-# login_page_image = "/public/custom-background.jpg"
+# Path carries the /chat mount prefix, same as custom_css above — a bare
+# /public/... resolves against the FastAPI root and 404s.
+#
+# login_background.jpg is "HAPPINESS BULKER, Port Angeles WA" by Gordon Leggett,
+# CC BY 4.0, via Wikimedia Commons. Placeholder pending a Cargill fleet photo.
+# CC BY requires the credit above to be kept wherever the image is used.
+login_page_image = "/chat/public/login_background.jpg"
 
 # Custom login page image filter (Tailwind internal filters, no dark/light variants)
-# login_page_image_filter = "brightness-50 grayscale"
-# login_page_image_dark_filter = "contrast-200 blur-sm"
+login_page_image_filter = "brightness-90"
+login_page_image_dark_filter = "brightness-50"
 
 # Specify a custom meta URL (used for meta tags like og:url)
 # custom_meta_url = "https://github.com/Chainlit/chainlit"
@@ -177,7 +188,7 @@ default_avatar_file_url = ""
 [[UI.header_links]]
 name = "Dashboard"
 display_name = "Dashboard"
-icon_url = "/chat/public/favicon.png"
+icon_url = "/chat/public/favicon.svg"
 url = "/"
 target = "_self"
 

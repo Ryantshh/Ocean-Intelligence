@@ -11,6 +11,7 @@ import os
 import re
 
 import chainlit as cl
+from botocore.config import Config
 from chainlit.data.base import BaseDataLayer
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 from chainlit.data.storage_clients.base import BaseStorageClient
@@ -51,6 +52,13 @@ def get_storage_client() -> BaseStorageClient | None:
     The ``CHAINLIT_S3_`` prefix keeps these distinct from the AWS credentials and
     data-lake bucket names that share the same ``.env``.
 
+    ``signature_version`` must be set explicitly. Supabase's S3 gateway accepts
+    only SigV4, and botocore presigns GET URLs with SigV2 unless told otherwise —
+    even when the client config already reports ``s3v4``, because query-auth
+    signing is chosen separately from request signing. Left unset, uploads
+    succeed and every read of a persisted element returns 403, so the failure
+    only appears when a thread is reloaded.
+
     Returns
     -------
     BaseStorageClient or None
@@ -69,7 +77,8 @@ def get_storage_client() -> BaseStorageClient | None:
         endpoint_url=endpoint_url,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
-        region_name=os.environ.get("S3_REGION", "us-east-1").strip(),
+        region_name=os.environ.get("CHAINLIT_S3_REGION", "us-east-1").strip(),
+        config=Config(signature_version="s3v4"),
     )
 
 

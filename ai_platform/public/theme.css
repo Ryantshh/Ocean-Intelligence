@@ -4,3 +4,32 @@ a[href*="chainlit.io"],
 a[href*="chainlit.io"] + * {
   display: none !important;
 }
+
+/* Every scroll container, not just the results table: the chat transcript, the side
+   panel, the thread list and the table all render their own. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
