@@ -20,6 +20,9 @@ import pg8000.dbapi
 
 BATCH_SIZE = 500
 
+# pgvector stores each vector(N) dimension as a 4-byte float4 on disk.
+BYTES_PER_EMBEDDING_DIMENSION = 4
+
 
 def connect(dsn: str):
     parsed = urlparse(dsn.replace("postgresql+asyncpg://", "postgresql://"))
@@ -50,6 +53,29 @@ def fetch_existing(
         existing[row[pk_column]] = row
     cursor.close()
     return existing
+
+
+def estimate_upload_size_bytes(
+    rows: list[dict[str, Any]],
+    columns: tuple[str, ...],
+    embedding_columns: tuple[str, ...],
+    embedding_dimension: int,
+) -> int:
+    """Rough byte-size estimate of what upsert() would send for these rows.
+
+    Embedding columns are sized from embedding_dimension rather than actual
+    values, so this can run before embeddings.attach_embeddings() fills them
+    in -- letting the caller gate the Cohere calls and the DB write on a
+    single size check instead of paying for embeddings only to discard them.
+    """
+    per_row_embedding_bytes = len(embedding_columns) * embedding_dimension * BYTES_PER_EMBEDDING_DIMENSION
+    total = per_row_embedding_bytes * len(rows)
+    for row in rows:
+        for column in columns:
+            value = row.get(column)
+            if value is not None:
+                total += len(str(value).encode("utf-8"))
+    return total
 
 
 def _vector_literal(value):

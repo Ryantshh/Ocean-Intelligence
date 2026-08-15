@@ -7,6 +7,15 @@ always re-reads the current silver files in full, since glue_transform.py's
 read-modify-write means every Glue run republishes the whole dataset, not
 just a delta.
 
+Before doing any real work, checks a DynamoDB record of each silver file's
+content hash from the last successful gold load. If both orders.json and
+tonnage.json are byte-identical to what was already loaded, the run exits
+immediately -- no Supabase connection, no Cohere calls. This is a file-level
+complement to _select_stale()'s row-level dedup below: this check guards
+against paying for a Supabase round-trip on a fully no-op run (e.g. a Glue
+run that only touched one of the two datasets), while _select_stale() still
+protects the embedding API cost within a run that does have real changes.
+
 Deployed with the "gold_loader" package kept intact in the zip (not
 flattened) -- see infra/smu_gold_loader.yaml's build step -- so these stay
 relative imports and the same handler works both deployed
@@ -15,6 +24,8 @@ relative imports and the same handler works both deployed
 
 import hashlib
 import os
+
+import boto3
 
 from . import db, embeddings, silver_reader
 
@@ -60,6 +71,7 @@ TONNAGE_COLUMNS = (
 
 ORDERS_EMBEDDING_COLUMNS = tuple(f"{field}_embedding" for field in embeddings.ORDERS_EMBED_FIELDS)
 TONNAGE_EMBEDDING_COLUMNS = tuple(f"{field}_embedding" for field in embeddings.TONNAGE_EMBED_FIELDS)
+MAX_UPLOAD_BYTES = 495 * 1024 * 1024
 
 
 def _tonnage_row_key(row: dict) -> str:
@@ -98,6 +110,30 @@ def _select_stale(rows: list[dict], pk_field: str, existing: dict) -> list[dict]
     return stale
 
 
+def _content_hash(raw_bytes: bytes) -> str:
+    return hashlib.sha256(raw_bytes).hexdigest()
+
+
+def _get_last_hash(dynamodb_client, table_name: str, source_key: str) -> str | None:
+    response = dynamodb_client.get_item(
+        TableName=table_name,
+        Key={"source_key": {"S": source_key}},
+        ConsistentRead=True,
+    )
+    item = response.get("Item")
+    return item["content_hash"]["S"] if item else None
+
+
+def _set_last_hash(dynamodb_client, table_name: str, source_key: str, content_hash: str) -> None:
+    dynamodb_client.put_item(
+        TableName=table_name,
+        Item={
+            "source_key": {"S": source_key},
+            "content_hash": {"S": content_hash},
+        },
+    )
+
+
 def handler(event, context):
     silver_bucket = os.environ["SILVER_BUCKET_NAME"]
     silver_prefix = os.environ.get("SILVER_PREFIX", "")
@@ -106,9 +142,27 @@ def handler(event, context):
     cohere_api_key = os.environ["COHERE_API_KEY"]
     cohere_model = os.environ.get("COHERE_MODEL", "embed-v4.0")
     embedding_dimension = int(os.environ.get("EMBEDDING_DIMENSION", "512"))
+    hash_table = os.environ["GOLD_PROCESSED_HASH_TABLE"]
 
-    order_rows = silver_reader.read_orders(silver_bucket, silver_prefix)
-    tonnage_rows = silver_reader.read_tonnage(silver_bucket, silver_prefix)
+    orders_raw, order_rows = silver_reader.read_orders(silver_bucket, silver_prefix)
+    tonnage_raw, tonnage_rows = silver_reader.read_tonnage(silver_bucket, silver_prefix)
+
+    orders_hash = _content_hash(orders_raw)
+    tonnage_hash = _content_hash(tonnage_raw)
+    orders_source_key = f"s3://{silver_bucket}/{silver_prefix}/orders/orders.json"
+    tonnage_source_key = f"s3://{silver_bucket}/{silver_prefix}/tonnage/tonnage.json"
+
+    dynamodb_client = boto3.client("dynamodb")
+    if (
+        _get_last_hash(dynamodb_client, hash_table, orders_source_key) == orders_hash
+        and _get_last_hash(dynamodb_client, hash_table, tonnage_source_key) == tonnage_hash
+    ):
+        summary = {
+            "skipped": True,
+            "reason": "silver files unchanged since last successful gold load",
+        }
+        print(f"gold_loader summary: {summary}")
+        return summary
 
     for row in order_rows:
         row["order_id"] = _as_bigint(row.get("order_id"))
@@ -118,6 +172,28 @@ def handler(event, context):
         row["tonnage_row_key"] = _tonnage_row_key(row)
         row["order_id"] = _as_bigint(row.get("order_id"))
         row["embedding_source_hash"] = embeddings.source_hash(row, embeddings.TONNAGE_EMBED_FIELDS)
+
+    orders_size = db.estimate_upload_size_bytes(
+        order_rows, ORDERS_COLUMNS, ORDERS_EMBEDDING_COLUMNS, embedding_dimension
+    )
+    tonnage_size = db.estimate_upload_size_bytes(
+        tonnage_rows, TONNAGE_COLUMNS, TONNAGE_EMBEDDING_COLUMNS, embedding_dimension
+    )
+    total_size = orders_size + tonnage_size
+    if total_size > MAX_UPLOAD_BYTES:
+        summary = {
+            "skipped": True,
+            "reason": (
+                f"estimated upload size {total_size / (1024 * 1024):.1f} MB exceeds the "
+                f"{MAX_UPLOAD_BYTES / (1024 * 1024):.0f} MB limit"
+            ),
+            "orders_estimated_mb": round(orders_size / (1024 * 1024), 1),
+            "tonnage_estimated_mb": round(tonnage_size / (1024 * 1024), 1),
+            "orders_total": len(order_rows),
+            "tonnage_total": len(tonnage_rows),
+        }
+        print(f"gold_loader summary: {summary}")
+        return summary
 
     connection = db.connect(os.environ["SUPABASE_DB_URL"])
     try:
@@ -142,6 +218,11 @@ def handler(event, context):
         )
     finally:
         connection.close()
+
+    # Only record success once the upsert has actually completed -- if the
+    # DB write fails, the run should still look "stale" next time.
+    _set_last_hash(dynamodb_client, hash_table, orders_source_key, orders_hash)
+    _set_last_hash(dynamodb_client, hash_table, tonnage_source_key, tonnage_hash)
 
     summary = {
         "orders_total": len(order_rows),

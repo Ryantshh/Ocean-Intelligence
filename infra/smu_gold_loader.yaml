@@ -63,6 +63,21 @@ Parameters:
       Lambda layer, since it has no compiled/platform-specific dependencies.
 
 Resources:
+  # --------------------------------------------- file-level dedup state -----
+  GoldProcessedHashTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${LambdaFunctionName}-processed-hashes
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: source_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: source_key
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+
   GoldLoaderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -93,6 +108,12 @@ Resources:
                   - s3:GetObject
                 Resource:
                   - !Sub arn:aws:s3:::${SilverBucketName}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                Resource:
+                  - !GetAtt GoldProcessedHashTable.Arn
 
   GoldLoaderLambda:
     Type: AWS::Lambda::Function
@@ -113,6 +134,7 @@ Resources:
           EMBEDDING_DIMENSION: !Ref EmbeddingDimension
           SUPABASE_DB_URL: !Ref SupabaseDbUrl
           COHERE_API_KEY: !Ref CohereApiKey
+          GOLD_PROCESSED_HASH_TABLE: !Ref GoldProcessedHashTable
       Code:
         S3Bucket: !Ref CodeS3Bucket
         S3Key: !Ref CodeS3Key
@@ -159,3 +181,5 @@ Outputs:
     Value: !Ref GlueSucceededRule
   LogGroupName:
     Value: !Ref GoldLoaderLambdaLogGroup
+  GoldProcessedHashTableName:
+    Value: !Ref GoldProcessedHashTable
