@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Silver -> gold loader. Glue job SUCCEEDED -> EventBridge -> Lambda, which
+  reads orders.json/tonnage.json from the silver bucket, embeds their
+  free-text fields via Cohere, and upserts into Supabase's
+  public.order_test / public.tonnage_test tables.
+
+  Deploy after infra/smu_daily_pipeline.yaml (GlueJobName must match that
+  stack's job) and after applying infra/sql/gold_layer_test_setup.sql to the
+  target database.
+
+Parameters:
+  SilverBucketName:
+    Type: String
+    Default: silver-ocean-layer
+    Description: S3 bucket holding orders.json / tonnage.json
+  SilverPrefix:
+    Type: String
+    Default: ""
+    Description: Optional prefix inside the silver bucket (must match smu_daily_pipeline.yaml's SilverPrefix)
+  GlueJobName:
+    Type: String
+    Default: smu-glue-transform
+    Description: Existing Glue job (from smu_daily_pipeline.yaml) whose SUCCEEDED state triggers this loader
+  OrdersTableName:
+    Type: String
+    Default: order_test
+  TonnageTableName:
+    Type: String
+    Default: tonnage_test
+  LambdaFunctionName:
+    Type: String
+    Default: smu-gold-loader
+  CohereModel:
+    Type: String
+    Default: embed-v4.0
+  EmbeddingDimension:
+    Type: Number
+    Default: 512
+    AllowedValues: [256, 512, 1024, 1536]
+    Description: Cohere embed-v4.0 output_dimension. Must match the vector(N) columns in infra/sql/gold_layer_test_setup.sql.
+  SupabaseDbUrl:
+    Type: String
+    NoEcho: true
+    Description: postgresql://... connection string for the gold tables (SUPABASE_DB_URL in .env)
+  CohereApiKey:
+    Type: String
+    NoEcho: true
+  CodeS3Bucket:
+    Type: String
+    Description: S3 bucket holding the packaged Lambda zip (see deployment notes below)
+  CodeS3Key:
+    Type: String
+    Default: gold_loader.zip
+    Description: >
+      S3 key for the packaged zip. Build with:
+        pip install pg8000 -t build/
+        cp -r scripts/gold_loader build/gold_loader
+        find build/gold_loader -name "__pycache__" -exec rm -rf {} +
+        (cd build && zip -r ../gold_loader.zip .)
+        aws s3 cp gold_loader.zip s3://<CodeS3Bucket>/<CodeS3Key>
+      pg8000 (pure Python) is vendored directly in the zip rather than via a
+      Lambda layer, since it has no compiled/platform-specific dependencies.
+
+Resources:
+  GoldLoaderLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${LambdaFunctionName}-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: smu-gold-loader-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${SilverBucketName}
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::${SilverBucketName}/*
+
+  GoldLoaderLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Runtime: python3.12
+      Handler: gold_loader.handler.handler
+      Role: !GetAtt GoldLoaderLambdaRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          SILVER_BUCKET_NAME: !Ref SilverBucketName
+          SILVER_PREFIX: !Ref SilverPrefix
+          ORDERS_TABLE_NAME: !Ref OrdersTableName
+          TONNAGE_TABLE_NAME: !Ref TonnageTableName
+          COHERE_MODEL: !Ref CohereModel
+          EMBEDDING_DIMENSION: !Ref EmbeddingDimension
+          SUPABASE_DB_URL: !Ref SupabaseDbUrl
+          COHERE_API_KEY: !Ref CohereApiKey
+      Code:
+        S3Bucket: !Ref CodeS3Bucket
+        S3Key: !Ref CodeS3Key
+
+  GoldLoaderLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaFunctionName}
+      RetentionInDays: 30
+
+  # ---------------------------------------------- Glue-success trigger -------
+  GlueSucceededRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${LambdaFunctionName}-on-glue-success
+      Description: Fire when the SMU Glue job (bronze -> silver) succeeds
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.glue
+        detail-type:
+          - Glue Job State Change
+        detail:
+          jobName:
+            - !Ref GlueJobName
+          state:
+            - SUCCEEDED
+      Targets:
+        - Arn: !GetAtt GoldLoaderLambda.Arn
+          Id: GoldLoaderLambdaTarget
+
+  AllowEventBridgeInvokeGoldLoader:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GoldLoaderLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt GlueSucceededRule.Arn
+
+Outputs:
+  LambdaFunctionName:
+    Value: !Ref GoldLoaderLambda
+  GlueSucceededRuleName:
+    Value: !Ref GlueSucceededRule
+  LogGroupName:
+    Value: !Ref GoldLoaderLambdaLogGroup
