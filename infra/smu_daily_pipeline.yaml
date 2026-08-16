@@ -53,6 +53,26 @@ Parameters:
     Description: >
       How long SQS waits to collect upload events before invoking the Lambda.
       Lower = faster reaction, higher = better collapsing of simultaneous uploads.
+  EmbeddingLambdaS3Bucket:
+    Type: String
+    Description: >
+      S3 bucket holding the packaged gold-embeddings Lambda zip. Build with
+      pip install -r scripts/gold_embeddings/requirements.txt -t build/, copy
+      embed_lambda.py in, zip, upload -- see README.
+  EmbeddingLambdaS3Key:
+    Type: String
+    Description: S3 key of the packaged gold-embeddings Lambda zip
+  GoldEmbeddingLambdaName:
+    Type: String
+    Default: smu-gold-embeddings
+  SupabaseDbUrl:
+    Type: String
+    NoEcho: true
+    Description: postgresql://... DSN for Supabase (same value as SUPABASE_DB_URL in .env)
+  CohereApiKey:
+    Type: String
+    NoEcho: true
+    Description: Cohere API key used to embed the non-filterable text/set columns
 
 Resources:
   # ---------------------------------------------------------------- state ----
@@ -412,6 +432,95 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt DailyScheduleRule.Arn
 
+  # --------------------------------------------------- gold embeddings -------
+  # Silver -> gold loader: upserts every silver column plus the *_embedding
+  # columns into public.orders / public.tonnage in Supabase.
+  # See scripts/gold_embeddings/embed_lambda.py.
+  GoldEmbeddingLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${GoldEmbeddingLambdaName}-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: smu-gold-embeddings-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub arn:aws:s3:::${SilverBucketName}/*
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${GoldEmbeddingLambdaName}
+
+  GoldEmbeddingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref GoldEmbeddingLambdaName
+      Runtime: python3.12
+      Handler: embed_lambda.handler
+      Role: !GetAtt GoldEmbeddingLambdaRole.Arn
+      Timeout: 900
+      MemorySize: 512
+      Environment:
+        Variables:
+          SUPABASE_DB_URL: !Ref SupabaseDbUrl
+          COHERE_API_KEY: !Ref CohereApiKey
+      Code:
+        S3Bucket: !Ref EmbeddingLambdaS3Bucket
+        S3Key: !Ref EmbeddingLambdaS3Key
+
+  GoldEmbeddingLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GoldEmbeddingLambdaName}
+      RetentionInDays: 30
+
+  # Requires "Amazon EventBridge" notifications to be switched ON manually in
+  # the silver bucket's Properties tab, same one-time step as the bronze
+  # bucket below -- this stack does not own either bucket.
+  GoldUploadRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${GoldEmbeddingLambdaName}-on-upload
+      Description: Fire when Glue writes orders.json or tonnage.json to the silver bucket
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - Object Created
+        detail:
+          bucket:
+            name:
+              - !Ref SilverBucketName
+          object:
+            key:
+              - suffix: .json
+      Targets:
+        - Arn: !GetAtt GoldEmbeddingLambda.Arn
+          Id: GoldEmbeddingLambdaTarget
+
+  AllowEventBridgeInvokeGoldEmbeddingLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GoldEmbeddingLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt GoldUploadRule.Arn
+
 Outputs:
   GlueJobName:
     Value: !Ref SMUGlueJob
@@ -429,4 +538,11 @@ Outputs:
     Description: Manual step required after deploy
     Value: !Sub >-
       Enable EventBridge notifications on s3://${BronzeBucketName}
+      (Properties -> Event notifications -> Amazon EventBridge -> Edit -> On)
+  GoldEmbeddingLambdaName:
+    Value: !Ref GoldEmbeddingLambda
+  SilverEventBridgeSetupReminder:
+    Description: Manual step required after deploy
+    Value: !Sub >-
+      Enable EventBridge notifications on s3://${SilverBucketName}
       (Properties -> Event notifications -> Amazon EventBridge -> Edit -> On)
