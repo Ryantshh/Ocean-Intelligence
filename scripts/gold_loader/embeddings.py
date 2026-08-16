@@ -13,6 +13,10 @@ import json
 import urllib.request
 from typing import Any
 
+from .logging_utils import get_logger
+
+logger = get_logger("gold_loader")
+
 ORDERS_EMBED_FIELDS = (
     "cargo_type",
     "discharge_port",
@@ -70,6 +74,9 @@ def _embed_batch(texts: list[str], api_key: str, model: str, dimension: int) -> 
 def embed_values(values: set[str], api_key: str, model: str, dimension: int) -> dict[str, list[float]]:
     """Embed each unique, non-empty value once. Returns {value: vector}."""
     unique_values = sorted(value for value in values if value)
+    if not unique_values:
+        return {}
+    logger.info("embedding %d unique value(s) via Cohere %s", len(unique_values), model)
     cache: dict[str, list[float]] = {}
     for start in range(0, len(unique_values), COHERE_BATCH_SIZE):
         batch = unique_values[start : start + COHERE_BATCH_SIZE]

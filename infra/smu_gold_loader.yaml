@@ -122,7 +122,7 @@ Resources:
       Runtime: python3.12
       Handler: gold_loader.handler.handler
       Role: !GetAtt GoldLoaderLambdaRole.Arn
-      Timeout: 300
+      Timeout: 600
       MemorySize: 512
       Environment:
         Variables:

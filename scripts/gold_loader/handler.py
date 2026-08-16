@@ -28,6 +28,9 @@ import os
 import boto3
 
 from . import db, embeddings, silver_reader
+from .logging_utils import get_logger
+
+logger = get_logger("gold_loader")
 
 ORDERS_COLUMNS = (
     "order_id",
@@ -71,6 +74,12 @@ TONNAGE_COLUMNS = (
 
 ORDERS_EMBEDDING_COLUMNS = tuple(f"{field}_embedding" for field in embeddings.ORDERS_EMBED_FIELDS)
 TONNAGE_EMBEDDING_COLUMNS = tuple(f"{field}_embedding" for field in embeddings.TONNAGE_EMBED_FIELDS)
+# Everything fetch_existing() needs for db.select_changed()'s full-row
+# comparison: every non-pk core column (ORDERS_COLUMNS/TONNAGE_COLUMNS
+# already end in embedding_source_hash) plus the embedding columns
+# themselves, so _select_stale() can still copy them forward unchanged.
+ORDERS_COMPARE_COLUMNS = (*ORDERS_COLUMNS[1:], *ORDERS_EMBEDDING_COLUMNS)
+TONNAGE_COMPARE_COLUMNS = (*TONNAGE_COLUMNS[1:], *TONNAGE_EMBEDDING_COLUMNS)
 MAX_UPLOAD_BYTES = 495 * 1024 * 1024
 
 
@@ -90,24 +99,29 @@ def _as_bigint(value):
     return int(value) if value not in (None, "") else None
 
 
-def _select_stale(rows: list[dict], pk_field: str, existing: dict) -> list[dict]:
-    """Split off rows whose embeddable fields are new or changed.
+def _select_stale(rows: list[dict], pk_field: str, existing: dict) -> tuple[list[dict], list[dict]]:
+    """Partition changed rows into (stale, core_only).
 
-    Rows whose embedding_source_hash matches what's already stored have
-    their embedding columns filled in from the existing row in place, so
-    they're upserted (core columns may still have changed) without an
-    embedding API call.
+    `stale` rows are new or have a changed embedding_source_hash -- they need
+    a Cohere call and go through db.upsert(), which writes every column
+    including the vector(512) ones. `core_only` rows matched their stored
+    hash -- their embeddable fields didn't change, so they skip the API call
+    and go through db.update_core_only() instead of upsert(): that function's
+    SQL never names an embedding column, so Postgres never re-toasts their
+    already-correct vector data. Routing core_only rows through upsert()
+    instead (as this used to) is what inflated order_test/tonnage_test's
+    on-disk size on every run with changed rows, even when nothing needed
+    re-embedding.
     """
     stale = []
+    core_only = []
     for row in rows:
         prior = existing.get(row[pk_field])
         if prior is None or prior["embedding_source_hash"] != row["embedding_source_hash"]:
             stale.append(row)
         else:
-            for column, value in prior.items():
-                if column.endswith("_embedding"):
-                    row[column] = value
-    return stale
+            core_only.append(row)
+    return stale, core_only
 
 
 def _content_hash(raw_bytes: bytes) -> str:
@@ -135,6 +149,8 @@ def _set_last_hash(dynamodb_client, table_name: str, source_key: str, content_ha
 
 
 def handler(event, context):
+    logger.info("gold_loader run starting")
+
     silver_bucket = os.environ["SILVER_BUCKET_NAME"]
     silver_prefix = os.environ.get("SILVER_PREFIX", "")
     orders_table = os.environ.get("ORDERS_TABLE_NAME", "order_test")
@@ -144,8 +160,10 @@ def handler(event, context):
     embedding_dimension = int(os.environ.get("EMBEDDING_DIMENSION", "512"))
     hash_table = os.environ["GOLD_PROCESSED_HASH_TABLE"]
 
+    logger.info("reading silver files from s3://%s/%s", silver_bucket, silver_prefix)
     orders_raw, order_rows = silver_reader.read_orders(silver_bucket, silver_prefix)
     tonnage_raw, tonnage_rows = silver_reader.read_tonnage(silver_bucket, silver_prefix)
+    logger.info("read %d order rows and %d tonnage rows", len(order_rows), len(tonnage_rows))
 
     orders_hash = _content_hash(orders_raw)
     tonnage_hash = _content_hash(tonnage_raw)
@@ -161,7 +179,7 @@ def handler(event, context):
             "skipped": True,
             "reason": "silver files unchanged since last successful gold load",
         }
-        print(f"gold_loader summary: {summary}")
+        logger.info("gold_loader summary: %s", summary)
         return summary
 
     for row in order_rows:
@@ -173,37 +191,67 @@ def handler(event, context):
         row["order_id"] = _as_bigint(row.get("order_id"))
         row["embedding_source_hash"] = embeddings.source_hash(row, embeddings.TONNAGE_EMBED_FIELDS)
 
-    orders_size = db.estimate_upload_size_bytes(
-        order_rows, ORDERS_COLUMNS, ORDERS_EMBEDDING_COLUMNS, embedding_dimension
-    )
-    tonnage_size = db.estimate_upload_size_bytes(
-        tonnage_rows, TONNAGE_COLUMNS, TONNAGE_EMBEDDING_COLUMNS, embedding_dimension
-    )
-    total_size = orders_size + tonnage_size
-    if total_size > MAX_UPLOAD_BYTES:
-        summary = {
-            "skipped": True,
-            "reason": (
-                f"estimated upload size {total_size / (1024 * 1024):.1f} MB exceeds the "
-                f"{MAX_UPLOAD_BYTES / (1024 * 1024):.0f} MB limit"
-            ),
-            "orders_estimated_mb": round(orders_size / (1024 * 1024), 1),
-            "tonnage_estimated_mb": round(tonnage_size / (1024 * 1024), 1),
-            "orders_total": len(order_rows),
-            "tonnage_total": len(tonnage_rows),
-        }
-        print(f"gold_loader summary: {summary}")
-        return summary
-
+    logger.info("connecting to Supabase")
     connection = db.connect(os.environ["SUPABASE_DB_URL"])
     try:
-        existing_orders = db.fetch_existing(connection, orders_table, "order_id", ORDERS_EMBEDDING_COLUMNS)
-        existing_tonnage = db.fetch_existing(
-            connection, tonnage_table, "tonnage_row_key", TONNAGE_EMBEDDING_COLUMNS
+        # Fetched with every core column (not just embeddings) so
+        # db.select_changed() below can tell, per row, whether anything
+        # actually needs to be written -- glue_transform.py republishes the
+        # whole silver dataset every run, so without this most rows here are
+        # identical to what's already stored.
+        existing_orders = db.fetch_existing(connection, orders_table, "order_id", ORDERS_COMPARE_COLUMNS)
+        existing_tonnage = db.fetch_existing(connection, tonnage_table, "tonnage_row_key", TONNAGE_COMPARE_COLUMNS)
+        logger.info(
+            "found %d existing orders and %d existing tonnage rows in gold tables",
+            len(existing_orders),
+            len(existing_tonnage),
         )
 
-        stale_orders = _select_stale(order_rows, "order_id", existing_orders)
-        stale_tonnage = _select_stale(tonnage_rows, "tonnage_row_key", existing_tonnage)
+        changed_orders = db.select_changed(order_rows, "order_id", existing_orders, ORDERS_COLUMNS[1:])
+        changed_tonnage = db.select_changed(tonnage_rows, "tonnage_row_key", existing_tonnage, TONNAGE_COLUMNS[1:])
+        logger.info(
+            "%d/%d order rows and %d/%d tonnage rows are new or changed",
+            len(changed_orders),
+            len(order_rows),
+            len(changed_tonnage),
+            len(tonnage_rows),
+        )
+
+        stale_orders, core_only_orders = _select_stale(changed_orders, "order_id", existing_orders)
+        stale_tonnage, core_only_tonnage = _select_stale(changed_tonnage, "tonnage_row_key", existing_tonnage)
+        logger.info(
+            "%d/%d changed order rows and %d/%d changed tonnage rows need re-embedding",
+            len(stale_orders),
+            len(changed_orders),
+            len(stale_tonnage),
+            len(changed_tonnage),
+        )
+
+        # Embedding bytes are only estimated for stale rows -- core_only rows
+        # never carry embedding columns through to Postgres at all (see
+        # db.update_core_only()), so they'd inflate this estimate for no reason.
+        orders_size = db.estimate_upload_size_bytes(
+            changed_orders, ORDERS_COLUMNS, (), embedding_dimension
+        ) + db.estimate_upload_size_bytes(stale_orders, (), ORDERS_EMBEDDING_COLUMNS, embedding_dimension)
+        tonnage_size = db.estimate_upload_size_bytes(
+            changed_tonnage, TONNAGE_COLUMNS, (), embedding_dimension
+        ) + db.estimate_upload_size_bytes(stale_tonnage, (), TONNAGE_EMBEDDING_COLUMNS, embedding_dimension)
+        total_size = orders_size + tonnage_size
+        logger.info("estimated upload size: %.1f MB", total_size / (1024 * 1024))
+        if total_size > MAX_UPLOAD_BYTES:
+            summary = {
+                "skipped": True,
+                "reason": (
+                    f"estimated upload size {total_size / (1024 * 1024):.1f} MB exceeds the "
+                    f"{MAX_UPLOAD_BYTES / (1024 * 1024):.0f} MB limit"
+                ),
+                "orders_estimated_mb": round(orders_size / (1024 * 1024), 1),
+                "tonnage_estimated_mb": round(tonnage_size / (1024 * 1024), 1),
+                "orders_changed": len(changed_orders),
+                "tonnage_changed": len(changed_tonnage),
+            }
+            logger.warning("gold_loader summary: %s", summary)
+            return summary
 
         embeddings.attach_embeddings(
             stale_orders, embeddings.ORDERS_EMBED_FIELDS, cohere_api_key, cohere_model, embedding_dimension
@@ -212,10 +260,25 @@ def handler(event, context):
             stale_tonnage, embeddings.TONNAGE_EMBED_FIELDS, cohere_api_key, cohere_model, embedding_dimension
         )
 
-        db.upsert(connection, orders_table, order_rows, "order_id", ORDERS_COLUMNS, ORDERS_EMBEDDING_COLUMNS)
-        db.upsert(
-            connection, tonnage_table, tonnage_rows, "tonnage_row_key", TONNAGE_COLUMNS, TONNAGE_EMBEDDING_COLUMNS
+        logger.info(
+            "upserting %d order rows (with embeddings) and core-only updating %d into %s",
+            len(stale_orders),
+            len(core_only_orders),
+            orders_table,
         )
+        db.upsert(connection, orders_table, stale_orders, "order_id", ORDERS_COLUMNS, ORDERS_EMBEDDING_COLUMNS)
+        db.update_core_only(connection, orders_table, core_only_orders, "order_id", ORDERS_COLUMNS)
+
+        logger.info(
+            "upserting %d tonnage rows (with embeddings) and core-only updating %d into %s",
+            len(stale_tonnage),
+            len(core_only_tonnage),
+            tonnage_table,
+        )
+        db.upsert(
+            connection, tonnage_table, stale_tonnage, "tonnage_row_key", TONNAGE_COLUMNS, TONNAGE_EMBEDDING_COLUMNS
+        )
+        db.update_core_only(connection, tonnage_table, core_only_tonnage, "tonnage_row_key", TONNAGE_COLUMNS)
     finally:
         connection.close()
 
@@ -226,11 +289,11 @@ def handler(event, context):
 
     summary = {
         "orders_total": len(order_rows),
+        "orders_changed": len(changed_orders),
         "orders_embedded": len(stale_orders),
-        "orders_unchanged": len(order_rows) - len(stale_orders),
         "tonnage_total": len(tonnage_rows),
+        "tonnage_changed": len(changed_tonnage),
         "tonnage_embedded": len(stale_tonnage),
-        "tonnage_unchanged": len(tonnage_rows) - len(stale_tonnage),
     }
-    print(f"gold_loader summary: {summary}")
+    logger.info("gold_loader summary: %s", summary)
     return summary

@@ -10,6 +10,10 @@ from typing import Any
 
 import boto3
 
+from .logging_utils import get_logger
+
+logger = get_logger("gold_loader")
+
 # glue_transform.py's transform_tonnage() emits the field as "DWT" (see its
 # select_or_null() alias list), but every downstream reader -- ai_platform's
 # tables/tonnage.py Filters model, this loader's own tonnage_test.dwt column
@@ -31,6 +35,7 @@ def _read_ndjson_with_bytes(s3_client, bucket: str, key: str) -> tuple[bytes, li
         line = line.strip()
         if line:
             rows.append(json.loads(line))
+    logger.info("read %d row(s) from s3://%s/%s", len(rows), bucket, key)
     return raw, rows
 
 

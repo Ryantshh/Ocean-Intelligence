@@ -230,3 +230,8 @@ ai_platform/.chainlit/translations/
 
 #zip files
 gold_loader.zip
+
+#etl run logs (tracked despite the blanket *.log rule above)
+!runs/
+!runs/*.log
+runs
