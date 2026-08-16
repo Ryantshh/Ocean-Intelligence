@@ -226,3 +226,12 @@ CLAUDE.md
 #chainlit generated
 ai_platform/.chainlit/translations/
 .files/
+
+
+#zip files
+gold_loader.zip
+
+#etl run logs (tracked despite the blanket *.log rule above)
+!runs/
+!runs/*.log
+runs

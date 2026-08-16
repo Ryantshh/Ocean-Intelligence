@@ -7,9 +7,12 @@ run locally with the same CLI arguments.
 import argparse
 import hashlib
 import io
+import logging
 import os
 import sys
 import tempfile
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse, unquote
@@ -47,6 +50,41 @@ def load_dotenv_if_present() -> None:
 
 
 load_dotenv_if_present()
+
+RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
+
+
+def setup_logging() -> logging.Logger:
+    """Log to the console always, and to a timestamped file under runs/ when
+    that's writable. Local runs get a file under the repo; Glue's container
+    filesystem doesn't have a repo checked out, so the file handler is
+    skipped there rather than failing the job.
+    """
+    logger = logging.getLogger("glue_transform")
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    try:
+        RUNS_DIR.mkdir(exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        file_handler = logging.FileHandler(RUNS_DIR / f"glue_transform_{timestamp}.log", encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except OSError:
+        logger.warning("could not create log file under %s; logging to console only", RUNS_DIR)
+
+    return logger
+
+
+logger = setup_logging()
 
 
 def get_env_var(*names: str, default: Optional[str] = None) -> Optional[str]:
@@ -138,12 +176,13 @@ def read_excel(spark, input_path: str, sheet_name: Optional[str] = None) -> Data
 
     try:
         s3_client = boto3.client("s3", region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-        print(f"DEBUG: Downloading s3://{bucket}/{key} to {tmp_path}")
+        logger.debug("downloading s3://%s/%s to %s", bucket, key, tmp_path)
         s3_client.download_file(bucket, key, tmp_path)
         pdf = pd.read_excel(tmp_path, sheet_name=sheet_name, engine="openpyxl")
         if isinstance(pdf, dict):
             pdf = next(iter(pdf.values()))
         pdf = pdf.where(pd.notna(pdf), None)
+        logger.info("read %d row(s) from s3://%s/%s", len(pdf), bucket, key)
         return spark.createDataFrame(pdf)
     finally:
         try:
@@ -216,7 +255,7 @@ def select_or_null(df: DataFrame, alias: str, candidates: list[str]):
     # No bronze header matched, so this silver column will be null for every
     # row. That is usually a header-name mismatch rather than genuinely absent
     # data, so name it -- a silently all-null column is easy to miss.
-    print(f"WARNING: '{alias}' matched no bronze column (tried: {candidates}) -- will be null for all rows")
+    logger.warning("'%s' matched no bronze column (tried: %s) -- will be null for all rows", alias, candidates)
     return F.lit(None).cast("string").alias(alias)
 
 
@@ -288,7 +327,7 @@ def assign_order_ids(tonnage_pdf: pd.DataFrame, order_id_pool: list[str]) -> pd.
 
     pool = sorted({value for value in normalize_id_series(pd.Series(order_id_pool, dtype="object")) if value})
     if not pool:
-        print("WARNING: orders pool is empty - tonnage rows will be written without an order_id")
+        logger.warning("orders pool is empty - tonnage rows will be written without an order_id")
         return tonnage_pdf
 
     vessels = normalize_id_series(tonnage_pdf["vessel_id"])
@@ -328,9 +367,13 @@ def assign_order_ids(tonnage_pdf: pd.DataFrame, order_id_pool: list[str]) -> pd.
     ]
 
     linked = sum(1 for value in tonnage_pdf["order_id"] if value)
-    print(
-        f"DEBUG: linked {linked}/{len(tonnage_pdf)} tonnage rows "
-        f"({len(mapping)} distinct vessels) to {len(claimed)}/{pool_size} orders"
+    logger.debug(
+        "linked %d/%d tonnage rows (%d distinct vessels) to %d/%d orders",
+        linked,
+        len(tonnage_pdf),
+        len(mapping),
+        len(claimed),
+        pool_size,
     )
     return tonnage_pdf
 
@@ -555,6 +598,8 @@ def write_dataset(
     """
     import boto3
 
+    logger.info("writing dataset to %s (table=%s)", output_path, table_name)
+
     parsed = urlparse(output_path)
     bucket = parsed.netloc
     prefix = parsed.path.lstrip("/")
@@ -591,7 +636,7 @@ def write_dataset(
     expected_columns = [field.name for field in df.schema.fields]
     stale_columns = [column for column in combined_pdf.columns if column not in expected_columns]
     if stale_columns:
-        print(f"DEBUG: dropping stale columns inherited from the published dataset: {stale_columns}")
+        logger.debug("dropping stale columns inherited from the published dataset: %s", stale_columns)
     combined_pdf = combined_pdf[[column for column in expected_columns if column in combined_pdf.columns]]
 
     for id_column in ("vessel_id", "order_id"):
@@ -621,13 +666,16 @@ def write_dataset(
     glue_client = boto3.client("glue", region_name=region)
     create_or_update_glue_table(glue_client, database_name, table_name, output_path, df)
 
+    logger.info("wrote %d row(s) to s3://%s/%s (table=%s)", len(combined_pdf), bucket, object_key, table_name)
     return combined_pdf
 
 
 def main() -> None:
+    start_time = time.monotonic()
     args = parse_args()
 
     args.JOB_NAME = args.JOB_NAME or get_env_var("JOB_NAME", default="smu-glue-transform")
+    logger.info("glue_transform run starting (JOB_NAME=%s)", args.JOB_NAME)
     args.input_files = args.input_files or get_env_var("INPUT_FILES")
     args.source_tonnage_s3 = args.source_tonnage_s3 or resolve_default_s3_uri(("S3_bucket_bronze", "S3_BUCKET_BRONZE"), "tonnage/SMU Tonnage data 2025.xlsx") or "s3://bronze-ocean-layer/tonnage/SMU Tonnage data 2025.xlsx"
     args.source_orders_s3 = args.source_orders_s3 or resolve_default_s3_uri(("S3_bucket_bronze", "S3_BUCKET_BRONZE"), "orders/SMU Order data 2025.xlsx") or "s3://bronze-ocean-layer/orders/SMU Order data 2025.xlsx"
@@ -681,8 +729,10 @@ def main() -> None:
         )
         if orders_merged is not None and "order_id" in orders_merged.columns:
             order_id_pool = [value for value in normalize_id_series(orders_merged["order_id"]) if value]
-        print(f"DEBUG: {len(order_id_pool)} order_id values available for tonnage linking")
-        orders_silver.show(5, truncate=False)
+        logger.info("%d order_id values available for tonnage linking", len(order_id_pool))
+        if orders_merged is not None and not orders_merged.empty:
+            preview_columns = [c for c in ("order_id", "load_port", "discharge_port", "update_date") if c in orders_merged.columns]
+            logger.debug("orders preview:\n%s", orders_merged[preview_columns].head(5).to_string(index=False))
 
     if tonnage_silver is not None:
         tonnage_merged = write_dataset(
@@ -699,10 +749,13 @@ def main() -> None:
         # DataFrame still shows it as null at this point.
         if tonnage_merged is not None and not tonnage_merged.empty:
             preview_columns = [c for c in ("vessel_id", "order_id", "update_date") if c in tonnage_merged.columns]
-            print(tonnage_merged[preview_columns].head(5).to_string(index=False))
+            logger.debug("tonnage preview:\n%s", tonnage_merged[preview_columns].head(5).to_string(index=False))
 
     if input_files:
         mark_processed_files(input_files, args.processed_table_name, args.region)
+
+    elapsed = time.monotonic() - start_time
+    logger.info("glue_transform run complete in %.1fs", elapsed)
 
 
 if __name__ == "__main__":
