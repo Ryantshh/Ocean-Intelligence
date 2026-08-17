@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ocean Intelligence</title>
     <link rel="icon" href="/chat/public/favicon.svg" />
+    <script>
+      // Applied before the stylesheet paints anything, so a saved manual
+      // choice doesn't flash the OS-preferred theme first. Left unset
+      // entirely (no localStorage entry yet) falls through to the
+      // @media (prefers-color-scheme) block in <style> below.
+      (function () {
+        var saved = localStorage.getItem("theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.setAttribute("data-theme", saved);
+        }
+      })();
+    </script>
     <style>
       :root {
         color-scheme: light dark;
@@ -14,16 +26,54 @@
         --card: #f6f7f8;
         --border: #e3e5e8;
         --accent: #0f766e;
+        --open: #0f766e;
+        --watchlist: #b45309;
+        --fixed: #64748b;
+        --stale: #b91c1c;
+        /* Status palette (reserved, fixed across modes) -- see dataviz skill's
+           references/palette.md. Used only for the supply/demand map's
+           tight/balanced/oversupplied bubbles, never for anything else, so a
+           status color never impersonates a series or the Fixed/Open/Watchlist
+           badge above. */
+        --status-good: #0ca30c;
+        --status-warning: #fab219;
+        --status-critical: #d03b3b;
+        --map-water: #e4ecf1;
+        --map-land: #cbd8c9;
       }
+      /* OS-level dark preference applies unless the toggle button below has
+         stamped an explicit choice onto <html data-theme="...">; :not([data-theme="light"])
+         lets an explicit light choice beat OS-dark, and the [data-theme="dark"]
+         block further down lets an explicit dark choice win even under OS-light. */
       @media (prefers-color-scheme: dark) {
-        :root {
+        :root:not([data-theme="light"]) {
           --bg: #212121;
           --fg: #ededed;
           --muted: #b4b4b4;
           --card: #2f2f2f;
           --border: #424242;
           --accent: #2dd4bf;
+          --open: #2dd4bf;
+          --watchlist: #fbbf24;
+          --fixed: #94a3b8;
+          --stale: #f87171;
+          --map-water: #1b2a33;
+          --map-land: #33402f;
         }
+      }
+      :root[data-theme="dark"] {
+        --bg: #212121;
+        --fg: #ededed;
+        --muted: #b4b4b4;
+        --card: #2f2f2f;
+        --border: #424242;
+        --accent: #2dd4bf;
+        --open: #2dd4bf;
+        --watchlist: #fbbf24;
+        --fixed: #94a3b8;
+        --stale: #f87171;
+        --map-water: #1b2a33;
+        --map-land: #33402f;
       }
       * { box-sizing: border-box; }
       body {
@@ -32,21 +82,168 @@
         color: var(--fg);
         font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       }
-      main { max-width: 60rem; margin: 0 auto; padding: 3rem 1.5rem; }
+      main { max-width: 72rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
       header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
       h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
+      h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
       p.sub { color: var(--muted); margin: 0.25rem 0 2rem; }
-      a.cta {
-        display: inline-block; padding: 0.6rem 1.1rem; border-radius: 0.6rem;
-        background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
+      /* Matches the chat UI's own button component (shadcn/ui, via
+         ai_platform/public/theme.json): its base class is shared across
+         every variant -- rounded-md (--radius: .75rem, so 2px less here),
+         text-sm font-medium, py-2 px-4, a subtle shadow -- verified
+         directly from chainlit/frontend/dist/assets/*.css rather than
+         guessed. Only the fill (solid accent vs. outlined) differs
+         between .cta and .theme-toggle, matching chat's primary vs.
+         secondary button treatment. */
+      a.cta, .theme-toggle {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+        padding: 0.5rem 1rem; border-radius: 0.625rem;
+        font: inherit; font-size: 0.875rem; font-weight: 500; line-height: 1.25rem;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        cursor: pointer; white-space: nowrap;
       }
+      a.cta {
+        background: var(--accent); color: #fff; text-decoration: none; border: none;
+      }
+      .header-actions { display: flex; align-items: center; gap: 0.6rem; }
+      .theme-toggle {
+        /* Icon-only (size-9 in shadcn terms): square, no text padding --
+           overrides the shared text-button padding above. */
+        width: 2.25rem; height: 2.25rem; padding: 0;
+        border: 1px solid var(--border); background: var(--card); color: var(--fg);
+      }
+      .theme-toggle svg { display: block; }
+      section { margin-top: 2.5rem; }
+      section > .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
       .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
       .tile { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.1rem; }
       .tile .label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
       .tile .value { font-size: 2rem; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 0.35rem; }
       .env { font-size: 0.8rem; color: var(--muted); margin-top: 1.5rem; }
       .env code { background: var(--card); border: 1px solid var(--border); padding: 0.1rem 0.4rem; border-radius: 0.35rem; }
-      .error { color: #b91c1c; }
+      .error { color: var(--stale); }
+      .muted { color: var(--muted); }
+
+      .toolbar { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+      .toolbar label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--muted); }
+      .toolbar select, .toolbar input {
+        font: inherit; padding: 0.4rem 0.55rem; border-radius: 0.5rem;
+        border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+      }
+      .toolbar button {
+        font: inherit; padding: 0.45rem 0.8rem; border-radius: 0.5rem; border: 1px solid var(--border);
+        background: var(--card); color: var(--fg); cursor: pointer;
+      }
+      .toolbar button.active { background: var(--accent); color: #fff; border-color: transparent; }
+
+      table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+      caption { display: none; }
+      thead th {
+        text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em;
+        color: var(--muted); border-bottom: 1px solid var(--border); padding: 0.5rem 0.6rem;
+      }
+      tbody td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+      tbody tr:hover { background: var(--card); }
+      .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.75rem; }
+      .table-wrap table { min-width: 42rem; }
+
+      .pager { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.6rem; font-size: 0.8rem; color: var(--muted); flex-wrap: wrap; }
+      .pager .pager-controls { display: flex; align-items: center; gap: 0.5rem; }
+      .pager button {
+        font: inherit; font-size: 0.8rem; padding: 0.3rem 0.65rem; border-radius: 0.5rem;
+        border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+      .pager button:disabled { opacity: 0.4; cursor: default; }
+
+      .ecsa-summary { display: flex; align-items: center; gap: 0.9rem; padding: 0.9rem 1rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); font-size: 0.85rem; }
+
+      .status-tiles { display: flex; gap: 0.75rem; margin-bottom: 0.9rem; flex-wrap: wrap; }
+      .status-tile {
+        flex: 1; min-width: 7rem; display: flex; flex-direction: column; gap: 0.2rem;
+        padding: 0.75rem 1rem; border-radius: 0.75rem; border: 1px solid var(--border);
+        background: var(--card); cursor: pointer; text-align: left; font: inherit; color: var(--fg);
+      }
+      .status-tile .value { font-size: 1.5rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+      .status-tile .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+      .status-tile.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+      .status-tile-open .value { color: var(--open); }
+      .status-tile-watchlist .value { color: var(--watchlist); }
+      .status-tile-fixed .value { color: var(--fixed); }
+
+      .removed-item { text-decoration: line-through; opacity: 0.75; }
+      .field-diff { font-size: 0.8rem; }
+      .field-diff .field-name { color: var(--muted); }
+      .field-diff .field-old { text-decoration: line-through; color: var(--stale); opacity: 0.8; }
+      .field-diff .field-new { color: var(--open); font-weight: 600; }
+      .day-group-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); margin: 0.5rem 0 0.15rem; padding-top: 0.35rem; border-top: 1px dashed var(--border); }
+      .day-group-header:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+      .refresh-bar { display: flex; align-items: center; gap: 0.75rem; font-size: 0.78rem; margin-top: 0.5rem; }
+      .stale-banner {
+        margin-top: 0.6rem; padding: 0.6rem 0.9rem; border-radius: 0.6rem; font-size: 0.82rem;
+        background: color-mix(in srgb, var(--stale) 14%, transparent); border: 1px solid color-mix(in srgb, var(--stale) 40%, transparent); color: var(--fg);
+      }
+      .stale-banner.hidden { display: none; }
+      .section-refreshing { opacity: 0.6; transition: opacity 0.15s ease; pointer-events: none; }
+      #ecsaTableWrap.hidden { display: none; }
+      .history-btn:disabled { opacity: 0.4; cursor: default; }
+
+      .badge {
+        display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px;
+        font-size: 0.72rem; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+      }
+      .badge-open { background: color-mix(in srgb, var(--open) 18%, transparent); color: var(--open); }
+      .badge-watchlist { background: color-mix(in srgb, var(--watchlist) 20%, transparent); color: var(--watchlist); }
+      .badge-fixed { background: color-mix(in srgb, var(--fixed) 22%, transparent); color: var(--fixed); }
+      .flag { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 650; padding: 0.1rem 0.4rem; border-radius: 0.35rem; border: 1px solid currentColor; }
+      .flag-stale { color: var(--stale); }
+      .flag-conflict { color: var(--watchlist); }
+
+      .view-toggle { display: flex; gap: 0.4rem; }
+      .view-toggle button {
+        font: inherit; font-size: 0.78rem; padding: 0.35rem 0.7rem; border-radius: 0.5rem;
+        border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+      .view-toggle button.active { background: var(--accent); color: #fff; border-color: transparent; }
+
+      .map-wrap { position: relative; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--map-water); overflow: hidden; }
+      .map-wrap svg { display: block; width: 100%; height: auto; }
+      .map-land { fill: var(--map-land); stroke: color-mix(in srgb, var(--map-land) 70%, black); stroke-width: 0.5; stroke-linejoin: round; }
+      .map-grid { stroke: color-mix(in srgb, var(--map-water) 60%, var(--muted)); stroke-width: 0.5; }
+      .map-grid-equator { stroke: color-mix(in srgb, var(--map-water) 40%, var(--muted)); stroke-width: 0.75; }
+      .map-bubble { cursor: pointer; }
+      .map-bubble-hit { fill: transparent; cursor: pointer; }
+      .map-bubble-label { font-size: 9px; fill: var(--fg); paint-order: stroke; stroke: var(--map-water); stroke-width: 3px; pointer-events: none; font-weight: 600; }
+      .map-legend { display: flex; flex-wrap: wrap; gap: 1rem; padding: 0.6rem 0.9rem; font-size: 0.76rem; color: var(--muted); border-top: 1px solid var(--border); background: var(--card); }
+      .map-legend .swatch { display: inline-flex; align-items: center; gap: 0.35rem; }
+      .map-legend .dot { width: 0.7rem; height: 0.7rem; border-radius: 999px; display: inline-block; }
+      .map-tooltip {
+        position: absolute; pointer-events: none; z-index: 5; max-width: 15rem;
+        background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
+        padding: 0.5rem 0.65rem; font-size: 0.78rem; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+        opacity: 0; transition: opacity 0.1s ease; transform: translate(-50%, -100%);
+      }
+      .map-tooltip.visible { opacity: 1; }
+      .map-tooltip .t-title { font-weight: 650; margin-bottom: 0.2rem; }
+      .map-tooltip .t-value { font-variant-numeric: tabular-nums; }
+      .map-unmapped { padding: 0.5rem 0.9rem; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--border); }
+      .regions-table-wrap { display: none; }
+      .regions-table-wrap.visible { display: block; }
+      .map-view-wrap.hidden { display: none; }
+
+      .change-groups { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+      .change-group { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
+      .change-group h3 { margin: 0 0 0.5rem; font-size: 0.85rem; }
+      .change-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; font-size: 0.82rem; max-height: 12rem; overflow-y: auto; }
+      .change-group li { border-bottom: 1px dashed var(--border); padding-bottom: 0.35rem; }
+      .change-count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+
+      .history-btn { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
+      .history-trail { display: none; padding: 0.5rem 0.6rem 0.75rem; font-size: 0.82rem; }
+      .history-trail.open { display: block; }
+      .history-trail ol { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+      .history-trail li { display: flex; align-items: center; gap: 0.4rem; }
+      .history-trail li:not(:last-child)::after { content: "\2192"; color: var(--muted); margin-left: 0.4rem; }
     </style>
   </head>
   <body>
@@ -54,16 +251,221 @@
       <header>
         <div>
           <h1>Ocean Intelligence</h1>
-          <p class="sub">Chat persistence overview</p>
+          <p class="sub">Market status overview &amp; chat persistence</p>
         </div>
-        <a class="cta" href="/chat">Open chat</a>
+        <div class="header-actions">
+          <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
+          <a class="cta" href="/chat">Open chat</a>
+        </div>
       </header>
 
-      <div class="grid" id="tiles"></div>
-      <p class="env" id="env"></p>
+      <div class="refresh-bar">
+        <span class="muted" id="lastRefreshed">Loading&hellip;</span>
+        <button type="button" id="refreshNowBtn" class="history-btn">Refresh now</button>
+      </div>
+      <div class="stale-banner hidden" id="staleBanner"></div>
+
+      <section id="chat-stats">
+        <div class="grid" id="tiles"></div>
+        <p class="env" id="env"></p>
+      </section>
+
+      <section id="regions-section">
+        <div class="section-head">
+          <h2>Regional Supply &amp; Demand</h2>
+          <div class="view-toggle">
+            <button type="button" class="view-btn active" data-view="map">Map</button>
+            <button type="button" class="view-btn" data-view="table">Table</button>
+          </div>
+        </div>
+        <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply). Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Simulated as of today's real date minus one year, not today's actual date.</p>
+        <div id="regionsMapView" class="map-view-wrap">
+          <div class="map-wrap" id="regionsMap"><p class="muted" style="padding:1rem;">Loading&hellip;</p></div>
+        </div>
+        <div id="regionsTableView" class="regions-table-wrap">
+          <div class="table-wrap"><table id="regionsTable">
+            <thead><tr><th>Region</th><th>Supply</th><th>Demand</th><th>Status</th></tr></thead>
+            <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section id="vessels-section">
+        <div class="section-head">
+          <h2>Vessel Tracker</h2>
+        </div>
+        <div class="status-tiles" id="statusTiles">
+          <button type="button" class="status-tile" data-status="">
+            <span class="value" id="statusTileAll">—</span>
+            <span class="label">All vessels</span>
+          </button>
+          <button type="button" class="status-tile status-tile-open" data-status="OPEN">
+            <span class="value" id="statusTileOpen">—</span>
+            <span class="label">Open</span>
+          </button>
+          <button type="button" class="status-tile status-tile-watchlist" data-status="WATCHLIST">
+            <span class="value" id="statusTileWatchlist">—</span>
+            <span class="label">Watchlist</span>
+          </button>
+          <button type="button" class="status-tile status-tile-fixed" data-status="FIXED">
+            <span class="value" id="statusTileFixed">—</span>
+            <span class="label">Fixed</span>
+          </button>
+        </div>
+        <div class="section-head">
+          <div class="toolbar">
+            <label>Vessel ID
+              <input id="vesselSearch" type="text" placeholder="e.g. VESSEL 0225" />
+            </label>
+            <label>Status
+              <select id="vesselStatus">
+                <option value="">All</option>
+                <option value="OPEN">Open</option>
+                <option value="WATCHLIST">Watchlist</option>
+                <option value="FIXED">Fixed</option>
+              </select>
+            </label>
+            <label>Region
+              <input id="vesselRegion" type="text" placeholder="e.g. Asia" />
+            </label>
+            <label>Sort
+              <select id="vesselSort">
+                <option value="update_date">Recently updated</option>
+                <option value="eta">ETA</option>
+                <option value="open_date_end">Open window ending</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="vesselsTable">
+          <thead><tr>
+            <th>Vessel</th><th>Status</th><th>Region</th><th>DWT</th>
+            <th>Open window</th><th>ETA</th><th>Updated</th>
+          </tr></thead>
+          <tbody><tr><td colspan="7" class="muted">Loading&hellip;</td></tr></tbody>
+        </table></div>
+        <div class="pager" id="vesselsPager"></div>
+      </section>
+
+      <section id="changes-section">
+        <div class="section-head">
+          <h2>Change Feed</h2>
+          <div class="toolbar">
+            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
+            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+          </div>
+        </div>
+        <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
+      </section>
+
+      <section id="ecsa-section">
+        <div class="section-head"><h2>ECSA Ballast Tracker</h2></div>
+        <p class="sub" style="margin:0 0 0.75rem;">Every vessel currently ballasting (empty, repositioning) toward East Coast South America. Expand a row for its status history trail. Last-carried-cargo data isn't available in this dataset, so "Destination" below is the vessel's next reported AIS destination, not what it last carried.</p>
+        <div class="ecsa-summary">
+          <span class="muted" id="ecsaCount">Loading&hellip;</span>
+          <button type="button" id="ecsaShowBtn" class="history-btn" disabled>Show all vessels</button>
+        </div>
+        <div id="ecsaTableWrap" class="hidden">
+          <div class="table-wrap"><table id="ecsaTable">
+            <thead><tr>
+              <th>Vessel</th><th>Status</th><th>Region</th><th>Open port</th><th>Destination</th>
+              <th>ETA</th><th>Updated</th><th></th>
+            </tr></thead>
+            <tbody><tr><td colspan="8" class="muted">Loading&hellip;</td></tr></tbody>
+          </table></div>
+          <div class="pager" id="ecsaPager"></div>
+        </div>
+      </section>
     </main>
 
     <script>
+      // ---- theme toggle -----------------------------------------------
+      // Icon-only, matching chat's own dark/light toggle convention: the
+      // icon shown is the mode a click switches TO (sun while dark, so
+      // clicking it goes light; moon while light, so clicking it goes
+      // dark) -- self-contained inline SVG, no icon-font/CDN dependency,
+      // consistent with the rest of this page.
+      const SUN_ICON =
+        '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="4"></circle>' +
+        '<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>' +
+        "</svg>";
+      const MOON_ICON =
+        '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"></path>' +
+        "</svg>";
+
+      function currentTheme() {
+        const explicit = document.documentElement.getAttribute("data-theme");
+        if (explicit === "light" || explicit === "dark") return explicit;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+
+      function updateThemeButton() {
+        const btn = document.getElementById("themeToggleBtn");
+        if (currentTheme() === "dark") {
+          btn.innerHTML = SUN_ICON;
+          btn.setAttribute("aria-label", "Switch to light mode");
+          btn.title = "Switch to light mode";
+        } else {
+          btn.innerHTML = MOON_ICON;
+          btn.setAttribute("aria-label", "Switch to dark mode");
+          btn.title = "Switch to dark mode";
+        }
+      }
+
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem("theme", theme);
+        updateThemeButton();
+      }
+
+      document.getElementById("themeToggleBtn").addEventListener("click", () => {
+        applyTheme(currentTheme() === "dark" ? "light" : "dark");
+      });
+      updateThemeButton();
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (ch) => (
+          { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+        ));
+      }
+
+      function formatDate(value) {
+        if (!value) return "—";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return escapeHtml(value);
+        return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+      }
+
+      function formatNumber(value) {
+        if (value === null || value === undefined) return "—";
+        const n = Number(value);
+        return Number.isNaN(n) ? escapeHtml(value) : n.toLocaleString();
+      }
+
+      function statusBadge(status) {
+        const cls = { OPEN: "badge-open", WATCHLIST: "badge-watchlist", FIXED: "badge-fixed" }[status] || "badge-fixed";
+        return `<span class="badge ${cls}">${escapeHtml(status || "—")}</span>`;
+      }
+
+      function flags(row) {
+        let out = "";
+        if (row.is_stale) out += '<span class="flag flag-stale" title="Not updated recently, or its open window has already lapsed">STALE</span>';
+        if (row.has_conflicting_reports) out += '<span class="flag flag-conflict" title="Multiple brokers reported different details for this vessel at the same timestamp">CONFLICT</span>';
+        return out;
+      }
+
+      async function getJson(path) {
+        const response = await fetch(path);
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || `HTTP ${response.status}`);
+        }
+        return response.json();
+      }
+
+      // ---- chat persistence tiles (existing) ------------------------------
       const TILES = [
         ["users", "Users"],
         ["threads", "Threads"],
@@ -71,24 +473,698 @@
         ["feedbacks", "Feedback"],
       ];
 
-      async function load() {
+      async function loadStats(isRefresh = false) {
         const tiles = document.getElementById("tiles");
         const env = document.getElementById("env");
         try {
-          const response = await fetch("/api/stats");
-          if (!response.ok) throw new Error("HTTP " + response.status);
-          const data = await response.json();
+          const data = await getJson("/api/stats");
           tiles.innerHTML = TILES.map(
             ([key, label]) =>
-              `<div class="tile"><div class="label">${label}</div><div class="value">${data.counts[key]}</div></div>`
+              `<div class="tile"><div class="label">${label}</div><div class="value">${formatNumber(data.counts[key])}</div></div>`
           ).join("");
-          env.innerHTML = `Environment schema <code>${data.schema}</code>`;
+          env.innerHTML = `Environment schema <code>${escapeHtml(data.schema)}</code>`;
         } catch (error) {
-          env.innerHTML = `<span class="error">Could not load stats: ${error.message}</span>`;
+          // On a background refresh, a failure must not wipe the last good
+          // render -- the stale-data banner (see refreshAll()) carries this
+          // instead. Only the very first load shows the error inline, since
+          // there's nothing good on screen yet to preserve.
+          if (isRefresh) throw error;
+          env.innerHTML = `<span class="error">Could not load stats: ${escapeHtml(error.message)}</span>`;
         }
       }
 
-      load();
+      // ---- regional supply & demand: map ----------------------------------
+      // Centroids for the Baltic-Exchange-style trade zones this dataset
+      // uses (verified live against regional_supply_demand's actual region
+      // values). Approximate by design -- these are conventional shipping
+      // region locations, not precise ports. A region not in this table is
+      // never silently dropped: it's listed under the map instead.
+      const REGION_COORDS = {
+        "Arabian Gulf": [51, 26],
+        "Australia": [134, -25],
+        "Baltic": [20, 58],
+        "Black Sea": [35, 44],
+        "Caribs": [-70, 15],
+        "East Africa": [40, -5],
+        "East Australia": [152, -27],
+        "East Coast Canada": [-60, 46],
+        "East Coast India": [82, 15],
+        "East Coast South America": [-45, -25],
+        "East Coast United States": [-75, 35],
+        "East Mediterranean": [30, 34],
+        "Europe Atlantic Coast": [-8, 45],
+        "Far East": [122, 30],
+        "India": [78, 20],
+        "North Coast South America": [-65, 10],
+        "North Russia": [40, 65],
+        "Red Sea": [38, 20],
+        "South Africa": [25, -30],
+        "South East Asia": [105, 5],
+        "UK-IRE-CONT": [0, 52],
+        "United States Gulf": [-90, 29],
+        "West Africa": [-5, 5],
+        "West Australia": [116, -22],
+        "West Coast Canada": [-123, 49],
+        "West Coast Central America": [-88, 12],
+        "West Coast India": [73, 15],
+        "West Coast South America": [-75, -15],
+        "West Mediterranean": [5, 40],
+        "Scandinavia": [12, 60],
+      };
+
+      // Simplified continent outlines, in the same [lon, lat] space as
+      // REGION_COORDS -- hand-plotted from general coastline knowledge
+      // (equirectangular-style vertices), not sourced from a GeoJSON/
+      // TopoJSON dataset or any mapping library: this stays a
+      // self-contained static page with no external data files or CDN
+      // dependency, consistent with the rest of this project. Simplified,
+      // not survey-accurate, but each landmass keeps its recognisable
+      // silhouette (Gulf of Mexico, the Central American isthmus, the
+      // Andean coast, the Horn of Africa, the Arabian and Indian
+      // peninsulas, Indochina, Scandinavia) rather than a rough blob.
+      const LAND_BLOBS = [
+        // North America
+        [[-165,68],[-140,70],[-95,72],[-80,68],[-65,60],[-52,48],[-55,40],[-75,35],[-80,25],[-97,26],[-90,18],[-92,14],[-84,9],[-77,8],[-82,22],[-97,20],[-105,20],[-110,23],[-115,30],[-124,40],[-124,48],[-130,55],[-140,60],[-155,60],[-165,55],[-168,65]],
+        // South America
+        [[-77,8],[-72,-4],[-80,-5],[-81,-15],[-75,-20],[-70,-30],[-71,-40],[-73,-52],[-68,-55],[-65,-50],[-62,-40],[-58,-35],[-48,-25],[-35,-8],[-40,0],[-50,2],[-60,8],[-70,10],[-77,8]],
+        // Europe (incl. Scandinavia)
+        [[-9,43],[-9,48],[0,50],[5,51],[8,54],[6,58],[10,63],[20,69],[28,70],[30,60],[28,55],[30,50],[27,42],[20,40],[15,38],[10,38],[3,42],[-9,43]],
+        // British Isles
+        [[-10,51],[-8,55],[-5,58],[-2,58],[0,53],[-3,50],[-6,50],[-10,51]],
+        // Africa
+        [[-17,35],[-6,36],[10,37],[20,33],[32,31],[35,28],[43,12],[51,12],[45,2],[40,-5],[40,-15],[35,-25],[27,-33],[18,-35],[13,-25],[12,-15],[9,5],[-5,5],[-10,10],[-17,15],[-17,35]],
+        // Madagascar
+        [[43,-12],[47,-13],[50,-16],[47,-25],[43,-22],[43,-12]],
+        // Asia (Middle East through the Far East, incl. India/Indochina/Arabia bumps)
+        [[27,42],[40,42],[48,40],[55,38],[60,42],[70,45],[85,50],[100,52],[115,50],[130,48],[142,45],[140,35],[130,32],[122,30],[120,23],[110,18],[105,10],[98,8],[95,15],[88,22],[80,8],[77,8],[73,15],[68,24],[61,25],[57,26],[51,24],[43,12],[35,28],[32,31],[27,42]],
+        // Japan
+        [[130,32],[132,34],[140,36],[142,40],[140,43],[135,40],[130,35],[130,32]],
+        // Australia
+        [[113,-22],[114,-28],[118,-33],[130,-32],[137,-35],[145,-38],[150,-37],[153,-28],[145,-17],[135,-12],[128,-15],[122,-18],[113,-22]],
+      ];
+
+      const MAP_BOUNDS = { lonMin: -105, lonMax: 158, latMin: -42, latMax: 70 };
+      const MAP_W = 900, MAP_H = 430, MAP_PAD = 28;
+
+      function project([lon, lat]) {
+        const x = MAP_PAD + ((lon - MAP_BOUNDS.lonMin) / (MAP_BOUNDS.lonMax - MAP_BOUNDS.lonMin)) * (MAP_W - 2 * MAP_PAD);
+        const y = MAP_PAD + ((MAP_BOUNDS.latMax - lat) / (MAP_BOUNDS.latMax - MAP_BOUNDS.latMin)) * (MAP_H - 2 * MAP_PAD);
+        return [x, y];
+      }
+
+      function blobPath(points) {
+        const projected = points.map(project);
+        return "M " + projected.map((p) => p.join(",")).join(" L ") + " Z";
+      }
+
+      // Faint lon/lat grid -- cheap, dependency-free way to make the
+      // projection read as "a map" rather than floating shapes, the same
+      // role a real basemap's graticule plays. Drawn under the land.
+      function renderGraticule() {
+        const lines = [];
+        const lonStep = 30, latStep = 20;
+        for (let lon = Math.ceil(MAP_BOUNDS.lonMin / lonStep) * lonStep; lon <= MAP_BOUNDS.lonMax; lon += lonStep) {
+          const [x1, y1] = project([lon, MAP_BOUNDS.latMax]);
+          const [x2, y2] = project([lon, MAP_BOUNDS.latMin]);
+          lines.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="map-grid"></line>`);
+        }
+        for (let lat = Math.ceil(MAP_BOUNDS.latMin / latStep) * latStep; lat <= MAP_BOUNDS.latMax; lat += latStep) {
+          const [x1, y1] = project([MAP_BOUNDS.lonMin, lat]);
+          const [x2, y2] = project([MAP_BOUNDS.lonMax, lat]);
+          const cls = lat === 0 ? "map-grid map-grid-equator" : "map-grid";
+          lines.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="${cls}"></line>`);
+        }
+        return lines.join("");
+      }
+
+      // Status is a fixed, reserved 3-tier scale (never reused as a series
+      // color elsewhere on this page) -- see dataviz skill's color-formula.md.
+      // A region with zero demand isn't "infinitely oversupplied": it means
+      // no order in this dataset's simulated recent window named that
+      // region, which given orders' narrow date coverage is the common case
+      // today, not a real signal -- shown neutral, not guessed.
+      function regionStatus(supply, demand) {
+        if (demand === 0) return { key: "no-data", label: "No recent demand data", color: "var(--muted)" };
+        const ratio = supply / demand;
+        if (ratio < 0.7) return { key: "tight", label: "Tight", color: "var(--status-good)" };
+        if (ratio <= 1.5) return { key: "balanced", label: "Balanced", color: "var(--status-warning)" };
+        return { key: "oversupplied", label: "Oversupplied", color: "var(--status-critical)" };
+      }
+
+      function bubbleRadius(value, maxValue) {
+        const minR = 7, maxR = 34;
+        if (maxValue <= 0) return minR;
+        return minR + (maxR - minR) * Math.sqrt(value / maxValue);
+      }
+
+      let regionsCache = null;
+
+      function renderRegionsMap(rows) {
+        const container = document.getElementById("regionsMap");
+        const mapped = rows.filter((r) => REGION_COORDS[r.region]);
+        const unmapped = rows.filter((r) => !REGION_COORDS[r.region]);
+        if (!mapped.length) {
+          container.innerHTML = '<p class="muted" style="padding:1rem;">No regions with known coordinates.</p>';
+          return;
+        }
+        const maxSupply = Math.max(1, ...mapped.map((r) => r.supply));
+        const graticule = renderGraticule();
+        const land = LAND_BLOBS.map((pts) => `<path class="map-land" d="${blobPath(pts)}"></path>`).join("");
+        // Largest few get a direct label; the rest rely on the legend + tooltip + table (mark spec: label selectively).
+        const labelThreshold = [...mapped].map((r) => r.supply).sort((a, b) => b - a)[Math.min(4, mapped.length - 1)] ?? 0;
+        const bubbles = mapped.map((r) => {
+          const [x, y] = project(REGION_COORDS[r.region]);
+          const radius = bubbleRadius(r.supply, maxSupply);
+          const status = regionStatus(r.supply, r.demand);
+          const label = r.supply >= labelThreshold
+            ? `<text class="map-bubble-label" x="${x}" y="${y + radius + 11}" text-anchor="middle">${escapeHtml(r.region)}</text>`
+            : "";
+          return `
+            <g data-region="${escapeHtml(r.region)}" data-supply="${r.supply}" data-demand="${r.demand}" data-status="${status.label}">
+              <circle class="map-bubble" cx="${x}" cy="${y}" r="${radius}" fill="${status.color}" fill-opacity="0.82" stroke="var(--map-water)" stroke-width="2"></circle>
+              <circle class="map-bubble-hit" cx="${x}" cy="${y}" r="${Math.max(radius, 12)}" tabindex="0" role="button" aria-label="${escapeHtml(r.region)}: ${formatNumber(r.supply)} supply, ${formatNumber(r.demand)} demand, ${status.label}"></circle>
+              ${label}
+            </g>
+          `;
+        }).join("");
+
+        container.innerHTML = `
+          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="img" aria-label="Regional supply and demand map">
+            ${graticule}
+            ${land}
+            ${bubbles}
+          </svg>
+          <div class="map-tooltip" id="mapTooltip"></div>
+          <div class="map-legend">
+            <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Tight (demand &gt; supply)</span>
+            <span class="swatch"><span class="dot" style="background:var(--status-warning)"></span>Balanced</span>
+            <span class="swatch"><span class="dot" style="background:var(--status-critical)"></span>Oversupplied (supply &gt; demand)</span>
+            <span class="swatch"><span class="dot" style="background:var(--muted)"></span>No recent demand data</span>
+            <span class="swatch">Bubble size = open vessels</span>
+          </div>
+        `;
+        if (unmapped.length) {
+          const note = document.createElement("div");
+          note.className = "map-unmapped";
+          note.textContent = "Not shown on map (no known coordinates): " + unmapped.map((r) => `${r.region} (${r.supply} supply, ${r.demand} demand)`).join(", ");
+          container.appendChild(note);
+        }
+
+        const tooltip = document.getElementById("mapTooltip");
+        const wrap = container.querySelector(".map-wrap") || container;
+        container.querySelectorAll("g[data-region]").forEach((g) => {
+          const hit = g.querySelector(".map-bubble-hit");
+          const show = () => {
+            const region = g.dataset.region, supply = g.dataset.supply, demand = g.dataset.demand, status = g.dataset.status;
+            tooltip.innerHTML = `
+              <div class="t-title">${escapeHtml(region)}</div>
+              <div class="t-value">${formatNumber(supply)} open vessels</div>
+              <div class="t-value">${formatNumber(demand)} recent orders</div>
+              <div class="muted">${escapeHtml(status)}</div>
+            `;
+            const circle = g.querySelector(".map-bubble");
+            const cx = parseFloat(circle.getAttribute("cx")), cy = parseFloat(circle.getAttribute("cy"));
+            const scaleX = container.clientWidth / MAP_W;
+            tooltip.style.left = `${cx * scaleX}px`;
+            tooltip.style.top = `${(cy * scaleX) - 10}px`;
+            tooltip.classList.add("visible");
+          };
+          const hide = () => tooltip.classList.remove("visible");
+          hit.addEventListener("pointerenter", show);
+          hit.addEventListener("focus", show);
+          hit.addEventListener("pointerleave", hide);
+          hit.addEventListener("blur", hide);
+        });
+      }
+
+      function renderRegionsTable(rows) {
+        const tbody = document.querySelector("#regionsTable tbody");
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="muted">No regional data available.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rows.map((r) => {
+          const status = regionStatus(r.supply, r.demand);
+          return `
+            <tr>
+              <td>${escapeHtml(r.region)}</td>
+              <td>${formatNumber(r.supply)}</td>
+              <td>${formatNumber(r.demand)}</td>
+              <td><span class="badge" style="background:color-mix(in srgb, ${status.color} 20%, transparent); color:${status.color};">${escapeHtml(status.label)}</span></td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      async function loadRegions(isRefresh = false) {
+        const mapContainer = document.getElementById("regionsMap");
+        try {
+          // Always fetches fresh -- regionsCache exists so the view-toggle
+          // buttons can re-render without a round trip, not so this
+          // function can skip fetching. (It used to read `regionsCache ||
+          // await getJson(...)`, which meant a refresh after the first
+          // load silently kept serving the original snapshot forever.)
+          const rows = await getJson("/api/dashboard/regions");
+          regionsCache = rows;
+          renderRegionsMap(rows);
+          renderRegionsTable(rows);
+        } catch (error) {
+          if (isRefresh) throw error;
+          mapContainer.innerHTML = `<p class="error" style="padding:1rem;">Could not load regional data: ${escapeHtml(error.message)}</p>`;
+        }
+      }
+
+      document.querySelectorAll(".view-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".view-btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          const showMap = btn.dataset.view === "map";
+          document.getElementById("regionsMapView").classList.toggle("hidden", !showMap);
+          document.getElementById("regionsTableView").classList.toggle("visible", !showMap);
+        });
+      });
+
+      // ---- vessel tracker ---------------------------------------------------
+      const VESSELS_PAGE_SIZE = 25;
+      let vesselsFetched = [];
+      let vesselsPage = 0;
+
+      function vesselRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${statusBadge(row.dashboard_status)}${flags(row)}</td>
+            <td>${escapeHtml(row.parent_zone || "—")}</td>
+            <td>${formatNumber(row.dwt)}</td>
+            <td>${formatDate(row.open_date_start)} &ndash; ${formatDate(row.open_date_end)}</td>
+            <td>${formatDate(row.eta)}</td>
+            <td>${formatDate(row.update_date)}</td>
+          </tr>
+        `;
+      }
+
+      // Vessel ID search runs client-side over the already-fetched,
+      // status/region-filtered set (fetched once per server-side filter
+      // change) -- instant as-you-type filtering with no per-keystroke
+      // request, then sliced to one page so a 1000+-row result never all
+      // lands in the DOM at once.
+      function renderVesselsTable() {
+        const tbody = document.querySelector("#vesselsTable tbody");
+        const pager = document.getElementById("vesselsPager");
+        const search = document.getElementById("vesselSearch").value.trim().toLowerCase();
+        const filtered = search
+          ? vesselsFetched.filter((r) => r.vessel_id.toLowerCase().includes(search))
+          : vesselsFetched;
+
+        const pageCount = Math.max(1, Math.ceil(filtered.length / VESSELS_PAGE_SIZE));
+        vesselsPage = Math.min(vesselsPage, pageCount - 1);
+        const start = vesselsPage * VESSELS_PAGE_SIZE;
+        const pageRows = filtered.slice(start, start + VESSELS_PAGE_SIZE);
+
+        tbody.innerHTML = pageRows.length
+          ? pageRows.map(vesselRow).join("")
+          : '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>';
+
+        const rangeLabel = filtered.length
+          ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+          : "0 of 0";
+        pager.innerHTML = `
+          <span>${rangeLabel}</span>
+          <div class="pager-controls">
+            <button type="button" id="vesselsPrev" ${vesselsPage === 0 ? "disabled" : ""}>Previous</button>
+            <span>Page ${vesselsPage + 1} of ${pageCount}</span>
+            <button type="button" id="vesselsNext" ${vesselsPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
+          </div>
+        `;
+        document.getElementById("vesselsPrev").addEventListener("click", () => {
+          vesselsPage -= 1;
+          renderVesselsTable();
+        });
+        document.getElementById("vesselsNext").addEventListener("click", () => {
+          vesselsPage += 1;
+          renderVesselsTable();
+        });
+      }
+
+      // Fleet-wide status summary -- independent of whatever status/region
+      // filter the table itself has applied, so a trader sees the shape of
+      // the market at a glance without opening/filtering anything.
+      async function loadStatusCounts(isRefresh = false) {
+        try {
+          const counts = await getJson("/api/dashboard/vessels/status-counts");
+          const total = counts.OPEN + counts.WATCHLIST + counts.FIXED;
+          document.getElementById("statusTileAll").textContent = formatNumber(total);
+          document.getElementById("statusTileOpen").textContent = formatNumber(counts.OPEN);
+          document.getElementById("statusTileWatchlist").textContent = formatNumber(counts.WATCHLIST);
+          document.getElementById("statusTileFixed").textContent = formatNumber(counts.FIXED);
+        } catch (error) {
+          if (isRefresh) throw error;
+          document.querySelectorAll("#statusTiles .value").forEach((el) => { el.textContent = "—"; });
+        }
+      }
+
+      document.querySelectorAll(".status-tile").forEach((tile) => {
+        tile.addEventListener("click", () => {
+          document.querySelectorAll(".status-tile").forEach((t) => t.classList.remove("active"));
+          tile.classList.add("active");
+          document.getElementById("vesselStatus").value = tile.dataset.status;
+          loadVessels();
+        });
+      });
+      document.querySelector('.status-tile[data-status=""]').classList.add("active");
+
+      async function loadVessels(isRefresh = false) {
+        const tbody = document.querySelector("#vesselsTable tbody");
+        // A filter change (isRefresh=false) is a genuinely new query with
+        // nothing worth preserving, so it still shows "Loading...". A
+        // background refresh of the same filter keeps the current table
+        // on screen until new data actually arrives.
+        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
+        const status = document.getElementById("vesselStatus").value;
+        const region = document.getElementById("vesselRegion").value.trim();
+        const sort = document.getElementById("vesselSort").value;
+        const params = new URLSearchParams({ sort });
+        if (status) params.set("status", status);
+        if (region) params.set("region", region);
+        try {
+          vesselsFetched = await getJson(`/api/dashboard/vessels?${params}`);
+          vesselsPage = 0;
+          renderVesselsTable();
+        } catch (error) {
+          if (isRefresh) throw error;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load vessels: ${escapeHtml(error.message)}</td></tr>`;
+          document.getElementById("vesselsPager").innerHTML = "";
+        }
+      }
+
+      // ---- change feed --------------------------------------------------
+      // Groups rows by calendar day (of dateField) so a trader gets a
+      // per-day vessel-name breakdown within the DoD/WoW window, not one
+      // flat list -- rows already arrive newest-first from the API, so
+      // insertion-ordered day buckets stay newest-first too.
+      function groupByDay(rows, dateField) {
+        const groups = new Map();
+        for (const row of rows) {
+          const raw = row[dateField];
+          const day = raw
+            ? new Date(raw).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" })
+            : "Unknown date";
+          if (!groups.has(day)) groups.set(day, []);
+          groups.get(day).push(row);
+        }
+        return groups;
+      }
+
+      function changeList(rows, renderItem, dateField) {
+        if (!rows.length) return '<p class="muted" style="font-size:0.8rem;">None in this window.</p>';
+        const shown = rows.slice(0, 60);
+        let html = "";
+        for (const [day, dayRows] of groupByDay(shown, dateField)) {
+          html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
+          html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
+        }
+        if (rows.length > shown.length) {
+          html += `<p class="muted" style="font-size:0.75rem;">+${formatNumber(rows.length - shown.length)} more not shown</p>`;
+        }
+        return html;
+      }
+
+      const FIELD_CHANGE_SPECS = [
+        ["Open area", "open_area", "prev_open_area", null],
+        ["DWT", "dwt", "prev_dwt", formatNumber],
+        ["Destination", "destination", "prev_destination", null],
+        ["ETA", "eta", "prev_eta", formatDate],
+        ["Region", "parent_zone", "prev_parent_zone", null],
+        ["Ballast/Laden", "ballast_laden", "prev_ballast_laden", null],
+      ];
+
+      function fieldChangeRow(row) {
+        const diffs = FIELD_CHANGE_SPECS
+          .filter(([, cur, prev]) => String(row[cur] ?? "") !== String(row[prev] ?? ""))
+          .map(([label, cur, prev, fmt]) => {
+            const format = fmt || ((v) => escapeHtml(v ?? "—"));
+            return `<div class="field-diff"><span class="field-name">${escapeHtml(label)}:</span> <span class="field-old">${format(row[prev])}</span> &rarr; <span class="field-new">${format(row[cur])}</span></div>`;
+          })
+          .join("");
+        return `<li>${escapeHtml(row.vessel_id)}${diffs}</li>`;
+      }
+
+      async function loadChanges(window_, isRefresh = false) {
+        const el = document.getElementById("changeFeed");
+        if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
+        try {
+          const data = await getJson(`/api/dashboard/changes?window=${window_}`);
+          const groups = [
+            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "first_date_received"],
+            ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, "update_date"],
+            ["Field changes", data.field_changes, fieldChangeRow, "update_date"],
+            [
+              "Removed",
+              data.vessels_no_longer_fresh,
+              (r) => `<li class="removed-item" title="Inferred from a reporting gap -- this vessel stopped appearing in recent reports. Nothing in this data marks a record as formally withdrawn, so treat this as an early warning to double-check, not a confirmed removal.">${escapeHtml(r.vessel_id)} &mdash; last seen ${formatDate(r.update_date)}</li>`,
+              "update_date",
+            ],
+            ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, "date_received"],
+            ["Amended orders", data.amended_orders, (r) => `<li>Order ${escapeHtml(r.order_id)} &mdash; updated ${formatDate(r.update_date)}</li>`, "update_date"],
+          ];
+          el.innerHTML = `
+            <p class="muted" style="margin-top:0;">
+              Simulated as of ${formatDate(data.tonnage_reference_now)} &mdash; today's real date minus one year, not today's actual date.
+            </p>
+            <div class="change-groups">
+              ${groups.map(([title, rows, render, dateField]) => `
+                <div class="change-group">
+                  <h3>${title} <span class="change-count">${rows.length}</span></h3>
+                  ${changeList(rows, render, dateField)}
+                </div>
+              `).join("")}
+            </div>
+          `;
+        } catch (error) {
+          if (isRefresh) throw error;
+          el.innerHTML = `<p class="error">Could not load the change feed: ${escapeHtml(error.message)}</p>`;
+        }
+      }
+
+      // ---- ECSA ballast tracker ------------------------------------------
+      async function loadEcsaHistory(vesselId, container) {
+        if (container.classList.contains("open")) {
+          container.classList.remove("open");
+          return;
+        }
+        container.classList.add("open");
+        if (container.dataset.loaded) return;
+        container.innerHTML = '<span class="muted">Loading history&hellip;</span>';
+        try {
+          const rows = await getJson(`/api/dashboard/ecsa/${encodeURIComponent(vesselId)}/history`);
+          container.innerHTML = rows.length
+            ? `<ol>${rows.map((r) => `<li>${statusBadge(r.status)} <span class="muted">${formatDate(r.update_date)}</span></li>`).join("")}</ol>`
+            : '<span class="muted">No recorded transitions.</span>';
+          container.dataset.loaded = "1";
+        } catch (error) {
+          container.innerHTML = `<span class="error">Could not load history: ${escapeHtml(error.message)}</span>`;
+        }
+      }
+
+      function ecsaRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${statusBadge(row.dashboard_status)}${flags(row)}</td>
+            <td>${escapeHtml(row.parent_zone || "—")}</td>
+            <td>${escapeHtml(row.open_area || "—")}</td>
+            <td>${escapeHtml(row.destination || "—")}</td>
+            <td>${formatDate(row.eta)}</td>
+            <td>${formatDate(row.update_date)}</td>
+            <td><button type="button" class="history-btn" data-vessel="${escapeHtml(row.vessel_id)}">History</button></td>
+          </tr>
+          <tr><td colspan="8" style="border-bottom:none; padding:0;"><div class="history-trail" data-vessel-trail="${escapeHtml(row.vessel_id)}"></div></td></tr>
+        `;
+      }
+
+      const ECSA_PAGE_SIZE = 25;
+      let ecsaFetched = [];
+      let ecsaPage = 0;
+
+      // Renders one page of the already-fetched ECSA list into the table --
+      // called only once the user opts in via the Show/Hide toggle, and
+      // again whenever the page changes, so 222+ rows never all land in the
+      // DOM unless asked for.
+      function renderEcsaTable() {
+        const tbody = document.querySelector("#ecsaTable tbody");
+        const pager = document.getElementById("ecsaPager");
+        const pageCount = Math.max(1, Math.ceil(ecsaFetched.length / ECSA_PAGE_SIZE));
+        ecsaPage = Math.min(ecsaPage, pageCount - 1);
+        const start = ecsaPage * ECSA_PAGE_SIZE;
+        const pageRows = ecsaFetched.slice(start, start + ECSA_PAGE_SIZE);
+
+        tbody.innerHTML = pageRows.length
+          ? pageRows.map(ecsaRow).join("")
+          : '<tr><td colspan="8" class="muted">No vessels currently open toward East Coast South America.</td></tr>';
+        tbody.querySelectorAll(".history-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const vesselId = btn.dataset.vessel;
+            const trail = tbody.querySelector(`[data-vessel-trail="${CSS.escape(vesselId)}"]`);
+            loadEcsaHistory(vesselId, trail);
+          });
+        });
+
+        const rangeLabel = ecsaFetched.length
+          ? `${start + 1}–${Math.min(start + ECSA_PAGE_SIZE, ecsaFetched.length)} of ${formatNumber(ecsaFetched.length)}`
+          : "0 of 0";
+        pager.innerHTML = `
+          <span>${rangeLabel}</span>
+          <div class="pager-controls">
+            <button type="button" id="ecsaPrev" ${ecsaPage === 0 ? "disabled" : ""}>Previous</button>
+            <span>Page ${ecsaPage + 1} of ${pageCount}</span>
+            <button type="button" id="ecsaNext" ${ecsaPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
+          </div>
+        `;
+        document.getElementById("ecsaPrev").addEventListener("click", () => {
+          ecsaPage -= 1;
+          renderEcsaTable();
+        });
+        document.getElementById("ecsaNext").addEventListener("click", () => {
+          ecsaPage += 1;
+          renderEcsaTable();
+        });
+      }
+
+      // Fetches and shows the count immediately, but never renders the
+      // table itself until the trader explicitly asks via the toggle
+      // button below -- 222 vessels is a lot to dump into the DOM
+      // unasked, and most visits to this section just want the number.
+      async function loadEcsa(isRefresh = false) {
+        const countEl = document.getElementById("ecsaCount");
+        const showBtn = document.getElementById("ecsaShowBtn");
+        try {
+          ecsaFetched = await getJson("/api/dashboard/ecsa?sort=eta");
+          ecsaPage = 0;
+          countEl.textContent = `${formatNumber(ecsaFetched.length)} vessel${ecsaFetched.length === 1 ? "" : "s"} currently ballasting toward East Coast South America.`;
+          showBtn.disabled = ecsaFetched.length === 0;
+          if (!document.getElementById("ecsaTableWrap").classList.contains("hidden")) {
+            renderEcsaTable();
+          }
+        } catch (error) {
+          if (isRefresh) throw error;
+          countEl.innerHTML = `<span class="error">Could not load ECSA vessels: ${escapeHtml(error.message)}</span>`;
+        }
+      }
+
+      document.getElementById("ecsaShowBtn").addEventListener("click", () => {
+        const wrap = document.getElementById("ecsaTableWrap");
+        const btn = document.getElementById("ecsaShowBtn");
+        const isHidden = wrap.classList.contains("hidden");
+        wrap.classList.toggle("hidden", !isHidden);
+        btn.textContent = isHidden ? "Hide vessels" : "Show all vessels";
+        if (isHidden) renderEcsaTable();
+      });
+
+      // ---- wiring ---------------------------------------------------------
+      document.getElementById("vesselStatus").addEventListener("change", (event) => {
+        document.querySelectorAll(".status-tile").forEach((t) => {
+          t.classList.toggle("active", t.dataset.status === event.target.value);
+        });
+        loadVessels();
+      });
+      document.getElementById("vesselSort").addEventListener("change", loadVessels);
+      let regionDebounce;
+      document.getElementById("vesselRegion").addEventListener("input", () => {
+        clearTimeout(regionDebounce);
+        regionDebounce = setTimeout(loadVessels, 350);
+      });
+      document.getElementById("vesselSearch").addEventListener("input", () => {
+        vesselsPage = 0;
+        renderVesselsTable();
+      });
+
+      let currentChangeWindow = "dod";
+      document.querySelectorAll(".window-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".window-btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentChangeWindow = btn.dataset.window;
+          loadChanges(currentChangeWindow);
+        });
+      });
+
+      // ---- auto-refresh, last-updated timestamp, stale-data indication ----
+      // Traders want the dashboard current without a manual reload; an
+      // hourly sync matches how brokers actually send updates through the
+      // day (a daily refresh was the baseline ask, hourly the stated
+      // preference). A failed refresh must say so, not go quiet or wipe
+      // whatever's already on screen -- see each loadX(isRefresh) above:
+      // on isRefresh=true they throw instead of touching the DOM on error,
+      // so Promise.allSettled below is what actually decides what the
+      // trader sees.
+      const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+      let lastSuccessfulRefresh = null;
+      let refreshTimer = null;
+
+      function formatClock(date) {
+        return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
+
+      function renderRefreshStatus() {
+        const el = document.getElementById("lastRefreshed");
+        el.textContent = lastSuccessfulRefresh
+          ? `Last updated ${formatClock(lastSuccessfulRefresh)}`
+          : "Not yet refreshed";
+      }
+
+      // Only ever called with isRefresh=true (manual button, hourly timer).
+      // The very first load bypasses this entirely -- see the plain
+      // Promise.all below -- because each loadX(isRefresh=false) already
+      // reports its own failure inline, and there's no "last good state"
+      // yet for a stale banner to reference.
+      async function refreshAll() {
+        const sections = document.querySelectorAll(
+          "#chat-stats, #regions-section, #vessels-section, #changes-section, #ecsa-section"
+        );
+        sections.forEach((el) => el.classList.add("section-refreshing"));
+
+        const named = [
+          ["Chat stats", loadStats(true)],
+          ["Regional map", loadRegions(true)],
+          ["Status counts", loadStatusCounts(true)],
+          ["Vessel tracker", loadVessels(true)],
+          ["Change feed", loadChanges(currentChangeWindow, true)],
+          ["ECSA tracker", loadEcsa(true)],
+        ];
+        const results = await Promise.allSettled(named.map(([, promise]) => promise));
+        sections.forEach((el) => el.classList.remove("section-refreshing"));
+
+        const failed = results
+          .map((result, i) => (result.status === "rejected" ? named[i][0] : null))
+          .filter(Boolean);
+
+        const banner = document.getElementById("staleBanner");
+        if (failed.length) {
+          banner.classList.remove("hidden");
+          const asOf = lastSuccessfulRefresh ? `as of ${formatClock(lastSuccessfulRefresh)}` : "the initial load";
+          banner.textContent = `Data may be stale -- the latest refresh failed for: ${failed.join(", ")}. Showing data from ${asOf}.`;
+        } else {
+          banner.classList.add("hidden");
+          lastSuccessfulRefresh = new Date();
+        }
+        renderRefreshStatus();
+      }
+
+      document.getElementById("refreshNowBtn").addEventListener("click", refreshAll);
+
+      Promise.all([
+        loadStats(),
+        loadRegions(),
+        loadStatusCounts(),
+        loadVessels(),
+        loadChanges(currentChangeWindow),
+        loadEcsa(),
+      ]).then(() => {
+        lastSuccessfulRefresh = new Date();
+        renderRefreshStatus();
+      });
+
+      refreshTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     </script>
   </body>
 </html>
