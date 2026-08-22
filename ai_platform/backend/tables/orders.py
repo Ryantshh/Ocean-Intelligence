@@ -1,20 +1,22 @@
-"""Filters and SQL for ``public.orders`` — cargo enquiries.
+"""Filters and SQL for ``public.order_test`` — cargo enquiries.
 
-Geography is deliberately absent. ``load_zone`` and ``discharge_parent_zone``
-hold comma-joined sets, and ports and cargo types vary in spelling, so all of
-them are ranking problems rather than filtering ones and wait for the index.
+Geography and commodity are absent from the filters on purpose. ``load_zone`` and
+``discharge_parent_zone`` hold comma-joined sets, and ports and cargo types vary
+in spelling, so exact matching on them misses. They are reached by similarity
+instead, through :class:`SemanticTerms`.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_platform.backend.tables.base import ClauseBuilder, RangeSpec
+from ai_platform.backend.tables.base import RangeSpec, StatementBuilder
 
-TABLE = "orders"
+TABLE = "order_test"
 ORDER_BY = "update_date DESC"
 """Newest amendment first.
 
@@ -41,11 +43,19 @@ DISPLAY_COLUMNS: tuple[str, ...] = (
 """Columns shown in the results table, in reading order.
 
 Every column the table holds except ``assigned`` and ``assigned_vessel_name``,
-which are null throughout. Wider than the filterable set on purpose: ports,
-zones and cargo type cannot be filtered in SQL, but the table's own search box
-lets a user scan them client-side, which is the only way to reach them until the
-index exists.
+which are null throughout. Embedding columns are excluded: at 512 floats a row
+they are 65x the payload and nothing on screen reads them.
 """
+
+SEMANTIC_COLUMNS: tuple[str, ...] = (
+    "cargo_type",
+    "cargo_description",
+    "load_port",
+    "load_zone",
+    "discharge_port",
+    "discharge_parent_zone",
+)
+"""Free-text columns carrying a ``{name}_embedding`` vector alongside them."""
 
 DISPLAY_NOUN = "cargoes"
 """What a row is called, for the results panel label."""
@@ -53,6 +63,7 @@ DISPLAY_NOUN = "cargoes"
 DISPLAY_DEFAULTS: dict[str, str] = {}
 """Values substituted for nulls before display. Nothing to fill on this table."""
 
+# bounds compare against the opposite column so an overlapping window matches
 RANGES: tuple[RangeSpec, ...] = (
     RangeSpec("laycan_from", "laycan_end", ">="),
     RangeSpec("laycan_to", "laycan_start", "<="),
@@ -89,6 +100,26 @@ class Filters(BaseModel):
     weight_max: float | None = Field(default=None, description="cargo tonnes, upper bound")
 
 
+class SemanticTerms(BaseModel):
+    """Free-text terms matched by similarity rather than equality.
+
+    Every field is optional. Null means the question did not name that column.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cargo_type: str | None = Field(default=None, description="commodity, e.g. iron ore")
+    cargo_description: str | None = Field(
+        default=None, description="wording from the enquiry itself"
+    )
+    load_port: str | None = Field(default=None, description="named load port")
+    load_zone: str | None = Field(default=None, description="load region or country")
+    discharge_port: str | None = Field(default=None, description="named discharge port")
+    discharge_parent_zone: str | None = Field(
+        default=None, description="discharge region or country"
+    )
+
+
 FIELD_GUIDE = """orders — cargo enquiries. Fields:
   order_ids       list of integers, only when the user quotes order numbers
   laycan_from     ISO date, laycan window start
@@ -100,11 +131,21 @@ FIELD_GUIDE = """orders — cargo enquiries. Fields:
   weight_min      cargo tonnes, lower bound
   weight_max      cargo tonnes, upper bound
 
-Cargo types, commodities, ports and descriptions cannot be filtered."""
+Semantic fields, matched by meaning rather than exact text. Copy the user's
+words in; do not normalise them:
+  cargo_type              commodity, e.g. iron ore, coal, bauxite
+  cargo_description       wording from the enquiry itself
+  load_port               named load port
+  load_zone               load region or country, e.g. Brazil, West Australia
+  discharge_port          named discharge port
+  discharge_parent_zone   discharge region or country"""
 
 
-def build_sql(filters: Filters) -> tuple[str, list[Any]]:
-    """Compile cargo filters into a parameterised SELECT.
+def build_sql(
+    filters: Filters,
+    term_vectors: Sequence[tuple[str, Sequence[float]]] = (),
+) -> tuple[str, list[Any]]:
+    """Compile cargo filters and query vectors into a parameterised SELECT.
 
     Laycan and weight bounds compare against the opposite column so an
     overlapping window matches: a cargo of 150,000-180,000 tonnes satisfies
@@ -114,14 +155,24 @@ def build_sql(filters: Filters) -> tuple[str, list[Any]]:
     ----------
     filters : Filters
         Spec produced by the extraction node.
+    vectors : Sequence of tuple
+        ``(field, embedding)`` pairs. Fields not in ``SEMANTIC_COLUMNS`` are ignored.
 
     Returns
     -------
     tuple
         ``(sql, params)`` for asyncpg.
     """
-    builder = ClauseBuilder(TABLE, ORDER_BY)
+    builder = StatementBuilder(TABLE, ORDER_BY, DISPLAY_COLUMNS)
+
+    # exact comparisons first: these decide which rows are eligible at all
     if filters.order_ids:
-        builder.add(f"order_id = ANY({builder.bind(filters.order_ids)})")
+        builder.add_clause(
+            f"order_id = ANY({builder.bind_parameter(filters.order_ids)})"
+        )
     builder.add_ranges(filters, RANGES)
+    # a field the model invented is dropped rather than reaching a column name
+    for field_name, term_vector in term_vectors:
+        if field_name in SEMANTIC_COLUMNS:
+            builder.order_by_similarity(f"{field_name}_embedding", term_vector)
     return builder.compile()

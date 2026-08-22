@@ -1,8 +1,9 @@
-"""Filters and SQL for ``public.tonnage`` — vessel positions.
+"""Filters and SQL for ``public.tonnage_test`` — vessel positions.
 
-Geography is deliberately absent: ``parent_zone`` is comma-joined and
-``open_area`` too granular, so both wait for the index. ``destination`` is
-clean but open-ended and goes the same way.
+Geography is absent from the filters on purpose: ``parent_zone`` is comma-joined
+and ``open_area`` too granular, so exact matching on either misses.
+``destination`` is clean but open-ended and goes the same way. All three are
+reached by similarity instead, through :class:`SemanticTerms`.
 
 ``ship_size`` and ``ship_type`` are not offered either — every row is Capesize
 and 99.8% are Bulk Carriers, so filtering on them narrows nothing. ``dwt`` is
@@ -11,18 +12,19 @@ the only real size discriminator.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_platform.backend.tables.base import (
-    ClauseBuilder,
     EqualitySpec,
     RangeSpec,
+    StatementBuilder,
 )
 
-TABLE = "tonnage"
+TABLE = "tonnage_test"
 ORDER_BY = "update_date DESC"
 """Newest amendment first.
 
@@ -52,10 +54,17 @@ DISPLAY_COLUMNS: tuple[str, ...] = (
 """Columns shown in the results table, in reading order.
 
 Every column the table holds except ``assignment``, which is null throughout.
-Wider than the filterable set on purpose: areas, zones, destination and ship
-type cannot be filtered in SQL, but the table's own search box lets a user scan
-them client-side, which is the only way to reach them until the index exists.
+Embedding columns are excluded: at 512 floats a row they are 65x the payload and
+nothing on screen reads them.
 """
+
+SEMANTIC_COLUMNS: tuple[str, ...] = (
+    "vessel_status",
+    "destination",
+    "parent_zone",
+    "open_area",
+)
+"""Free-text columns carrying a ``{name}_embedding`` vector alongside them."""
 
 DISPLAY_NOUN = "vessels"
 """What a row is called, for the results panel label."""
@@ -68,6 +77,7 @@ alone the column reads empty for four rows in five and looks like missing data
 rather than the most important thing on it.
 """
 
+# bounds compare against the opposite column so an overlapping window matches
 RANGES: tuple[RangeSpec, ...] = (
     RangeSpec("open_from", "open_date_end", ">="),
     RangeSpec("open_to", "open_date_start", "<="),
@@ -81,6 +91,7 @@ RANGES: tuple[RangeSpec, ...] = (
     RangeSpec("dwt_max", "dwt", "<="),
 )
 
+# a null commercial_status means unfixed, which is 79% of the fleet
 EQUALITIES: tuple[EqualitySpec, ...] = (
     EqualitySpec("ballast_laden", "ballast_laden"),
     EqualitySpec(
@@ -124,6 +135,24 @@ class Filters(BaseModel):
     commercial_status: Literal["FIXED", "ON SUBS", "AVAILABLE"] | None = None
 
 
+class SemanticTerms(BaseModel):
+    """Free-text terms matched by similarity rather than equality.
+
+    Every field is optional. Null means the question did not name that column.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel_status: str | None = Field(
+        default=None, description="navigational status wording"
+    )
+    destination: str | None = Field(default=None, description="where the vessel is bound")
+    parent_zone: str | None = Field(
+        default=None, description="broad region the vessel opens in"
+    )
+    open_area: str | None = Field(default=None, description="specific open area or port")
+
+
 FIELD_GUIDE = """tonnage — vessel positions. Fields:
   vessel_ids        list of strings, copied verbatim including the prefix, e.g.
                     "VESSEL 0001". Never strip the word VESSEL or drop leading zeros
@@ -141,11 +170,21 @@ FIELD_GUIDE = """tonnage — vessel positions. Fields:
   commercial_status FIXED, ON SUBS, or AVAILABLE. Unfixed vessels are AVAILABLE
 
 Every vessel here is Capesize, dwt 160,000 to 190,000. Smaller classes do not
-appear at all. Areas, destinations and ship type cannot be filtered."""
+appear at all. Ship type and ship size cannot be filtered or searched.
+
+Semantic fields, matched by meaning rather than exact text. Copy the user's
+words in; do not normalise them:
+  vessel_status     navigational status wording, e.g. underway, at anchor
+  destination       where the vessel is bound
+  parent_zone       broad region the vessel opens in, e.g. Far East, Atlantic
+  open_area         specific open area or port"""
 
 
-def build_sql(filters: Filters) -> tuple[str, list[Any]]:
-    """Compile vessel filters into a parameterised SELECT.
+def build_sql(
+    filters: Filters,
+    term_vectors: Sequence[tuple[str, Sequence[float]]] = (),
+) -> tuple[str, list[Any]]:
+    """Compile vessel filters and query vectors into a parameterised SELECT.
 
     Open dates compare against the opposite column so an overlapping window
     matches: a vessel free 25 Sep to 15 Oct satisfies an October query.
@@ -154,15 +193,25 @@ def build_sql(filters: Filters) -> tuple[str, list[Any]]:
     ----------
     filters : Filters
         Spec produced by the extraction node.
+    vectors : Sequence of tuple
+        ``(field, embedding)`` pairs. Fields not in ``SEMANTIC_COLUMNS`` are ignored.
 
     Returns
     -------
     tuple
         ``(sql, params)`` for asyncpg.
     """
-    builder = ClauseBuilder(TABLE, ORDER_BY)
+    builder = StatementBuilder(TABLE, ORDER_BY, DISPLAY_COLUMNS)
+
+    # exact comparisons first: these decide which rows are eligible at all
     if filters.vessel_ids:
-        builder.add(f"vessel_id = ANY({builder.bind(filters.vessel_ids)})")
+        builder.add_clause(
+            f"vessel_id = ANY({builder.bind_parameter(filters.vessel_ids)})"
+        )
     builder.add_ranges(filters, RANGES)
     builder.add_equalities(filters, EQUALITIES)
+    # a field the model invented is dropped rather than reaching a column name
+    for field_name, term_vector in term_vectors:
+        if field_name in SEMANTIC_COLUMNS:
+            builder.order_by_similarity(f"{field_name}_embedding", term_vector)
     return builder.compile()

@@ -6,7 +6,7 @@ in the results panel, which has a filter dropdown per column.
 Date and size fields take two bounds each, so 9 filterable tonnage columns give 13 filter
 fields, and 7 filterable orders columns give 9.
 
-## tonnage
+## tonnage_test
 
 9 of 17 columns filterable.
 
@@ -29,7 +29,7 @@ fields, and 7 filterable orders columns give 9.
 | `order_id` | No | | matches zero rows in `orders` |
 | `assignment` | No | | 100% null |
 
-## orders
+## order_test
 
 7 of 15 columns filterable.
 
@@ -56,8 +56,9 @@ only a contained one. `laycan_from` compares to `laycan_end`, `open_from` to `op
 `weight_min` to `cargo_weight_max`.
 
 **Comma-packed sets hold several values in one varchar.** Neither `=` nor `LIKE` is correct on
-them: `=` drops multi-valued rows, and `LIKE '%Asia%'` matches "South East Asia". They wait for
-the hybrid index.
+them: `=` drops multi-valued rows, and `LIKE '%Asia%'` matches "South East Asia". These are the
+fields the gold layer embeds — ten `vector(512)` columns across the two tables — and they become
+reachable through dense retrieval rather than SQL filtering.
 
 **Every condition ANDs.** There is no OR and no negation, and the two enum fields take a single
 value while the id fields take a list.

@@ -1,7 +1,8 @@
 """Registry of queryable tables, and the schema the model is constrained to.
 
-Each module exposes the same three names — ``Filters``, ``FIELD_GUIDE`` and
-``build_sql`` — so callers resolve a target once and never branch on it.
+Each module exposes the same five names — ``Filters``, ``SemanticTerms``,
+``SEMANTIC_COLUMNS``, ``FIELD_GUIDE`` and ``build_sql`` — so callers resolve a
+target once and never branch on it.
 
 ``Extraction.request`` is a plain union, deliberately not a discriminated one.
 Pydantic renders a discriminated union as ``oneOf``, which Groq's strict mode
@@ -37,6 +38,7 @@ class OrdersRequest(BaseModel):
 
     target: Literal["orders"]
     filters: orders.Filters
+    semantic: orders.SemanticTerms
 
 
 class TonnageRequest(BaseModel):
@@ -46,6 +48,7 @@ class TonnageRequest(BaseModel):
 
     target: Literal["tonnage"]
     filters: tonnage.Filters
+    semantic: tonnage.SemanticTerms
 
 
 class Extraction(BaseModel):
@@ -84,7 +87,7 @@ the model resolves by inventing values.
 
 
 
-def resolve(target: str) -> ModuleType:
+def resolve_table(target: str) -> ModuleType:
     """Look up the module handling a target table.
 
     Parameters
@@ -95,7 +98,8 @@ def resolve(target: str) -> ModuleType:
     Returns
     -------
     ModuleType
-        Module exposing ``Filters``, ``FIELD_GUIDE`` and ``build_sql``.
+        Module exposing ``Filters``, ``SemanticTerms``, ``SEMANTIC_COLUMNS``,
+        ``FIELD_GUIDE`` and ``build_sql``.
 
     Raises
     ------
