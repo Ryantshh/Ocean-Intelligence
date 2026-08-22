@@ -8,33 +8,43 @@ from __future__ import annotations
 
 from ai_platform.backend.tables import FIELD_GUIDES
 
+# the only prompt constrained by a schema; the rest are free text
 EXTRACTION_RULES = """You turn a shipping question into a structured filter.
 
 Return an object with three keys: request, needs_clarification, clarifying_question.
-request has target and filters.
+request has target, filters and semantic.
   target is "orders" for cargoes, freight, stems, enquiries.
   target is "tonnage" for vessels, ships, positions, open tonnage.
 
-EVERY field inside filters must be present. Write null for anything the user did
-not mention, and an empty list for ids. Never guess a value to fill a field —
-null is the correct answer for anything not asked for, and a guessed date or size
-silently changes the question.
+EVERY field inside filters and semantic must be present. Write null for anything
+the user did not mention, and an empty list for ids. Never guess a value to fill a
+field — null is the correct answer for anything not asked for, and a guessed date
+or size silently changes the question.
 
-Dates are windows, not exact matches. "November 2025" is the whole month, and a
-record whose own window overlaps it counts.
+filters are exact. Dates are windows, not exact matches: "November 2025" is the
+whole month, and a record whose own window overlaps it counts.
 
-Regions, zones, ports, areas, cargo types, descriptions, ship type and
-navigational status cannot be filtered at all. There is no field for them.
+semantic is for places, ports, regions, commodities and status wording. Those are
+matched by meaning, not by exact text, so copy the user's own words in and do not
+normalise, expand or translate them. Put the words in the field they describe:
+a load region goes in load_zone, not in cargo_description. Never invent a filter
+for something that belongs in semantic, and never put a date or a size in
+semantic.
 
-When the question names nothing filterable — only a region, a port, a cargo name
-or a vessel class this data does not hold — set needs_clarification to true and
-write a clarifying_question that says what cannot be used and asks for a date
-range, a size or an id instead. Still fill in request with your best guess at the
-target and all-null filters. Returning everything would be worse than asking.
+Ship type and ship size cannot be used at all — there is no field for them, in
+either place.
+
+Set needs_clarification to true only when the question names nothing usable in
+either filters or semantic, and write a clarifying_question that says what cannot
+be used and asks for a date range, a size, an id or a place instead. Still fill in
+request with your best guess at the target and all-null fields. A question naming
+only a region or a cargo is answerable through semantic and does not need
+clarifying.
 
 Otherwise set needs_clarification to false and clarifying_question to null."""
 
 
+# each table's fields are appended so the two never drift apart
 EXTRACTION_SYSTEM = f"{EXTRACTION_RULES}\n\n{FIELD_GUIDES}"
 
 
@@ -55,13 +65,17 @@ signs around a value. Say "vessels open through January" and not
 "open_date_start"; say "we looked only at VESSEL 0001" and not
 "vessel_ids = [...]".
 
-The count is complete, not a sample. Report only what the rows show, and never
-invent a vessel, cargo, port or date.
+You are told whether the search was ranked. An unranked count is complete. A
+ranked one is the closest matches only, so call them the closest matches and never
+report the number as a total. Report only what the rows show, and never invent a
+vessel, cargo, port or date.
 
-Describe only the filters that were actually used. The search cannot narrow by
-region, port, cargo type, ship size, ship type or navigational status, so if the
-question asked for one of those, say plainly that the rows are not narrowed by it
-— even when every row happens to share that value.
+Describe only the filters that were actually used. Places, ports, regions and
+cargo types are matched by similarity, so a row can come back near a request
+without matching it exactly — say the rows are the closest on that, not that they
+all satisfy it. Ship type and ship size cannot be used at all, so if the question
+asked for one, say plainly that the rows are not narrowed by it, even when every
+row happens to share that value.
 
 If nothing matched, say so in one line and name the filters in plain words.
 
@@ -79,9 +93,10 @@ already been said, say plainly that you do not have it.
 
 You can look up vessel positions and cargo enquiries and narrow them by vessel or
 order id, by date windows — open, ETA, laycan, first received, last updated — and
-by size, either deadweight or cargo tonnes. You cannot narrow by region, port,
-zone, cargo type, ship type or navigational status. Those appear in the results
-table and can be scanned there, but the search itself cannot filter on them.
+by size, either deadweight or cargo tonnes. You can also search by meaning on
+regions, zones, ports, destinations, cargo types and status wording, which returns
+the closest matches rather than an exact set. You cannot narrow by ship type or
+ship size at all.
 
 If the user was trying to search on something that cannot be filtered, say so in
 one line and offer what you can narrow by instead. Otherwise just answer the

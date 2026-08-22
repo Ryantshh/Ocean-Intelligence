@@ -15,6 +15,7 @@ import json
 from typing import Any, cast
 
 import asyncpg
+import httpx
 import openai
 from langgraph.config import get_stream_writer
 from openai.types.chat import ChatCompletionMessageParam
@@ -22,6 +23,7 @@ from pydantic import ValidationError
 
 from ai_platform.backend.context import record_prompt_tokens, should_compact
 from ai_platform.backend.db import fetch_rows
+from ai_platform.backend.embeddings import embed_search_terms
 from ai_platform.backend.llm import get_client, get_model_name, stream_chat
 from ai_platform.backend.prompts import (
     ANSWER_SYSTEM,
@@ -33,10 +35,10 @@ from ai_platform.backend.state import AgentState
 from ai_platform.backend.tables import (
     EXTRACTION_RESPONSE_FORMAT,
     Extraction,
-    resolve,
+    resolve_table,
 )
 
-KEEP_RECENT = 6
+KEEP_RECENT_MESSAGES = 6
 """Messages left verbatim when compacting.
 
 Three exchanges. A follow-up that refers back reaches one or two turns, not
@@ -45,7 +47,7 @@ summary is for.
 """
 
 
-def _usage_dict(usage: Any) -> dict[str, int]:
+def _token_counts(usage: Any) -> dict[str, int]:
     """Flatten a completion usage object into plain counts.
 
     Reasoning tokens are billed and occupy the window even though they are never
@@ -90,28 +92,32 @@ async def compact(state: AgentState) -> dict[str, Any]:
         was nothing older than the recent window to compress.
     """
     history = state.get("history", [])
-    older, recent = history[:-KEEP_RECENT], history[-KEEP_RECENT:]
-    if not older:
+    to_summarise, to_keep = (
+        history[:-KEEP_RECENT_MESSAGES],
+        history[-KEEP_RECENT_MESSAGES:],
+    )
+    if not to_summarise:
         return {}
 
     writer = get_stream_writer()
     transcript = "\n\n".join(
-        f"{message.get('role', '')}: {message.get('content', '')}" for message in older
+        f"{message.get('role', '')}: {message.get('content', '')}"
+        for message in to_summarise
     )
 
     usage: dict[str, int] = {}
-    parts: list[str] = []
+    summary_parts: list[str] = []
     async for token in stream_chat(
         [{"role": "user", "content": transcript}],
         system=COMPACTION_SYSTEM,
         usage=usage,
     ):
-        parts.append(token)
+        summary_parts.append(token)
         writer({"compact": token})
 
-    summary = "".join(parts)
+    summary = "".join(summary_parts)
     return {
-        "history": [{"role": "system", "content": summary}, *recent],
+        "history": [{"role": "system", "content": summary}, *to_keep],
         "summary": summary,
         "tokens": usage,
     }
@@ -137,6 +143,7 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
         ``tokens``, plus exactly one of ``target`` and ``filters``,
         ``clarifying_question``, or ``error``.
     """
+    # history is already compacted by this point if it needed to be
     history = state.get("history", [])
     messages = cast(
         "list[ChatCompletionMessageParam]",
@@ -153,10 +160,11 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
         messages=messages,
     )
 
-    tokens = _usage_dict(response.usage)
+    tokens = _token_counts(response.usage)
     if response.usage is not None:
         record_prompt_tokens(response.usage.prompt_tokens, history)
 
+    # three exits from here, one per key the routing edge reads
     try:
         extraction = Extraction.model_validate_json(
             response.choices[0].message.content or "{}"
@@ -175,7 +183,43 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
         "tokens": tokens,
         "target": extraction.request.target,
         "filters": extraction.request.filters,
+        "semantic": extraction.request.semantic.model_dump(exclude_none=True),
     }
+
+
+async def embed(state: AgentState) -> dict[str, Any]:
+    """Turn the extracted free-text terms into query vectors.
+
+    One call for every term, since there are at most six. Cohere's token count is
+    not recorded: it is a separate provider with its own window, and folding it
+    into ``tokens`` would misreport how full the chat context is.
+
+    Parameters
+    ----------
+    state : AgentState
+        Must carry ``semantic``.
+
+    Returns
+    -------
+    dict
+        ``vectors`` as ``(field, embedding)`` pairs, or ``error`` when the
+        embedding call failed. Empty when no term was set.
+    """
+    search_terms = {
+        field: term for field, term in state.get("semantic", {}).items() if term
+    }
+    if not search_terms:
+        return {}
+
+    # field order is fixed here so the vectors can be zipped back onto it
+    term_fields = list(search_terms)
+    try:
+        term_vectors = await embed_search_terms(
+            [search_terms[field] for field in term_fields]
+        )
+    except (httpx.HTTPError, RuntimeError) as exc:
+        return {"error": f"Could not embed the search terms: {exc}"}
+    return {"vectors": list(zip(term_fields, term_vectors, strict=True))}
 
 
 def build_query(state: AgentState) -> dict[str, Any]:
@@ -197,16 +241,18 @@ def build_query(state: AgentState) -> dict[str, Any]:
     """
     filters = state.get("filters")
     assert filters is not None, "build_query runs only after extract_filters"
-    sql, params = resolve(state.get("target", "")).build_sql(filters)
+    sql, params = resolve_table(state.get("target", "")).build_sql(
+        filters, state.get("vectors", [])
+    )
     return {"sql": sql, "params": params}
 
 
 async def narrow(state: AgentState) -> dict[str, Any]:
-    """Run the metadata filter and collect candidates.
+    """Run the query and collect candidates.
 
-    Stage one of retrieval. Ranking and fusion over these candidates arrive with
-    the gold layer. There is no row cap, so ``rows`` is the complete match set
-    and its length is the true count.
+    Without vectors there is no row cap, so ``rows`` is the complete match set and
+    its length is the true count. With them the statement carries a ``LIMIT`` and
+    ``rows`` is the nearest slice.
 
     Parameters
     ----------
@@ -273,9 +319,14 @@ async def answer(state: AgentState) -> dict[str, Any]:
 
     rows = state.get("rows", [])
     filters = state.get("filters")
-    context = {
+    semantic = state.get("semantic", {})
+
+    # the model is told how the rows were found, so it does not call a ranked set complete
+    retrieval_context = {
         "table": state.get("target", "unknown"),
         "filters_applied": filters.model_dump(exclude_none=True) if filters else {},
+        "searched_by_meaning": semantic,
+        "ranked_by_similarity": bool(state.get("vectors")),
         "row_count": len(rows),
         "rows": rows,
     }
@@ -288,7 +339,7 @@ async def answer(state: AgentState) -> dict[str, Any]:
                     "role": "user",
                     "content": (
                         f"Question: {state['question']}\n\n"
-                        f"Retrieved:\n{json.dumps(context, default=str)}"
+                        f"Retrieved:\n{json.dumps(retrieval_context, default=str)}"
                     ),
                 }
             ],
@@ -297,13 +348,13 @@ async def answer(state: AgentState) -> dict[str, Any]:
         ):
             writer({"answer": token})
     except openai.APIStatusError as exc:
-        writer({"answer": _too_much_data(len(rows), exc)})
+        writer({"answer": _oversized_result_message(len(rows), exc)})
         return {}
 
     return {"tokens": usage}
 
 
-def _too_much_data(row_count: int, exc: openai.APIStatusError) -> str:
+def _oversized_result_message(row_count: int, exc: openai.APIStatusError) -> str:
     """Explain a result set the model could not be shown.
 
     Groq reports a context overflow as "reduce the length of the messages" with
@@ -352,7 +403,7 @@ def route_entry(state: AgentState) -> str:
 
 
 def route_after_extract(state: AgentState) -> str:
-    """Decide whether to query or to ask a follow-up.
+    """Decide whether to embed, to query straight away, or to ask a follow-up.
 
     Parameters
     ----------
@@ -366,4 +417,8 @@ def route_after_extract(state: AgentState) -> str:
     """
     if state.get("error") or state.get("clarifying_question"):
         return "answer"
+
+    # embedding costs an API call, so it is skipped unless a term was actually found
+    if any(state.get("semantic", {}).values()):
+        return "embed"
     return "build_query"
