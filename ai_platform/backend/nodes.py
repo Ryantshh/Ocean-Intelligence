@@ -24,7 +24,13 @@ from pydantic import ValidationError
 from ai_platform.backend.context import record_prompt_tokens, should_compact
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.embeddings import embed_search_terms
-from ai_platform.backend.llm import get_client, get_model_name, stream_chat
+from ai_platform.backend.llm import (
+    get_client,
+    get_model_name,
+    stream_chat,
+    trace_kwargs,
+)
+from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.prompts import (
     ANSWER_SYSTEM,
     COMPACTION_SYSTEM,
@@ -37,6 +43,8 @@ from ai_platform.backend.tables import (
     Extraction,
     resolve_table,
 )
+
+_logger = get_logger("agent")
 
 KEEP_RECENT_MESSAGES = 6
 """Messages left verbatim when compacting.
@@ -99,6 +107,7 @@ async def compact(state: AgentState) -> dict[str, Any]:
     if not to_summarise:
         return {}
 
+    _logger.info("compact: summarising %d of %d messages", len(to_summarise), len(history))
     writer = get_stream_writer()
     transcript = "\n\n".join(
         f"{message.get('role', '')}: {message.get('content', '')}"
@@ -143,6 +152,7 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
         ``tokens``, plus exactly one of ``target`` and ``filters``,
         ``clarifying_question``, or ``error``.
     """
+    _logger.info("extract_filters: question=%r", state["question"])
     # history is already compacted by this point if it needed to be
     history = state.get("history", [])
     messages = cast(
@@ -158,6 +168,7 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
         temperature=0,
         response_format=EXTRACTION_RESPONSE_FORMAT,
         messages=messages,
+        **trace_kwargs(),
     )
 
     tokens = _token_counts(response.usage)
@@ -170,15 +181,22 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
             response.choices[0].message.content or "{}"
         )
     except ValidationError as exc:
+        _logger.warning("extract_filters: could not parse extraction: %s", exc)
         return {"tokens": tokens, "error": f"Could not read the question as a filter: {exc}"}
 
     if extraction.needs_clarification:
+        _logger.info("extract_filters: needs clarification")
         return {
             "tokens": tokens,
             "clarifying_question": extraction.clarifying_question
             or "Which dates, size or id should I narrow to?",
         }
 
+    _logger.info(
+        "extract_filters: target=%s filters=%s",
+        extraction.request.target,
+        extraction.request.filters.model_dump(exclude_none=True),
+    )
     return {
         "tokens": tokens,
         "target": extraction.request.target,
@@ -218,6 +236,7 @@ async def embed(state: AgentState) -> dict[str, Any]:
             [search_terms[field] for field in term_fields]
         )
     except (httpx.HTTPError, RuntimeError) as exc:
+        _logger.warning("embed: failed for fields %s: %s", term_fields, exc)
         return {"error": f"Could not embed the search terms: {exc}"}
     return {"vectors": list(zip(term_fields, term_vectors, strict=True))}
 
@@ -244,6 +263,7 @@ def build_query(state: AgentState) -> dict[str, Any]:
     sql, params = resolve_table(state.get("target", "")).build_sql(
         filters, state.get("vectors", [])
     )
+    _logger.debug("build_query: sql=%s params=%s", sql, params)
     return {"sql": sql, "params": params}
 
 
@@ -267,7 +287,9 @@ async def narrow(state: AgentState) -> dict[str, Any]:
     try:
         rows = await fetch_rows(state.get("sql", ""), state.get("params", []))
     except (asyncpg.PostgresError, OSError, TimeoutError) as exc:
+        _logger.warning("narrow: query failed: %s", exc)
         return {"error": f"Query failed: {exc}"}
+    _logger.info("narrow: matched %d rows", len(rows))
     return {"rows": rows}
 
 
@@ -300,6 +322,7 @@ async def answer(state: AgentState) -> dict[str, Any]:
     writer = get_stream_writer()
 
     if state.get("clarifying_question"):
+        _logger.info("answer: replying conversationally (clarifying question)")
         usage: dict[str, int] = {}
         async for token in stream_chat(
             [
@@ -314,6 +337,7 @@ async def answer(state: AgentState) -> dict[str, Any]:
 
     failure = state.get("error")
     if failure:
+        _logger.warning("answer: reporting upstream error: %s", failure)
         writer({"answer": f"I could not run that query. {failure}"})
         return {}
 
@@ -331,6 +355,7 @@ async def answer(state: AgentState) -> dict[str, Any]:
         "rows": rows,
     }
 
+    _logger.info("answer: summarising %d rows from %s", len(rows), retrieval_context["table"])
     usage: dict[str, int] = {}
     try:
         async for token in stream_chat(
@@ -348,6 +373,7 @@ async def answer(state: AgentState) -> dict[str, Any]:
         ):
             writer({"answer": token})
     except openai.APIStatusError as exc:
+        _logger.warning("answer: model rejected the result set: %s", exc)
         writer({"answer": _oversized_result_message(len(rows), exc)})
         return {}
 
