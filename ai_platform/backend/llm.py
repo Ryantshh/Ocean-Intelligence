@@ -8,6 +8,18 @@ SDK, because ``cl.instrument_openai()`` only instruments the OpenAI client — a
 per the same shape, because ``langfuse.openai`` is a drop-in ``AsyncOpenAI`` that
 sends every completion call to Langfuse as a trace/generation with no per-call
 instrumentation code.
+
+Left alone, that client opens a fresh trace for every completion, disconnected
+from the LangGraph trace the node calling it is already part of --
+``langfuse.openai`` only nests under a parent when told to via ``trace_id``/
+``parent_observation_id`` kwargs on the call, and never reads OpenTelemetry's
+ambient "current span" the way the LangChain callback machinery does.
+``trace_kwargs`` supplies those two IDs by reading the run id LangGraph already
+threads through ``get_config()`` for the node in progress and looking up the
+span Langfuse's ``CallbackHandler`` opened for it -- so a request routed
+through the graph gets one trace with every node and every completion inside
+it, and a request outside the graph (the plain-model chat profile) just falls
+back to a standalone trace per call, same as before.
 """
 
 from __future__ import annotations
@@ -18,7 +30,10 @@ from typing import cast
 
 from dotenv import load_dotenv
 from langfuse.openai import AsyncOpenAI
+from langgraph.config import get_config
 from openai.types.chat import ChatCompletionMessageParam
+
+from ai_platform.backend.tracing import langfuse_handler
 
 load_dotenv()
 
@@ -73,6 +88,34 @@ def get_client() -> AsyncOpenAI:
     )
 
 
+def trace_kwargs() -> dict[str, str]:
+    """Link a completion call to the graph node currently running, if any.
+
+    ``langfuse_handler`` tracks each LangChain run it has opened a span for,
+    keyed by that run's id. ``get_config()`` is how LangGraph exposes the
+    running node's own ``RunnableConfig`` -- its callback manager's
+    ``parent_run_id`` is that node's run id, so looking it up in the handler
+    gives back the exact span the completion should nest under. Both reads
+    are undocumented handler internals rather than public API, so any failure
+    here just means no linkage rather than a broken completion call.
+
+    Returns
+    -------
+    dict of str to str
+        ``trace_id`` and ``parent_observation_id`` for ``langfuse.openai`` to
+        nest this call under, or empty outside a graph run (e.g. the
+        plain-model chat profile), where the call gets its own trace instead.
+    """
+    try:
+        parent_run_id = get_config()["callbacks"].parent_run_id
+        span = langfuse_handler._runs.get(parent_run_id)
+    except (RuntimeError, KeyError, AttributeError):
+        return {}
+    if span is None:
+        return {}
+    return {"trace_id": span.trace_id, "parent_observation_id": span.id}
+
+
 async def stream_chat(
     messages: list[dict[str, str]],
     system: str = SYSTEM_PROMPT,
@@ -121,6 +164,7 @@ async def stream_chat(
         messages=payload,
         stream=True,
         stream_options={"include_usage": True},
+        **trace_kwargs(),
     )
 
     async for chunk in stream:

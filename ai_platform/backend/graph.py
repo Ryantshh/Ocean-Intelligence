@@ -10,13 +10,13 @@ enough to be worth one.
 
 The compiled graph carries a Langfuse callback handler bound via ``with_config``,
 so every run — one node per span, nested under one trace — is logged regardless
-of who calls ``.astream``/``.ainvoke``.
+of who calls ``.astream``/``.ainvoke``. The node-level completions inside
+``llm.py`` link back into that same trace via ``trace_kwargs`` there, rather
+than each opening its own.
 """
 
 from __future__ import annotations
 
-from dotenv import load_dotenv
-from langfuse.langchain import CallbackHandler
 from langgraph.graph import END, START, StateGraph
 
 from ai_platform.backend.logging_utils import get_logger
@@ -31,9 +31,8 @@ from ai_platform.backend.nodes import (
     route_entry,
 )
 from ai_platform.backend.state import AgentState
+from ai_platform.backend.tracing import langfuse_handler
 
-load_dotenv()
-_langfuse_handler = CallbackHandler()
 _logger = get_logger("agent")
 
 _builder = StateGraph(AgentState)
@@ -57,6 +56,6 @@ _builder.add_edge("answer", END)
 
 # bound here, not at each call site, so every caller (Chainlit UI, headless eval)
 # gets a Langfuse trace with no per-invocation wiring
-graph = _builder.compile().with_config({"callbacks": [_langfuse_handler]})
+graph = _builder.compile().with_config({"callbacks": [langfuse_handler]})
 
 _logger.info("agent graph compiled")

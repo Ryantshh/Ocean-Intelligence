@@ -24,7 +24,12 @@ from pydantic import ValidationError
 from ai_platform.backend.context import record_prompt_tokens, should_compact
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.embeddings import embed_search_terms
-from ai_platform.backend.llm import get_client, get_model_name, stream_chat
+from ai_platform.backend.llm import (
+    get_client,
+    get_model_name,
+    stream_chat,
+    trace_kwargs,
+)
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.prompts import (
     ANSWER_SYSTEM,
@@ -163,6 +168,7 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
         temperature=0,
         response_format=EXTRACTION_RESPONSE_FORMAT,
         messages=messages,
+        **trace_kwargs(),
     )
 
     tokens = _token_counts(response.usage)
