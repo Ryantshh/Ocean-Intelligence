@@ -4,7 +4,10 @@ Imports no chainlit. That is what lets this run in the eval suite with no web
 server, and what keeps the reply path usable outside the chat interface.
 
 Groq is reached through the OpenAI-compatible endpoint rather than the ``groq``
-SDK, because ``cl.instrument_openai()`` only instruments the OpenAI client.
+SDK, because ``cl.instrument_openai()`` only instruments the OpenAI client — and,
+per the same shape, because ``langfuse.openai`` is a drop-in ``AsyncOpenAI`` that
+sends every completion call to Langfuse as a trace/generation with no per-call
+instrumentation code.
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ from collections.abc import AsyncIterator
 from typing import cast
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from langfuse.openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
 load_dotenv()
