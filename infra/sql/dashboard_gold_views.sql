@@ -48,9 +48,9 @@
 -- 11,105/1,037 and 1,864. commercial_status, parent_zone's comma-space
 -- delimiter, and "East Coast South America" as the exact live ECSA zone
 -- label all carried over unchanged (same underlying broker data). The two
--- remaining [CONFIRM WITH SPONSOR] items (staleness threshold, ON SUBS
--- mapping) are policy calls, not data questions, and still need sponsor
--- sign-off.
+-- remaining [CONFIRM WITH SPONSOR] items (staleness threshold, whether ON
+-- SUBS should occupy the vessel the same way FIXED does) are policy calls,
+-- not data questions, and still need sponsor sign-off.
 --
 -- "Now" is simulated, not real: every staleness/freshness computation below
 -- is measured against tonnage_reference_now() / orders_reference_now()
@@ -150,7 +150,7 @@ conflicts AS (
       OR COUNT(DISTINCT COALESCE(commercial_status, '~')) > 1
       OR COUNT(DISTINCT open_date_start) > 1
 ),
--- Whether a vessel is FIXED/WATCHLIST *today* is a date-range containment
+-- Whether a vessel is FIXED/ON SUBS *today* is a date-range containment
 -- question, not "whatever the most-recently-touched row says": a FIXED (or
 -- ON SUBS) row means the vessel is booked for that row's own
 -- [open_date_start, open_date_end] window specifically, and stops meaning
@@ -160,12 +160,14 @@ conflicts AS (
 -- some *other* row's window covers today. So this searches every
 -- (non-future) row per vessel, not just rn = 1, for one whose window
 -- contains today. ON SUBS is treated the same way for containment (a
--- discussion in progress still occupies the vessel for that window) but
--- reported as WATCHLIST rather than FIXED. If a vessel somehow has both a
--- FIXED- and an ON-SUBS-covering row for today, FIXED wins (DISTINCT ON's
--- ORDER BY below). A vessel with no row covering today at all is OPEN --
--- handled by the LEFT JOIN below defaulting to OPEN when no match exists,
--- not by matching an explicit "open" row.
+-- discussion in progress still occupies the vessel for that window) and is
+-- reported under its own raw label, ON SUBS, rather than merged into
+-- FIXED -- the two are kept visibly distinct so a trader can tell "still
+-- being discussed" apart from "firmly booked". If a vessel somehow has
+-- both a FIXED- and an ON-SUBS-covering row for today, FIXED wins
+-- (DISTINCT ON's ORDER BY below). A vessel with no row covering today at
+-- all is OPEN -- handled by the LEFT JOIN below defaulting to OPEN when no
+-- match exists, not by matching an explicit "open" row.
 active_bookings AS (
   SELECT DISTINCT ON (vessel_id)
     vessel_id,
@@ -196,11 +198,11 @@ SELECT
   r.eta,
   r.destination,
   r.update_date,
-  r.vessel_status                            AS ais_status,     -- navigational (Under way/Anchored/Moored) -- NOT trading status, do not wire into the Fixed/Open/Watchlist badge
+  r.vessel_status                            AS ais_status,     -- navigational (Under way/Anchored/Moored) -- NOT trading status, do not wire into the Fixed/Open/On Subs badge
   r.commercial_status                        AS raw_commercial_status,   -- what the LATEST report says, for reference/debugging only -- can legitimately disagree with dashboard_status below (e.g. latest report says FIXED but that fixture's window has since elapsed and no later window covers today, so dashboard_status reads OPEN)
   CASE
     WHEN ab.commercial_status = 'FIXED'   THEN 'FIXED'
-    WHEN ab.commercial_status = 'ON SUBS' THEN 'WATCHLIST'      -- [CONFIRM WITH SPONSOR] "on subs" reported as WATCHLIST, not FIXED, even though it occupies the vessel for that window the same way a firm fixture does -- a discussion in progress, not yet confirmed
+    WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'        -- [CONFIRM WITH SPONSOR] on-subs treated as occupying the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED -- the occupancy question is still a discussion in progress, not yet confirmed
     ELSE 'OPEN'                                                 -- no row's window covers today -- see active_bookings above; this is NOT the latest row's raw status, see raw_commercial_status
   END                                        AS dashboard_status,
   tonnage_reference_now() - r.update_date     AS age_since_update,
@@ -234,12 +236,12 @@ WITH labeled AS (
     open_area,
     CASE
       WHEN commercial_status = 'FIXED'   THEN 'FIXED'
-      WHEN commercial_status = 'ON SUBS' THEN 'WATCHLIST'
+      WHEN commercial_status = 'ON SUBS' THEN 'ON SUBS'
       ELSE 'OPEN'
     END AS status,
     LAG(CASE
       WHEN commercial_status = 'FIXED'   THEN 'FIXED'
-      WHEN commercial_status = 'ON SUBS' THEN 'WATCHLIST'
+      WHEN commercial_status = 'ON SUBS' THEN 'ON SUBS'
       ELSE 'OPEN'
     END) OVER (PARTITION BY vessel_id ORDER BY update_date) AS prev_status
   FROM public.tonnage_test
@@ -315,7 +317,7 @@ ORDER BY 1;
 
 -- ---------------------------------------------------------------------
 -- 5. vessel_status_counts
--- Fleet-wide status breakdown (Fixed/Open/Watchlist counts), so a trader
+-- Fleet-wide status breakdown (Fixed/Open/On Subs counts), so a trader
 -- can see the shape of the market without opening the vessel table at
 -- all. A thin wrapper over vessel_current_status -- exists as its own
 -- view rather than inline SQL in the query builder purely so it's

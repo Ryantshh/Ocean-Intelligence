@@ -126,31 +126,53 @@ async def list_vessels(
     status: dq.DashboardStatus | None = None,
     region: str | None = None,
     sort: dq.SortKey = "update_date",
+    stale: bool | None = None,
+    conflict: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Vessel tracker: current status per vessel, filterable by status/region.
 
     Parameters
     ----------
-    status : "FIXED", "OPEN", "WATCHLIST", or None
+    status : "FIXED", "OPEN", "ON SUBS", or None
         Exact match. Omit for every status.
     region : str or None
-        Matches if this region is any one of a vessel's (possibly several)
-        parent zones.
+        Case-insensitive substring match against any one of a vessel's
+        (possibly several) parent zones -- e.g. "east" matches both
+        "East Africa" and "Far East".
     sort : "eta", "update_date", or "open_date_end"
         Sort key; defaults to most recently updated first.
+    stale : bool or None
+        Restricts to (or excludes) ``is_stale`` rows. Backs the summary
+        panel's Stale KPI tile.
+    conflict : bool or None
+        Same shape as ``stale`` but against ``has_conflicting_reports``.
+        Backs the summary panel's Conflicts KPI tile.
 
     Returns
     -------
     list of dict
         One row per vessel.
     """
-    sql, params = dq.vessels_sql(status, region, sort)
+    sql, params = dq.vessels_sql(status, region, sort, stale=stale, conflict=conflict)
     return await _run(sql, params)
+
+
+@router.get("/dashboard/vessels/flag-counts")
+async def vessel_flag_counts() -> dict[str, int]:
+    """Fleet-wide stale / conflicting-reports counts, for the summary panel's KPI tiles.
+
+    Returns
+    -------
+    dict
+        ``{"stale": n, "conflicts": n}``.
+    """
+    row = (await _run(*dq.vessel_flag_counts_sql()))[0]
+    return {"stale": row["stale"], "conflicts": row["conflicts"]}
 
 
 @router.get("/dashboard/vessels/status-counts")
 async def vessel_status_counts() -> dict[str, int]:
-    """Fleet-wide FIXED/OPEN/WATCHLIST counts, for the tracker's summary tiles.
+    """Fleet-wide FIXED/OPEN/ON SUBS counts, for the tracker's summary tiles.
 
     A trader should see the shape of the market without opening the vessel
     table -- this backs that, independent of whatever status/region filter
@@ -159,14 +181,59 @@ async def vessel_status_counts() -> dict[str, int]:
     Returns
     -------
     dict
-        ``{"FIXED": n, "OPEN": n, "WATCHLIST": n}`` -- always all three
+        ``{"FIXED": n, "OPEN": n, "ON SUBS": n}`` -- always all three
         keys, 0 for a status with no vessels right now rather than an
         absent key.
     """
     rows = await _run(*dq.status_counts_sql())
-    counts = {"FIXED": 0, "OPEN": 0, "WATCHLIST": 0}
+    counts = {"FIXED": 0, "OPEN": 0, "ON SUBS": 0}
     counts.update({row["dashboard_status"]: row["vessel_count"] for row in rows})
     return counts
+
+
+@router.get("/dashboard/daily-counts")
+async def daily_counts(days: int = 14) -> dict[str, Any]:
+    """Day-bucketed trend series for the summary panel's Daily Trends charts.
+
+    Three independent series -- new vessels, FIXED/OPEN/ON SUBS transitions,
+    and new orders -- each bucketed by calendar day over the trailing
+    ``days`` days ending at that series' own simulated "now" (tonnage- and
+    orders-side "now" are computed separately, same as :func:`change_feed`,
+    even though both currently resolve to the same instant).
+
+    Parameters
+    ----------
+    days : int
+        Trailing window length in calendar days, ``until``'s own day
+        included. Defaults to 14.
+
+    Returns
+    -------
+    dict
+        ``days`` echoed back, plus ``new_vessels``, ``status_changes``, and
+        ``new_orders`` -- each a list of ``{"day": date, "count": int}``
+        rows, one per calendar day in the range (zero-filled, never sparse).
+    """
+    reference = (await _run(*dq.reference_times_sql()))[0]
+    tonnage_now = reference["tonnage_now"]
+    orders_now = reference["orders_now"]
+
+    tonnage_since = dq.daily_range_start(tonnage_now, days)
+    orders_since = dq.daily_range_start(orders_now, days)
+    tonnage_until = tonnage_now.replace(tzinfo=None)
+    orders_until = orders_now.replace(tzinfo=None)
+
+    new_vessels, status_changes, new_orders = await asyncio.gather(
+        _run(*dq.daily_new_vessels_sql(tonnage_since, tonnage_until)),
+        _run(*dq.daily_status_changes_sql(tonnage_since, tonnage_until)),
+        _run(*dq.daily_new_orders_sql(orders_since, orders_until)),
+    )
+    return {
+        "days": days,
+        "new_vessels": new_vessels,
+        "status_changes": status_changes,
+        "new_orders": new_orders,
+    }
 
 
 @router.get("/dashboard/regions")
@@ -202,7 +269,7 @@ async def ecsa_ballasters(sort: dq.SortKey = "eta") -> list[dict[str, Any]]:
 
 @router.get("/dashboard/ecsa/{vessel_id}/history")
 async def ecsa_vessel_history(vessel_id: str) -> list[dict[str, Any]]:
-    """Status history trail for one vessel (e.g. Watchlist -> Open -> Fixed).
+    """Status history trail for one vessel (e.g. On Subs -> Open -> Fixed).
 
     Parameters
     ----------
@@ -228,7 +295,7 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     withdrawn. See
     ``ai_platform.backend.dashboard_queries.vessels_no_longer_fresh_sql``.
 
-    ``field_changes`` covers everything *except* the FIXED/OPEN/WATCHLIST
+    ``field_changes`` covers everything *except* the FIXED/OPEN/ON SUBS
     transition (that's ``vessel_status_changes``, kept separate so the same
     event isn't reported twice) -- open area, DWT, destination, ETA,
     parent zone, and ballast/laden, per vessel report vs. its immediately

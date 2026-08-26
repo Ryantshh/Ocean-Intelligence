@@ -33,7 +33,7 @@
         /* Status palette (reserved, fixed across modes) -- see dataviz skill's
            references/palette.md. Used only for the supply/demand map's
            tight/balanced/oversupplied bubbles, never for anything else, so a
-           status color never impersonates a series or the Fixed/Open/Watchlist
+           status color never impersonates a series or the Fixed/Open/On Subs
            badge above. */
         --status-good: #0ca30c;
         --status-warning: #fab219;
@@ -115,12 +115,6 @@
       .theme-toggle svg { display: block; }
       section { margin-top: 2.5rem; }
       section > .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
-      .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
-      .tile { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.1rem; }
-      .tile .label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
-      .tile .value { font-size: 2rem; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 0.35rem; }
-      .env { font-size: 0.8rem; color: var(--muted); margin-top: 1.5rem; }
-      .env code { background: var(--card); border: 1px solid var(--border); padding: 0.1rem 0.4rem; border-radius: 0.35rem; }
       .error { color: var(--stale); }
       .muted { color: var(--muted); }
 
@@ -169,6 +163,26 @@
       .status-tile-open .value { color: var(--open); }
       .status-tile-watchlist .value { color: var(--watchlist); }
       .status-tile-fixed .value { color: var(--fixed); }
+      .status-tile-stale .value { color: var(--stale); }
+      .status-tile-conflict .value { color: var(--watchlist); }
+
+      /* Summary panel: KPI tiles + heatmap + daily trends grouped together
+         so the market shape is readable in one screen, without scrolling
+         into the drill-down record lists below. */
+      .summary-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; align-items: start; }
+      @media (max-width: 62rem) { .summary-grid { grid-template-columns: 1fr; } }
+      .summary-panel { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
+      .summary-panel h3 { font-size: 0.95rem; margin: 0 0 0.5rem; }
+      .summary-panel .map-wrap { border-color: var(--border); }
+      .trend-chart + .trend-chart { margin-top: 0.9rem; }
+      .trend-chart-title { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.25rem; }
+      .mini-chart { display: block; width: 100%; height: auto; }
+      .mini-chart-label { font-size: 7px; font-weight: 650; fill: var(--muted); }
+      .mini-chart-axis { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--muted); margin-top: 0.1rem; }
+      .drilldown-head { margin-top: 3rem; }
+      .drilldown-head h2 { margin-bottom: 0.15rem; }
+
+      .toolbar label.toolbar-checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--fg); }
 
       .removed-item { text-decoration: line-through; opacity: 0.75; }
       .field-diff { font-size: 0.8rem; }
@@ -251,7 +265,7 @@
       <header>
         <div>
           <h1>Ocean Intelligence</h1>
-          <p class="sub">Market status overview &amp; chat persistence</p>
+          <p class="sub">Market status overview</p>
         </div>
         <div class="header-actions">
           <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
@@ -265,35 +279,8 @@
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
-      <section id="chat-stats">
-        <div class="grid" id="tiles"></div>
-        <p class="env" id="env"></p>
-      </section>
-
-      <section id="regions-section">
-        <div class="section-head">
-          <h2>Regional Supply &amp; Demand</h2>
-          <div class="view-toggle">
-            <button type="button" class="view-btn active" data-view="map">Map</button>
-            <button type="button" class="view-btn" data-view="table">Table</button>
-          </div>
-        </div>
-        <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply). Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Simulated as of today's real date minus one year, not today's actual date.</p>
-        <div id="regionsMapView" class="map-view-wrap">
-          <div class="map-wrap" id="regionsMap"><p class="muted" style="padding:1rem;">Loading&hellip;</p></div>
-        </div>
-        <div id="regionsTableView" class="regions-table-wrap">
-          <div class="table-wrap"><table id="regionsTable">
-            <thead><tr><th>Region</th><th>Supply</th><th>Demand</th><th>Status</th></tr></thead>
-            <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
-          </table></div>
-        </div>
-      </section>
-
-      <section id="vessels-section">
-        <div class="section-head">
-          <h2>Vessel Tracker</h2>
-        </div>
+      <section id="summary-section">
+        <div class="section-head"><h2>Market Summary</h2></div>
         <div class="status-tiles" id="statusTiles">
           <button type="button" class="status-tile" data-status="">
             <span class="value" id="statusTileAll">—</span>
@@ -303,14 +290,71 @@
             <span class="value" id="statusTileOpen">—</span>
             <span class="label">Open</span>
           </button>
-          <button type="button" class="status-tile status-tile-watchlist" data-status="WATCHLIST">
+          <button type="button" class="status-tile status-tile-watchlist" data-status="ON SUBS">
             <span class="value" id="statusTileWatchlist">—</span>
-            <span class="label">Watchlist</span>
+            <span class="label">On Subs</span>
           </button>
           <button type="button" class="status-tile status-tile-fixed" data-status="FIXED">
             <span class="value" id="statusTileFixed">—</span>
             <span class="label">Fixed</span>
           </button>
+          <button type="button" class="status-tile status-tile-stale" id="flagTileStale">
+            <span class="value" id="statusTileStale">—</span>
+            <span class="label">Stale</span>
+          </button>
+          <button type="button" class="status-tile status-tile-conflict" id="flagTileConflict">
+            <span class="value" id="statusTileConflicts">—</span>
+            <span class="label">Conflicts</span>
+          </button>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-panel">
+            <div class="section-head">
+              <h3>Regional Supply &amp; Demand</h3>
+              <div class="view-toggle">
+                <button type="button" class="view-btn active" data-view="map">Map</button>
+                <button type="button" class="view-btn" data-view="table">Table</button>
+              </div>
+            </div>
+            <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply). Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Simulated as of today's real date minus one year, not today's actual date.</p>
+            <div id="regionsMapView" class="map-view-wrap">
+              <div class="map-wrap" id="regionsMap"><p class="muted" style="padding:1rem;">Loading&hellip;</p></div>
+            </div>
+            <div id="regionsTableView" class="regions-table-wrap">
+              <div class="table-wrap"><table id="regionsTable">
+                <thead><tr><th>Region</th><th>Supply</th><th>Demand</th><th>Status</th></tr></thead>
+                <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
+              </table></div>
+            </div>
+          </div>
+
+          <div class="summary-panel">
+            <h3>Daily Trends <span class="muted" style="font-weight:400; font-size:0.75rem;">(last 14 days, simulated)</span></h3>
+            <div class="trend-chart">
+              <div class="trend-chart-title">New vessels</div>
+              <div id="chartNewVessels"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
+            </div>
+            <div class="trend-chart">
+              <div class="trend-chart-title">Status changes (Fixed/Open/On Subs)</div>
+              <div id="chartStatusChanges"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
+            </div>
+            <div class="trend-chart">
+              <div class="trend-chart-title">New orders</div>
+              <div id="chartNewOrders"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="drilldown-head">
+        <h2>Records</h2>
+        <p class="sub" style="margin:0.15rem 0 0;">Filter, search, and inspect the underlying vessel, order, and change records behind the summary above.</p>
+      </div>
+
+      <section id="vessels-section">
+        <div class="section-head">
+          <h2>Vessel Tracker</h2>
         </div>
         <div class="section-head">
           <div class="toolbar">
@@ -321,7 +365,7 @@
               <select id="vesselStatus">
                 <option value="">All</option>
                 <option value="OPEN">Open</option>
-                <option value="WATCHLIST">Watchlist</option>
+                <option value="ON SUBS">On Subs</option>
                 <option value="FIXED">Fixed</option>
               </select>
             </label>
@@ -334,6 +378,12 @@
                 <option value="eta">ETA</option>
                 <option value="open_date_end">Open window ending</option>
               </select>
+            </label>
+            <label class="toolbar-checkbox">
+              <input type="checkbox" id="vesselStaleOnly" /> Stale only
+            </label>
+            <label class="toolbar-checkbox">
+              <input type="checkbox" id="vesselConflictOnly" /> Conflicts only
             </label>
           </div>
         </div>
@@ -363,6 +413,11 @@
         <p class="sub" style="margin:0 0 0.75rem;">Every vessel currently ballasting (empty, repositioning) toward East Coast South America. Expand a row for its status history trail. Last-carried-cargo data isn't available in this dataset, so "Destination" below is the vessel's next reported AIS destination, not what it last carried.</p>
         <div class="ecsa-summary">
           <span class="muted" id="ecsaCount">Loading&hellip;</span>
+          <div class="toolbar">
+            <label>Vessel ID
+              <input id="ecsaSearch" type="text" placeholder="e.g. VESSEL 0225" />
+            </label>
+          </div>
           <button type="button" id="ecsaShowBtn" class="history-btn" disabled>Show all vessels</button>
         </div>
         <div id="ecsaTableWrap" class="hidden">
@@ -445,7 +500,7 @@
       }
 
       function statusBadge(status) {
-        const cls = { OPEN: "badge-open", WATCHLIST: "badge-watchlist", FIXED: "badge-fixed" }[status] || "badge-fixed";
+        const cls = { OPEN: "badge-open", "ON SUBS": "badge-watchlist", FIXED: "badge-fixed" }[status] || "badge-fixed";
         return `<span class="badge ${cls}">${escapeHtml(status || "—")}</span>`;
       }
 
@@ -463,34 +518,6 @@
           throw new Error(body.detail || `HTTP ${response.status}`);
         }
         return response.json();
-      }
-
-      // ---- chat persistence tiles (existing) ------------------------------
-      const TILES = [
-        ["users", "Users"],
-        ["threads", "Threads"],
-        ["steps", "Steps"],
-        ["feedbacks", "Feedback"],
-      ];
-
-      async function loadStats(isRefresh = false) {
-        const tiles = document.getElementById("tiles");
-        const env = document.getElementById("env");
-        try {
-          const data = await getJson("/api/stats");
-          tiles.innerHTML = TILES.map(
-            ([key, label]) =>
-              `<div class="tile"><div class="label">${label}</div><div class="value">${formatNumber(data.counts[key])}</div></div>`
-          ).join("");
-          env.innerHTML = `Environment schema <code>${escapeHtml(data.schema)}</code>`;
-        } catch (error) {
-          // On a background refresh, a failure must not wipe the last good
-          // render -- the stale-data banner (see refreshAll()) carries this
-          // instead. Only the very first load shows the error inline, since
-          // there's nothing good on screen yet to preserve.
-          if (isRefresh) throw error;
-          env.innerHTML = `<span class="error">Could not load stats: ${escapeHtml(error.message)}</span>`;
-        }
       }
 
       // ---- regional supply & demand: map ----------------------------------
@@ -744,6 +771,70 @@
         });
       });
 
+      // ---- summary panel: flag-count KPI tiles & daily trend charts --------
+      async function loadFlagCounts(isRefresh = false) {
+        try {
+          const counts = await getJson("/api/dashboard/vessels/flag-counts");
+          document.getElementById("statusTileStale").textContent = formatNumber(counts.stale);
+          document.getElementById("statusTileConflicts").textContent = formatNumber(counts.conflicts);
+        } catch (error) {
+          if (isRefresh) throw error;
+          document.getElementById("statusTileStale").textContent = "—";
+          document.getElementById("statusTileConflicts").textContent = "—";
+        }
+      }
+
+      // Dependency-free bar chart, same inline-SVG approach as the regions
+      // map -- one hue per panel (the panel title already names the
+      // series, so no legend needed), a native <title> per bar as a
+      // fallback for the exact date, and the count itself labelled directly
+      // above every bar since there are only 14 of them per panel -- dense
+      // enough to be worth naming rather than making a trader hover each
+      // one. Labels use a text token (--muted), never the bar's own color,
+      // per the dataviz convention that value text isn't a series swatch.
+      function renderMiniBarChart(container, series, color) {
+        if (!series.length) {
+          container.innerHTML = '<p class="muted" style="font-size:0.8rem;">No data.</p>';
+          return;
+        }
+        const W = 260, H = 104, PAD_L = 2, PAD_R = 2, PAD_T = 16, PAD_B = 2;
+        const plotW = W - PAD_L - PAD_R;
+        const plotH = H - PAD_T - PAD_B;
+        const maxVal = Math.max(1, ...series.map((d) => d.count));
+        const slot = plotW / series.length;
+        const barW = Math.max(2, slot - 2);
+        const dayLabel = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const parts = series.map((d, i) => {
+          const h = Math.max(1, (d.count / maxVal) * plotH);
+          const x = PAD_L + i * slot + (slot - barW) / 2;
+          const y = PAD_T + (plotH - h);
+          const labelY = Math.max(9, y - 3);
+          return `
+            <text x="${(x + barW / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="mini-chart-label">${formatNumber(d.count)}</text>
+            <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}"><title>${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}</title></rect>
+          `;
+        }).join("");
+        container.innerHTML = `
+          <svg viewBox="0 0 ${W} ${H}" class="mini-chart" role="img" aria-label="Daily trend chart with value labels">${parts}</svg>
+          <div class="mini-chart-axis"><span>${escapeHtml(dayLabel(series[0].day))}</span><span>${escapeHtml(dayLabel(series[series.length - 1].day))}</span></div>
+        `;
+      }
+
+      async function loadDailyTrends(isRefresh = false) {
+        const ids = ["chartNewVessels", "chartStatusChanges", "chartNewOrders"];
+        try {
+          const data = await getJson("/api/dashboard/daily-counts?days=14");
+          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)");
+          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)");
+          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)");
+        } catch (error) {
+          if (isRefresh) throw error;
+          ids.forEach((id) => {
+            document.getElementById(id).innerHTML = `<p class="error" style="font-size:0.8rem;">Could not load: ${escapeHtml(error.message)}</p>`;
+          });
+        }
+      }
+
       // ---- vessel tracker ---------------------------------------------------
       const VESSELS_PAGE_SIZE = 25;
       let vesselsFetched = [];
@@ -812,26 +903,50 @@
       async function loadStatusCounts(isRefresh = false) {
         try {
           const counts = await getJson("/api/dashboard/vessels/status-counts");
-          const total = counts.OPEN + counts.WATCHLIST + counts.FIXED;
+          const total = counts.OPEN + counts["ON SUBS"] + counts.FIXED;
           document.getElementById("statusTileAll").textContent = formatNumber(total);
           document.getElementById("statusTileOpen").textContent = formatNumber(counts.OPEN);
-          document.getElementById("statusTileWatchlist").textContent = formatNumber(counts.WATCHLIST);
+          document.getElementById("statusTileWatchlist").textContent = formatNumber(counts["ON SUBS"]);
           document.getElementById("statusTileFixed").textContent = formatNumber(counts.FIXED);
         } catch (error) {
           if (isRefresh) throw error;
-          document.querySelectorAll("#statusTiles .value").forEach((el) => { el.textContent = "—"; });
+          // Only the four status tiles -- Stale/Conflicts are owned by
+          // loadFlagCounts() and shouldn't blank just because this call failed.
+          document.querySelectorAll(".status-tile[data-status] .value").forEach((el) => { el.textContent = "—"; });
         }
       }
 
-      document.querySelectorAll(".status-tile").forEach((tile) => {
+      // The four status tiles ([data-status]) are one exclusive group; the
+      // Stale/Conflict tiles (below) are a separate, layerable filter and
+      // deliberately excluded from this selector/group so clicking one
+      // doesn't clear the other's checkbox state.
+      function scrollToVessels() {
+        document.getElementById("vessels-section").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      document.querySelectorAll(".status-tile[data-status]").forEach((tile) => {
         tile.addEventListener("click", () => {
-          document.querySelectorAll(".status-tile").forEach((t) => t.classList.remove("active"));
+          document.querySelectorAll(".status-tile[data-status]").forEach((t) => t.classList.remove("active"));
           tile.classList.add("active");
           document.getElementById("vesselStatus").value = tile.dataset.status;
           loadVessels();
+          scrollToVessels();
         });
       });
       document.querySelector('.status-tile[data-status=""]').classList.add("active");
+
+      document.getElementById("flagTileStale").addEventListener("click", () => {
+        document.getElementById("vesselStaleOnly").checked = true;
+        document.getElementById("vesselConflictOnly").checked = false;
+        loadVessels();
+        scrollToVessels();
+      });
+      document.getElementById("flagTileConflict").addEventListener("click", () => {
+        document.getElementById("vesselConflictOnly").checked = true;
+        document.getElementById("vesselStaleOnly").checked = false;
+        loadVessels();
+        scrollToVessels();
+      });
 
       async function loadVessels(isRefresh = false) {
         const tbody = document.querySelector("#vesselsTable tbody");
@@ -843,9 +958,13 @@
         const status = document.getElementById("vesselStatus").value;
         const region = document.getElementById("vesselRegion").value.trim();
         const sort = document.getElementById("vesselSort").value;
+        const staleOnly = document.getElementById("vesselStaleOnly").checked;
+        const conflictOnly = document.getElementById("vesselConflictOnly").checked;
         const params = new URLSearchParams({ sort });
         if (status) params.set("status", status);
         if (region) params.set("region", region);
+        if (staleOnly) params.set("stale", "true");
+        if (conflictOnly) params.set("conflict", "true");
         try {
           vesselsFetched = await getJson(`/api/dashboard/vessels?${params}`);
           vesselsPage = 0;
@@ -988,19 +1107,28 @@
 
       // Renders one page of the already-fetched ECSA list into the table --
       // called only once the user opts in via the Show/Hide toggle, and
-      // again whenever the page changes, so 222+ rows never all land in the
-      // DOM unless asked for.
+      // again whenever the page or search text changes, so 222+ rows never
+      // all land in the DOM unless asked for. Vessel ID search runs
+      // client-side over the already-fetched set, same as the vessel
+      // tracker's search box.
       function renderEcsaTable() {
         const tbody = document.querySelector("#ecsaTable tbody");
         const pager = document.getElementById("ecsaPager");
-        const pageCount = Math.max(1, Math.ceil(ecsaFetched.length / ECSA_PAGE_SIZE));
+        const search = document.getElementById("ecsaSearch").value.trim().toLowerCase();
+        const filtered = search
+          ? ecsaFetched.filter((r) => r.vessel_id.toLowerCase().includes(search))
+          : ecsaFetched;
+
+        const pageCount = Math.max(1, Math.ceil(filtered.length / ECSA_PAGE_SIZE));
         ecsaPage = Math.min(ecsaPage, pageCount - 1);
         const start = ecsaPage * ECSA_PAGE_SIZE;
-        const pageRows = ecsaFetched.slice(start, start + ECSA_PAGE_SIZE);
+        const pageRows = filtered.slice(start, start + ECSA_PAGE_SIZE);
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(ecsaRow).join("")
-          : '<tr><td colspan="8" class="muted">No vessels currently open toward East Coast South America.</td></tr>';
+          : search
+            ? '<tr><td colspan="8" class="muted">No vessels match this search.</td></tr>'
+            : '<tr><td colspan="8" class="muted">No vessels currently open toward East Coast South America.</td></tr>';
         tbody.querySelectorAll(".history-btn").forEach((btn) => {
           btn.addEventListener("click", () => {
             const vesselId = btn.dataset.vessel;
@@ -1009,8 +1137,8 @@
           });
         });
 
-        const rangeLabel = ecsaFetched.length
-          ? `${start + 1}–${Math.min(start + ECSA_PAGE_SIZE, ecsaFetched.length)} of ${formatNumber(ecsaFetched.length)}`
+        const rangeLabel = filtered.length
+          ? `${start + 1}–${Math.min(start + ECSA_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
           : "0 of 0";
         pager.innerHTML = `
           <span>${rangeLabel}</span>
@@ -1059,10 +1187,22 @@
         btn.textContent = isHidden ? "Hide vessels" : "Show all vessels";
         if (isHidden) renderEcsaTable();
       });
+      document.getElementById("ecsaSearch").addEventListener("input", (event) => {
+        ecsaPage = 0;
+        // Typing a vessel ID is an explicit request to see it -- reveal the
+        // table the same way the Show button would, rather than making the
+        // trader click Show first just to see the row they searched for.
+        const wrap = document.getElementById("ecsaTableWrap");
+        if (event.target.value.trim() && wrap.classList.contains("hidden")) {
+          wrap.classList.remove("hidden");
+          document.getElementById("ecsaShowBtn").textContent = "Hide vessels";
+        }
+        renderEcsaTable();
+      });
 
       // ---- wiring ---------------------------------------------------------
       document.getElementById("vesselStatus").addEventListener("change", (event) => {
-        document.querySelectorAll(".status-tile").forEach((t) => {
+        document.querySelectorAll(".status-tile[data-status]").forEach((t) => {
           t.classList.toggle("active", t.dataset.status === event.target.value);
         });
         loadVessels();
@@ -1077,6 +1217,8 @@
         vesselsPage = 0;
         renderVesselsTable();
       });
+      document.getElementById("vesselStaleOnly").addEventListener("change", loadVessels);
+      document.getElementById("vesselConflictOnly").addEventListener("change", loadVessels);
 
       let currentChangeWindow = "dod";
       document.querySelectorAll(".window-btn").forEach((btn) => {
@@ -1119,14 +1261,15 @@
       // yet for a stale banner to reference.
       async function refreshAll() {
         const sections = document.querySelectorAll(
-          "#chat-stats, #regions-section, #vessels-section, #changes-section, #ecsa-section"
+          "#summary-section, #vessels-section, #changes-section, #ecsa-section"
         );
         sections.forEach((el) => el.classList.add("section-refreshing"));
 
         const named = [
-          ["Chat stats", loadStats(true)],
           ["Regional map", loadRegions(true)],
           ["Status counts", loadStatusCounts(true)],
+          ["Flag counts", loadFlagCounts(true)],
+          ["Daily trends", loadDailyTrends(true)],
           ["Vessel tracker", loadVessels(true)],
           ["Change feed", loadChanges(currentChangeWindow, true)],
           ["ECSA tracker", loadEcsa(true)],
@@ -1153,9 +1296,10 @@
       document.getElementById("refreshNowBtn").addEventListener("click", refreshAll);
 
       Promise.all([
-        loadStats(),
         loadRegions(),
         loadStatusCounts(),
+        loadFlagCounts(),
+        loadDailyTrends(),
         loadVessels(),
         loadChanges(currentChangeWindow),
         loadEcsa(),

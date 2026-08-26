@@ -45,7 +45,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-DashboardStatus = Literal["FIXED", "OPEN", "WATCHLIST"]
+DashboardStatus = Literal["FIXED", "OPEN", "ON SUBS"]
 SortKey = Literal["eta", "update_date", "open_date_end"]
 
 _SORT_COLUMNS: dict[SortKey, str] = {
@@ -157,19 +157,34 @@ def window_start(window: ChangeWindow, *, now: datetime | None = None) -> dateti
 
 
 def vessels_sql(
-    status: DashboardStatus | None, region: str | None, sort: SortKey
+    status: DashboardStatus | None,
+    region: str | None,
+    sort: SortKey,
+    *,
+    stale: bool | None = None,
+    conflict: bool | None = None,
 ) -> tuple[str, list]:
     """Vessel tracker: current status, optionally filtered by status/region.
 
     Parameters
     ----------
-    status : "FIXED", "OPEN", "WATCHLIST", or None
+    status : "FIXED", "OPEN", "ON SUBS", or None
         Exact match against ``dashboard_status``.
     region : str or None
-        Membership test against the exploded ``parent_zones`` array, so a
-        vessel open across multiple regions still matches.
+        Case-insensitive substring match against the exploded
+        ``parent_zones`` array, so a vessel open across multiple regions
+        still matches, and "east" matches both "East Africa" and
+        "Far East" -- not an exact match, since the raw zone labels
+        (e.g. "Far East") are exact-cased and a trader typing "far east"
+        should still find them.
     sort : "eta", "update_date", or "open_date_end"
         Column to sort by; whitelisted against ``_SORT_COLUMNS``.
+    stale : bool or None
+        ``True`` restricts to ``is_stale`` rows, ``False`` to non-stale,
+        ``None`` applies no filter. Backs the summary panel's Stale KPI
+        tile drilling down into the vessel table.
+    conflict : bool or None
+        Same shape as ``stale`` but against ``has_conflicting_reports``.
 
     Returns
     -------
@@ -183,7 +198,13 @@ def vessels_sql(
         clauses.append(f"dashboard_status = ${len(params)}")
     if region is not None:
         params.append(region)
-        clauses.append(f"${len(params)} = ANY(parent_zones)")
+        clauses.append(
+            f"EXISTS (SELECT 1 FROM unnest(parent_zones) AS z WHERE z ILIKE '%' || ${len(params)} || '%')"
+        )
+    if stale is not None:
+        clauses.append("is_stale" if stale else "NOT is_stale")
+    if conflict is not None:
+        clauses.append("has_conflicting_reports" if conflict else "NOT has_conflicting_reports")
     where_sql = " AND ".join(clauses) if clauses else "TRUE"
     order_sql = _SORT_COLUMNS[sort]
     sql = f"SELECT * FROM vessel_current_status WHERE {where_sql} ORDER BY {order_sql}"
@@ -202,7 +223,7 @@ def regions_sql() -> tuple[str, list]:
 
 
 def status_counts_sql() -> tuple[str, list]:
-    """Fleet-wide FIXED/OPEN/WATCHLIST breakdown -- the vessel tracker's summary tiles.
+    """Fleet-wide FIXED/OPEN/ON SUBS breakdown -- the vessel tracker's summary tiles.
 
     Backed by ``vessel_status_counts`` (a thin GROUP BY over
     ``vessel_current_status``), so a trader sees the shape of the market
@@ -212,10 +233,172 @@ def status_counts_sql() -> tuple[str, list]:
     -------
     tuple
         ``(sql, params)``; one row per status that has at least one
-        vessel -- a status with zero vessels right now (e.g. WATCHLIST,
+        vessel -- a status with zero vessels right now (e.g. ON SUBS,
         currently) simply doesn't appear, callers should default it to 0.
     """
     return "SELECT * FROM vessel_status_counts", []
+
+
+def vessel_flag_counts_sql() -> tuple[str, list]:
+    """Fleet-wide stale / conflicting-reports counts -- the summary panel's other two KPI tiles.
+
+    Kept separate from :func:`status_counts_sql` rather than merged into one
+    payload -- stale/conflict are flags a vessel can carry regardless of its
+    FIXED/OPEN/ON SUBS status (a FIXED vessel can still be stale), not
+    another value of the same ``dashboard_status`` dimension.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; one row with ``stale`` and ``conflicts`` counts.
+    """
+    return (
+        (
+            "SELECT "
+            "COUNT(*) FILTER (WHERE is_stale) AS stale, "
+            "COUNT(*) FILTER (WHERE has_conflicting_reports) AS conflicts "
+            "FROM vessel_current_status"
+        ),
+        [],
+    )
+
+
+def daily_range_start(until: datetime, days: int) -> datetime:
+    """Resolve the start of a trailing N-day range ending at ``until``.
+
+    Same naive-UTC contract as :func:`window_start` -- ``until`` is expected
+    to be one of :func:`reference_times_sql`'s tz-aware anchors, and tzinfo
+    is stripped here so the result binds cleanly against ``order_test``'s
+    naive timestamp columns the same way every other window in this module
+    does.
+
+    Parameters
+    ----------
+    until : datetime
+        The simulated "now" the range ends at (inclusive of its own day).
+    days : int
+        Number of calendar days the range should cover, ``until``'s day
+        included -- e.g. ``days=14`` with ``until`` on the 20th starts on
+        the 7th.
+
+    Returns
+    -------
+    datetime
+        Naive UTC timestamp marking the start of the range.
+    """
+    return (until - timedelta(days=days - 1)).replace(tzinfo=None)
+
+
+def daily_new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Day-bucketed count of vessels first reported, one row per calendar day.
+
+    Every day in ``[since, until]`` appears even with a zero count (via
+    ``generate_series``), so the summary panel's trend chart never has to
+    guess at a gap. Backed by ``vessel_current_status.first_date_received``,
+    same "new vessel" definition :func:`new_vessels_sql` uses.
+
+    Parameters
+    ----------
+    since : datetime
+        Range start, from :func:`daily_range_start`.
+    until : datetime
+        The simulated "now" itself -- the same value ``since`` was computed
+        from, so the last bucket is simulated-today.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; rows have ``day`` (date) and ``count`` (int).
+    """
+    return (
+        (
+            "WITH days AS ("
+            "  SELECT generate_series(date_trunc('day', $1::timestamp), date_trunc('day', $2::timestamp), interval '1 day')::date AS day"
+            "), counts AS ("
+            "  SELECT date_trunc('day', first_date_received)::date AS day, COUNT(*) AS n"
+            "  FROM vessel_current_status"
+            "  WHERE first_date_received >= $1 AND first_date_received < $2"
+            "  GROUP BY 1"
+            ") "
+            "SELECT d.day, COALESCE(c.n, 0)::int AS count "
+            "FROM days d LEFT JOIN counts c USING (day) "
+            "ORDER BY d.day"
+        ),
+        [since, until],
+    )
+
+
+def daily_status_changes_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Day-bucketed count of FIXED/OPEN/ON SUBS transitions, one row per calendar day.
+
+    Backed by ``vessel_status_history``, excluding a vessel's first-ever row
+    (``prev_status IS NOT NULL``) the same way :func:`vessel_status_changes_sql`
+    does -- a new arrival isn't a "change".
+
+    Parameters
+    ----------
+    since : datetime
+        Range start, from :func:`daily_range_start`.
+    until : datetime
+        The simulated "now" itself.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; rows have ``day`` (date) and ``count`` (int).
+    """
+    return (
+        (
+            "WITH days AS ("
+            "  SELECT generate_series(date_trunc('day', $1::timestamp), date_trunc('day', $2::timestamp), interval '1 day')::date AS day"
+            "), counts AS ("
+            "  SELECT date_trunc('day', update_date)::date AS day, COUNT(*) AS n"
+            "  FROM vessel_status_history"
+            "  WHERE update_date >= $1 AND update_date < $2 AND prev_status IS NOT NULL"
+            "  GROUP BY 1"
+            ") "
+            "SELECT d.day, COALESCE(c.n, 0)::int AS count "
+            "FROM days d LEFT JOIN counts c USING (day) "
+            "ORDER BY d.day"
+        ),
+        [since, until],
+    )
+
+
+def daily_new_orders_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Day-bucketed count of orders first received, one row per calendar day.
+
+    Backed by ``public.order_test`` directly (no view covers orders), same
+    "new order" definition :func:`new_orders_sql` uses.
+
+    Parameters
+    ----------
+    since : datetime
+        Range start, from :func:`daily_range_start`.
+    until : datetime
+        The simulated "now" itself.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; rows have ``day`` (date) and ``count`` (int).
+    """
+    return (
+        (
+            "WITH days AS ("
+            "  SELECT generate_series(date_trunc('day', $1::timestamp), date_trunc('day', $2::timestamp), interval '1 day')::date AS day"
+            "), counts AS ("
+            "  SELECT date_trunc('day', date_received)::date AS day, COUNT(*) AS n"
+            "  FROM public.order_test"
+            "  WHERE date_received >= $1 AND date_received < $2"
+            "  GROUP BY 1"
+            ") "
+            "SELECT d.day, COALESCE(c.n, 0)::int AS count "
+            "FROM days d LEFT JOIN counts c USING (day) "
+            "ORDER BY d.day"
+        ),
+        [since, until],
+    )
 
 
 def ecsa_ballasters_sql(sort: SortKey) -> tuple[str, list]:
@@ -278,7 +461,7 @@ def new_vessels_sql(since: datetime) -> tuple[str, list]:
 
 
 def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
-    """Status transitions (e.g. Watchlist -> Open) within the window.
+    """Status transitions (e.g. On Subs -> Open) within the window.
 
     Excludes a vessel's first-ever row (``prev_status IS NULL``) -- that's
     a new arrival, reported separately by :func:`new_vessels_sql`, not a
