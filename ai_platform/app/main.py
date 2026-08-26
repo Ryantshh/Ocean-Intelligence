@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ai_platform.app.api.dashboard import router as dashboard_router
+from ai_platform.app.api.trader_override import router as trader_override_router
 
 load_dotenv()
 
@@ -55,6 +56,7 @@ def read_dashboard() -> FileResponse:
 
 
 app.include_router(dashboard_router)
+app.include_router(trader_override_router)
 app.mount("/static", StaticFiles(directory=str(DASHBOARD_DIR)), name="static")
 
 mount_chainlit(app=app, target=CHAINLIT_TARGET, path="/chat")
