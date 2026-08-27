@@ -189,7 +189,7 @@ async def extract_filters(state: AgentState) -> dict[str, Any]:
         return {
             "tokens": tokens,
             "clarifying_question": extraction.clarifying_question
-            or "Which dates, size or id should I narrow to?",
+            or "Which dates, size, id or place should I narrow to?",
         }
 
     _logger.info(
@@ -301,6 +301,10 @@ async def answer(state: AgentState) -> dict[str, Any]:
     rather than being answered from an arbitrary slice, which retrieval narrowing
     fixes and a row cap only hides.
 
+    History is included so a follow-up can refer to an earlier answer. It is text
+    only, a few hundred tokens against tens of thousands for the rows, so it moves
+    the overflow point very little.
+
     With no filters found, the message is answered from the conversation instead
     of the database. Extraction cannot tell a question about a previous answer
     from a search it cannot run, and reciting the filterable fields at both was
@@ -321,13 +325,20 @@ async def answer(state: AgentState) -> dict[str, Any]:
     """
     writer = get_stream_writer()
 
-    if state.get("clarifying_question"):
+    clarification = state.get("clarifying_question")
+    if clarification:
         _logger.info("answer: replying conversationally (clarifying question)")
         usage: dict[str, int] = {}
         async for token in stream_chat(
             [
                 *state.get("history", []),
-                {"role": "user", "content": state["question"]},
+                {
+                    "role": "user",
+                    "content": (
+                        f"{state['question']}\n\n"
+                        f"[no search was run. the reason: {clarification}]"
+                    ),
+                },
             ],
             system=DISCUSS_SYSTEM,
             usage=usage,
@@ -360,13 +371,14 @@ async def answer(state: AgentState) -> dict[str, Any]:
     try:
         async for token in stream_chat(
             [
+                *state.get("history", []),
                 {
                     "role": "user",
                     "content": (
                         f"Question: {state['question']}\n\n"
                         f"Retrieved:\n{json.dumps(retrieval_context, default=str)}"
                     ),
-                }
+                },
             ],
             system=ANSWER_SYSTEM,
             usage=usage,

@@ -58,7 +58,7 @@ class Extraction(BaseModel):
 
     request: OrdersRequest | TonnageRequest
     needs_clarification: bool = Field(
-        description="true when nothing filterable was named"
+        description="true when nothing usable was named, or a date, size or table is ambiguous"
     )
     clarifying_question: str | None = Field(
         description="one short question, null unless needs_clarification"
