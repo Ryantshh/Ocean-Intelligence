@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_platform.backend.clock import working_date
 from ai_platform.backend.tables.base import RangeSpec, StatementBuilder
 
 TABLE = "order_test"
@@ -67,6 +68,9 @@ DISPLAY_DEFAULTS: dict[str, str] = {}
 RANGES: tuple[RangeSpec, ...] = (
     RangeSpec("laycan_from", "laycan_end", ">="),
     RangeSpec("laycan_to", "laycan_start", "<="),
+    RangeSpec("laycan_start_from", "laycan_start", ">="),
+    RangeSpec("laycan_start_to", "laycan_start", "<="),
+    RangeSpec("laycan_end_to", "laycan_end", "<="),
     RangeSpec("received_from", "date_received", ">="),
     RangeSpec("received_to", "date_received", "<="),
     RangeSpec("updated_from", "update_date", ">="),
@@ -90,14 +94,30 @@ class Filters(BaseModel):
     order_ids: list[int] = Field(
         default_factory=list, description="exact order numbers, when quoted"
     )
-    laycan_from: date | None = Field(default=None, description="laycan window start")
-    laycan_to: date | None = Field(default=None, description="laycan window end")
+    laycan_from: date | None = Field(
+        default=None, description="laycan runs at any point on or after"
+    )
+    laycan_to: date | None = Field(
+        default=None, description="laycan runs at any point on or before"
+    )
+    laycan_start_from: date | None = Field(
+        default=None, description="laycan first day on or after"
+    )
+    laycan_start_to: date | None = Field(
+        default=None, description="laycan first day on or before"
+    )
+    laycan_end_to: date | None = Field(
+        default=None, description="laycan cancelling on or before"
+    )
     received_from: date | None = Field(default=None, description="order received on or after")
     received_to: date | None = Field(default=None, description="order received on or before")
     updated_from: date | None = Field(default=None, description="last updated on or after")
     updated_to: date | None = Field(default=None, description="last updated on or before")
     weight_min: float | None = Field(default=None, description="cargo tonnes, lower bound")
     weight_max: float | None = Field(default=None, description="cargo tonnes, upper bound")
+    include_future: bool = Field(
+        default=False, description="true only when the user asks about upcoming records"
+    )
 
 
 class SemanticTerms(BaseModel):
@@ -112,33 +132,38 @@ class SemanticTerms(BaseModel):
     cargo_description: str | None = Field(
         default=None, description="wording from the enquiry itself"
     )
-    load_port: str | None = Field(default=None, description="named load port")
-    load_zone: str | None = Field(default=None, description="load region or country")
-    discharge_port: str | None = Field(default=None, description="named discharge port")
+    load_port: str | None = Field(default=None, description="load port, terminal or country")
+    load_zone: str | None = Field(default=None, description="load region, from the zone list")
+    discharge_port: str | None = Field(
+        default=None, description="discharge port, terminal or country"
+    )
     discharge_parent_zone: str | None = Field(
-        default=None, description="discharge region or country"
+        default=None, description="discharge region, from the zone list"
     )
 
 
 FIELD_GUIDE = """orders — cargo enquiries. Fields:
   order_ids       list of integers, only when the user quotes order numbers
-  laycan_from     ISO date, laycan window start
-  laycan_to       ISO date, laycan window end
+  laycan_from       ISO date, laycan runs at any point on or after
+  laycan_to         ISO date, laycan runs at any point on or before
+  laycan_start_from ISO date, laycan first day on or after
+  laycan_start_to   ISO date, laycan first day on or before
+  laycan_end_to     ISO date, laycan cancels on or before — what must be fixed by then
   received_from   ISO date, when the enquiry arrived, on or after
   received_to     ISO date, when the enquiry arrived, on or before
   updated_from    ISO date, last amended on or after
   updated_to      ISO date, last amended on or before
   weight_min      cargo tonnes, lower bound
   weight_max      cargo tonnes, upper bound
+  include_future  true only when the user asks about upcoming or forward-dated records
 
-Semantic fields, matched by meaning rather than exact text. Copy the user's
-words in; do not normalise them:
+Semantic fields:
   cargo_type              commodity, e.g. iron ore, coal, bauxite
   cargo_description       wording from the enquiry itself
-  load_port               named load port
-  load_zone               load region or country, e.g. Brazil, West Australia
-  discharge_port          named discharge port
-  discharge_parent_zone   discharge region or country"""
+  load_port               load port, terminal or country
+  load_zone               broad load region containing it, from the zone list
+  discharge_port          discharge port, terminal or country
+  discharge_parent_zone   broad discharge region containing it, from the zone list"""
 
 
 def build_sql(
@@ -164,6 +189,8 @@ def build_sql(
         ``(sql, params)`` for asyncpg.
     """
     builder = StatementBuilder(TABLE, ORDER_BY, DISPLAY_COLUMNS)
+    if not filters.include_future:
+        builder.set_horizon("update_date", working_date())
 
     # exact comparisons first: these decide which rows are eligible at all
     if filters.order_ids:
