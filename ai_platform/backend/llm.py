@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
-from typing import cast
+from typing import Any, cast
 
 from dotenv import load_dotenv
 from langfuse.openai import AsyncOpenAI
@@ -88,7 +88,7 @@ def get_client() -> AsyncOpenAI:
     )
 
 
-def trace_kwargs() -> dict[str, str]:
+def trace_kwargs() -> dict[str, Any]:
     """Link a completion call to the graph node currently running, if any.
 
     ``langfuse_handler`` tracks each LangChain run it has opened a span for,
@@ -101,7 +101,7 @@ def trace_kwargs() -> dict[str, str]:
 
     Returns
     -------
-    dict of str to str
+    dict of str to Any
         ``trace_id`` and ``parent_observation_id`` for ``langfuse.openai`` to
         nest this call under, or empty outside a graph run (e.g. the
         plain-model chat profile), where the call gets its own trace instead.

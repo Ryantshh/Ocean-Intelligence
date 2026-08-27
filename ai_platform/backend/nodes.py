@@ -327,7 +327,6 @@ async def answer(state: AgentState) -> dict[str, Any]:
 
     clarification = state.get("clarifying_question")
     if clarification:
-    if state.get("clarifying_question"):
         _logger.info("answer: replying conversationally (clarifying question)")
         usage: dict[str, int] = {}
         async for token in stream_chat(
