@@ -23,6 +23,11 @@ class AgentState(TypedDict, total=False):
         Table the question resolved to.
     filters : TableFilters
         Structured filter for that table.
+    semantic : dict of str to str
+        Free-text terms per embeddable column, as extracted.
+    vectors : list of tuple
+        ``(field, embedding)`` pairs from ``embed``, ordering the query by
+        similarity.
     sql : str
         The statement built from the filters, kept for display and debugging.
     params : list
@@ -41,13 +46,22 @@ class AgentState(TypedDict, total=False):
         avoids a reducer for a number nothing downstream reads.
     """
 
+    # set at entry
     question: Required[str]
     history: list[dict[str, str]]
+
+    # written by extract_filters and embed
     target: str
     filters: TableFilters
+    semantic: dict[str, str]
+    vectors: list[tuple[str, list[float]]]
+
+    # written by build_query and narrow
     sql: str
     params: list[Any]
     rows: list[dict[str, Any]]
+
+    # any one of these sends the run straight to answer
     clarifying_question: str
     error: str
     summary: str

@@ -24,7 +24,7 @@ from ai_platform.backend.context import (
 )
 from ai_platform.backend.graph import graph
 from ai_platform.backend.llm import stream_chat
-from ai_platform.backend.tables import resolve
+from ai_platform.backend.tables import resolve_table
 
 __all__ = ["get_data_layer"]
 
@@ -47,6 +47,7 @@ which lives in the reply prose and in the table's own footer instead.
 """
 
 STEP_READING = "Reading your question"
+STEP_EMBEDDING = "Embedding search terms"
 STEP_RETRIEVING = "Retrieving data"
 STEP_COMPACTING = "Compacting conversation"
 
@@ -61,7 +62,13 @@ updated, and cargo weight.
 Just ask in plain language and I will take it from there."""
 
 AGENT_STARTER_PROMPTS = (
-    "Vessels open in December 2025 in ballast",
+    "Show me today's cargo list in West Aussie",
+    "Show me the latest C3 iron ore orders",
+    "What orders are loading in ECSA?",
+    "Show me orders from PDM to North China",
+    "Show me today's tonnage list open in the Pacific",
+    "Show me the ECSA ballasters",
+    "Show me the WAF openers",
     "Vessels of at least 180,000 dwt open in January 2026",
     "Cargoes with laycan in November 2025 over 150,000 tonnes",
 )
@@ -147,7 +154,7 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     dict
         ``columns``, ``rows`` and ``noun``, ready to hand to the element.
     """
-    module = resolve(target)
+    module = resolve_table(target)
     columns = list(module.DISPLAY_COLUMNS)
     defaults = module.DISPLAY_DEFAULTS
     return {
@@ -254,30 +261,34 @@ async def run_agent(question: str) -> None:
     compaction_step: cl.Step | None = None
     tokens_spent = 0
 
-    async def pump(targets: set[str]) -> dict[str, Any]:
+    async def drain_until(wait_for: set[str]) -> dict[str, Any]:
         """Consume events until one of the named nodes reports."""
         nonlocal tokens_spent
         async for mode, payload in events:
+            # mid-run text: whichever node is streaming right now
             if mode == "custom":
-                written = cast("dict[str, str]", payload)
-                if "answer" in written:
-                    await reply.stream_token(written["answer"])
-                elif "compact" in written and compaction_step is not None:
-                    await compaction_step.stream_token(written["compact"])
+                streamed = cast("dict[str, str]", payload)
+                if "answer" in streamed:
+                    await reply.stream_token(streamed["answer"])
+                elif "compact" in streamed and compaction_step is not None:
+                    await compaction_step.stream_token(streamed["compact"])
                 continue
-            node, returned = next(
+
+            # a node finished, so record its cost whether or not it was the one awaited
+            node, returned_update = next(
                 iter(cast("dict[str, dict[str, Any] | None]", payload).items())
             )
-            update = returned or {}
-            tokens_spent += sum(update.get("tokens", {}).values())
-            if node in targets:
-                return update
+            node_output = returned_update or {}
+            tokens_spent += sum(node_output.get("tokens", {}).values())
+            if node in wait_for:
+                return node_output
         return {}
 
+    # compaction first, so extraction reads the shortened history
     if should_compact(history):
         async with cl.Step(name=STEP_COMPACTING) as step:
             compaction_step = step
-            compaction = await pump({"compact"})
+            compaction = await drain_until({"compact"})
         compaction_step = None
         if "history" in compaction:
             cl.user_session.set(
@@ -289,18 +300,22 @@ async def run_agent(question: str) -> None:
             )
 
     async with cl.Step(name=STEP_READING):
-        extraction = await pump({"extract_filters"})
+        extraction = await drain_until({"extract_filters"})
 
     answered_without_query = bool(
         extraction.get("clarifying_question") or extraction.get("error")
     )
-    table_name = ""
+    results_element_name = ""
     if not answered_without_query:
+        # drained only so the spinner appears; build_query reads the vectors off the state
+        if any(extraction.get("semantic", {}).values()):
+            async with cl.Step(name=STEP_EMBEDDING):
+                await drain_until({"embed"})
         async with cl.Step(name=STEP_RETRIEVING):
-            narrowed = await pump({"narrow"})
-        rows = narrowed.get("rows")
+            query_result = await drain_until({"narrow"})
+        rows = query_result.get("rows")
         if rows:
-            table_name = RESULTS_ELEMENT
+            results_element_name = RESULTS_ELEMENT
             table = cl.CustomElement(
                 name=RESULTS_ELEMENT,
                 props=results_props(extraction.get("target", ""), rows),
@@ -308,9 +323,10 @@ async def run_agent(question: str) -> None:
             )
             reply.elements = cast("list[Any]", [table])
 
-    await pump(set())
-    if table_name:
-        await reply.stream_token(f"\n\n{table_name}")
+    # nothing named, so this drains the reply being written
+    await drain_until(set())
+    if results_element_name:
+        await reply.stream_token(f"\n\n{results_element_name}")
     await reply.send()
     await refresh_gauge(agent_history(), tokens_spent, anchor=reply.id)
 

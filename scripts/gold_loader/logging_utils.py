@@ -2,20 +2,14 @@
 (see infra/smu_gold_loader.yaml's build step) so it deploys alongside the
 rest of scripts/gold_loader/ without any extra packaging step.
 
-Always logs to the console -- in Lambda that's captured by CloudWatch for
-free. Additionally logs to a timestamped file under the repo's runs/
-directory, but only for local runs: the deployed zip has no repo checked
-out and Lambda's filesystem is read-only outside /tmp, so the file handler
-is skipped there rather than failing.
+Logs to the console only -- in Lambda that's captured by CloudWatch for free,
+and for local runs it keeps the repo's runs/ directory reserved for the
+agent's logs (see ai_platform/backend/logging_utils.py) instead of being
+interleaved with gold-loader output.
 """
 
 import logging
-import os
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-RUNS_DIR = Path(__file__).resolve().parent.parent.parent / "runs"
 
 
 def get_logger(stage: str) -> logging.Logger:
@@ -30,15 +24,5 @@ def get_logger(stage: str) -> logging.Logger:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-
-    if not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        try:
-            RUNS_DIR.mkdir(exist_ok=True)
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            file_handler = logging.FileHandler(RUNS_DIR / f"{stage}_{timestamp}.log", encoding="utf-8")
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-        except OSError:
-            logger.warning("could not create log file under %s; logging to console only", RUNS_DIR)
 
     return logger
