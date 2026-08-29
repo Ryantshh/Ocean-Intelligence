@@ -1,27 +1,37 @@
 """Trader Status Override endpoints (Epic 3 / US-3.1).
 
 Lets a trader manually record a vessel's commercial status heard privately
-(via broker/messaging) before it reaches Shipfix/the pipeline. Reads/writes
-``public.vessel_status_overrides`` -- see
-``ai_platform/trader_override/trader_override_setup.sql``, which must be applied to the
-database once before these endpoints will resolve.
+(via broker/messaging) before it reaches Shipfix/the pipeline. The
+override itself goes straight into ``public.tonnage_test`` as a brand-new
+position-report row -- not a separate overrides table -- so the Dashboard
+tab's own ``vessel_current_status`` view (which always takes the newest
+``tonnage_test`` row per vessel) picks the change up automatically, with no
+change to any dashboard-side code.
 
-Deliberately does not compute or serve any derived "effective status" for a
-vessel from these overrides -- see that SQL file's header for why this is
-out of scope here.
+A successful submission is also logged to ``public.trader_override_audit``
+(see ``ai_platform/trader_override/trader_override_audit_setup.sql``) --
+purely so the Audit Trail table can show submissions scoped to this form
+specifically, since a row in ``tonnage_test`` itself carries no marker of
+having come from a trader rather than Shipfix. That table is optional: if
+it hasn't been created, both the audit insert (in :func:`submit_override`)
+and the audit read (:func:`audit`) fail quietly -- a submission still
+succeeds and lands in ``tonnage_test``, the Audit Trail table just reports
+empty instead of erroring.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ai_platform.backend.db import fetch_rows
+from ai_platform.backend.logging_utils import get_logger
 from ai_platform.trader_override import trader_override_queries as toq
 
 router = APIRouter(prefix="/api/trader-override", tags=["trader-override"])
+logger = get_logger("trader_override")
 
 
 async def _run(sql: str, params: list[Any]) -> list[dict[str, Any]]:
@@ -44,9 +54,7 @@ async def _run(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     Raises
     ------
     HTTPException
-        502 when the database cannot be reached or queried -- most commonly
-        because ``ai_platform/trader_override/trader_override_setup.sql`` has not been applied
-        to this database yet.
+        502 when the database cannot be reached or queried.
     """
     try:
         return await fetch_rows(sql, params)
@@ -55,25 +63,19 @@ async def _run(sql: str, params: list[Any]) -> list[dict[str, Any]]:
 
 
 class OverrideRequest(BaseModel):
-    """Body for submitting one trader status override.
+    """Body for submitting one trader status update.
 
     Pydantic rejects an unrecognised ``override_status`` or a blank
-    ``entered_by`` with a 422 before this ever reaches the database --
-    the acceptance criterion that input is "validated ... before being
-    saved."
+    ``entered_by`` with a 422 before this ever reaches the database.
     """
 
     vessel_id: str = Field(min_length=1, max_length=64)
     override_status: toq.OverrideStatus
     entered_by: str = Field(min_length=1, max_length=120)
-    note: str | None = Field(default=None, max_length=500)
     open_area: str | None = Field(default=None, max_length=120)
-    destination: str | None = Field(default=None, max_length=120)
-    eta: str | None = None
     open_date_start: str | None = None
     open_date_end: str | None = None
-    ballast_laden: Literal["LADEN", "BALLAST"] | None = None
-    parent_zone: str | None = Field(default=None, max_length=120)
+    order_assignment: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/vessels")
@@ -124,23 +126,31 @@ async def vessel_detail(vessel_id: str) -> list[dict[str, Any]]:
 
 @router.post("", status_code=201)
 async def submit_override(body: OverrideRequest) -> dict[str, Any]:
-    """Record one trader-entered status override.
+    """Record one trader-entered status update as a new ``tonnage_test`` row.
+
+    Also logs the submission to ``trader_override_audit`` once the
+    ``tonnage_test`` insert succeeds -- the audit entry is a record of what
+    happened, not a second attempt at the real write, so a failure logging
+    it does not roll back or fail the ``tonnage_test`` insert, which has
+    already committed by that point.
 
     Parameters
     ----------
     body : OverrideRequest
-        Vessel, status, trader identity, and an optional note.
+        Vessel, status, who's entering it, and whatever else the trader
+        has fresh word on.
 
     Returns
     -------
     dict
-        The inserted row.
+        The ``tonnage_test`` row that was inserted.
 
     Raises
     ------
     HTTPException
         404 if ``vessel_id`` isn't a real vessel in ``tonnage_test``; 502 on
-        a database failure.
+        a database failure (including an ``order_assignment`` that isn't a
+        valid integer -- rejected by the ``::bigint`` cast in the insert).
     """
     exists = await _run(*toq.vessel_exists_sql(body.vessel_id))
     if not exists:
@@ -149,38 +159,67 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
         )
 
     rows = await _run(
-        *toq.insert_override_sql(
+        *toq.insert_tonnage_row_sql(
             body.vessel_id,
             body.override_status,
-            body.entered_by,
-            body.note,
             open_area=body.open_area,
-            destination=body.destination,
-            eta=body.eta,
             open_date_start=body.open_date_start,
             open_date_end=body.open_date_end,
-            ballast_laden=body.ballast_laden,
-            parent_zone=body.parent_zone,
+            order_assignment=body.order_assignment,
         )
     )
+
+    try:
+        await _run(
+            *toq.insert_audit_sql(
+                body.vessel_id,
+                body.override_status,
+                body.entered_by,
+                open_area=body.open_area,
+                open_date_start=body.open_date_start,
+                open_date_end=body.open_date_end,
+                order_assignment=body.order_assignment,
+            )
+        )
+    except HTTPException:
+        # trader_override_audit is a log, not the source of truth -- the
+        # tonnage_test insert above already committed, so a missing/broken
+        # audit table (e.g. its setup SQL was never applied) must not fail
+        # the submission itself, only the Audit Trail table's own read.
+        logger.warning(
+            "trader_override_audit insert failed for vessel_id=%r; "
+            "tonnage_test insert already committed, continuing",
+            body.vessel_id,
+        )
+
     return rows[0]
 
 
 @router.get("/audit")
 async def audit(vessel_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
-    """Full override history, newest first.
+    """Trader override audit trail, newest first.
+
+    Scoped strictly to submissions made through this form -- reads
+    ``trader_override_audit`` only, never ``tonnage_test`` itself.
 
     Parameters
     ----------
     vessel_id : str or None
-        Restrict to one vessel's history, or omit for every vessel.
+        Restrict to one vessel's submissions, or omit for every vessel.
     limit : int
         Maximum rows to return, defaults to 200.
 
     Returns
     -------
     list of dict
-        One row per override ever submitted, matching the criterion.
+        One row per submission ever made, matching the criterion. Empty
+        if ``trader_override_audit`` doesn't exist yet -- see
+        :func:`submit_override`, which never fails on the audit table's
+        own absence either.
     """
     sql, params = toq.audit_sql(vessel_id, limit)
-    return await _run(sql, params)
+    try:
+        return await _run(sql, params)
+    except HTTPException:
+        logger.warning("trader_override_audit read failed; reporting empty audit trail")
+        return []

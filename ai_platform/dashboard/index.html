@@ -40,6 +40,15 @@
         --status-critical: #d03b3b;
         --map-water: #e4ecf1;
         --map-land: #cbd8c9;
+        /* Trader-override diff highlight -- one fixed hue per overridable
+           field, used identically in the Current Record and New Record
+           tables (and the matching form control) so a field is recognizable
+           by color across all three, e.g. Commercial status always green. */
+        --diff-commercial-status: #22c55e;
+        --diff-open-area: #eab308;
+        --diff-order-id: #3b82f6;
+        --diff-open-date-start: #a855f7;
+        --diff-open-date-end: #ec4899;
       }
       /* OS-level dark preference applies unless the toggle button below has
          stamped an explicit choice onto <html data-theme="...">; :not([data-theme="light"])
@@ -83,6 +92,10 @@
         font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       main { max-width: 72rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+      /* Trader Overrides tab has wide record tables (16 columns), so it gets
+         a wider page container -- toggled only while that tab is active, so
+         the Dashboard tab's own layout/width is never touched. */
+      main.wide { max-width: 100rem; }
       header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
       h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
       h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
@@ -258,6 +271,138 @@
       .history-trail ol { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
       .history-trail li { display: flex; align-items: center; gap: 0.4rem; }
       .history-trail li:not(:last-child)::after { content: "\2192"; color: var(--muted); margin-left: 0.4rem; }
+
+      /* ---- top-level tabs --------------------------------------------------
+         Underline style, distinct from the pill toggles used for in-section
+         filters (.view-toggle, .window-btn) so page-level navigation doesn't
+         read as just another filter control. */
+      .tabs { display: flex; gap: 0.25rem; margin: 1.5rem 0 0; border-bottom: 1px solid var(--border); }
+      .tab-btn {
+        font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.65rem 1rem;
+        border: none; border-bottom: 2px solid transparent; background: transparent;
+        color: var(--muted); cursor: pointer; margin-bottom: -1px;
+      }
+      .tab-btn:hover { color: var(--fg); }
+      .tab-btn.active { color: var(--fg); border-bottom-color: var(--accent); }
+      .tab-panel.hidden { display: none; }
+
+      /* ---- trader override form ------------------------------------------
+         Own component classes, scoped to #overrides-section where they'd
+         otherwise collide with the page's existing table/badge rules
+         (e.g. a plain, unscoped .badge here would repaint every status
+         badge above). Each overridable field gets its own fixed hue
+         (the --diff-* tokens above), applied identically to its Current
+         Record cell, New Record cell, and form control -- distinct from
+         the page's existing categorical/status palettes, which are
+         reserved for the Dashboard tab. */
+      .override-layout { display: grid; gap: 1.5rem; grid-template-columns: minmax(22rem, 28rem) 1fr; align-items: stretch; }
+      @media (max-width: 64rem) { .override-layout { grid-template-columns: 1fr; } }
+      .override-layout > div { min-width: 0; }
+      /* Current Record + New Record stretch to the same total height as the
+         form column -- Current Record's own table absorbs the leftover
+         space (and scrolls internally) so the two columns' bottoms align. */
+      .record-panel { display: flex; flex-direction: column; min-height: 0; }
+      .record-panel .table-wrap.scroll-capped { flex: 1 1 auto; min-height: 8rem; max-height: none; }
+      .record-panel .record-section-gap { flex: none; }
+      form.override-form {
+        display: grid; gap: 0.9rem; background: var(--card); border: 1px solid var(--border);
+        border-radius: 0.75rem; padding: 1.25rem;
+      }
+      form.override-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 500; }
+      form.override-form select, form.override-form input, form.override-form textarea {
+        font: inherit; font-size: 0.9rem; padding: 0.5rem 0.6rem; border-radius: 0.5rem;
+        border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+        transition: border-color 0.12s ease, box-shadow 0.12s ease;
+      }
+      form.override-form select:focus, form.override-form input:focus, form.override-form textarea:focus {
+        outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+      }
+      form.override-form textarea { resize: vertical; min-height: 4rem; }
+      form.override-form button {
+        font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.65rem 1rem; border-radius: 0.6rem;
+        border: none; background: var(--accent); color: #fff; cursor: pointer; transition: filter 0.12s ease;
+      }
+      form.override-form button:hover:not(:disabled) { filter: brightness(1.08); }
+      form.override-form button:disabled { opacity: 0.6; cursor: default; }
+      .form-hint { font-size: 0.78rem; color: var(--muted); margin: -0.4rem 0 0; }
+      .form-message { font-size: 0.85rem; padding: 0.5rem 0.7rem; border-radius: 0.5rem; display: none; }
+      .form-message.visible { display: block; }
+      .form-message.success { color: var(--open); background: color-mix(in srgb, var(--open) 14%, transparent); }
+      .form-message.error { color: var(--stale); background: color-mix(in srgb, var(--stale) 14%, transparent); }
+      .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+      .field-required::after { content: " *"; color: var(--stale); }
+      .form-section-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0.4rem 0 -0.2rem; }
+
+      .record-empty { color: var(--muted); font-size: 0.85rem; padding: 1rem; }
+      #overrides-section td.value-unavailable { color: var(--muted); font-style: italic; }
+      #overrides-section td.diff-cell { background: color-mix(in srgb, var(--accent) 20%, transparent); font-weight: 600; }
+      form.override-form .field-changed {
+        border-color: var(--field-diff-color, var(--accent)) !important;
+        /* Same 24%-over-transparent mix displayValue() uses on the matching
+           Current/New Record cell, so the highlighted input's fill visually
+           matches those two cells exactly, not just its color hue. */
+        background: color-mix(in srgb, var(--field-diff-color, var(--accent)) 24%, transparent) !important;
+      }
+      /* Latest (newest-reported) row in Current Record -- always the first
+         row, since vessel_history_sql sorts newest-first. Diff cells keep
+         their own per-field color; everything else in that row gets a
+         neutral accent tint so the row itself is unmistakable at a glance. */
+      /* Any row can be the override baseline -- not just the newest -- so
+         the highlight follows whichever row is selected (.selected-row),
+         not always the first row. */
+      #currentRecordTable tbody tr { cursor: pointer; }
+      #currentRecordTable tbody tr.selected-row td { font-weight: 600; }
+      #currentRecordTable tbody tr.selected-row td:not(.diff-cell) {
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
+      }
+      #currentRecordTable tbody tr:not(.selected-row):hover td:not(.diff-cell) {
+        background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+      }
+      .record-section-gap { margin-top: 1.5rem; }
+      .table-wrap.scroll-capped { max-height: 22rem; overflow-y: auto; }
+      .table-wrap.scroll-capped thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
+      #overrides-section .table-wrap table { min-width: max-content; }
+      #auditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+
+      /* Circle loading spinner, used in place of a bare "Loading..." string
+         while the record panel / audit trail fetch. */
+      .spinner {
+        display: inline-block; width: 1rem; height: 1rem; flex: none;
+        border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+        border-top-color: var(--accent); border-radius: 50%;
+        animation: spinner-spin 0.7s linear infinite;
+      }
+      @keyframes spinner-spin { to { transform: rotate(360deg); } }
+      .loading-inline {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        color: var(--muted); font-size: 0.85rem;
+      }
+
+      /* ---- intro banner ----------------------------------------------- */
+      .overrides-intro {
+        background: linear-gradient(135deg, #00543c, #00814f);
+        color: #fff; border-radius: 0.9rem; padding: 1.5rem 1.75rem;
+        margin: 1.5rem 0 1.75rem;
+      }
+      .overrides-intro h2 { color: #fff; margin: 0 0 0.5rem; }
+      .overrides-intro p.sub { color: rgba(255, 255, 255, 0.88); margin: 0; }
+
+      /* ---- vessel combobox (type-to-filter, no framework) ---------------- */
+      .combobox { position: relative; }
+      .combobox-list {
+        list-style: none; margin: 0.25rem 0 0; padding: 0.25rem; position: absolute; z-index: 10;
+        top: 100%; left: 0; right: 0; max-height: 14rem; overflow-y: auto;
+        background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+      }
+      .combobox-list.hidden { display: none; }
+      .combobox-option {
+        padding: 0.4rem 0.55rem; border-radius: 0.4rem; cursor: pointer; font-size: 0.88rem;
+        display: flex; justify-content: space-between; gap: 0.5rem;
+      }
+      .combobox-option .status { color: var(--muted); font-size: 0.78rem; }
+      .combobox-option:hover, .combobox-option.active { background: var(--card); }
+      .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
   </head>
   <body>
@@ -279,6 +424,12 @@
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
+      <nav class="tabs">
+        <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button type="button" class="tab-btn" data-tab="overrides">Trader Overrides</button>
+      </nav>
+
+      <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
         <div class="section-head"><h2>Market Summary</h2></div>
         <div class="status-tiles" id="statusTiles">
@@ -431,6 +582,119 @@
           <div class="pager" id="ecsaPager"></div>
         </div>
       </section>
+      </div>
+
+      <div id="tab-overrides" class="tab-panel hidden">
+      <section id="overrides-section">
+        <div class="overrides-intro">
+          <h2>Trader Overrides</h2>
+          <p class="sub">
+            Record what you've heard privately (broker, chat) on a vessel before it
+            reaches Shipfix. Saved as a new position report for the vessel, so it
+            takes precedence immediately -- the Dashboard tab always shows a
+            vessel's newest report. Every submission is also logged in the Audit
+            Trail below.
+          </p>
+        </div>
+        <div class="override-layout">
+          <div>
+            <h3>Enter a Status Update</h3>
+            <p class="sub" style="margin-bottom:1rem;">
+              Only Vessel, Status, and Entered by are required -- fill in
+              whatever else you actually have fresh word on.
+            </p>
+            <form class="override-form" id="overrideForm">
+              <label class="field-required">Vessel
+                <div class="combobox" id="ovVesselCombobox">
+                  <input
+                    type="text" id="ovVesselInput" placeholder="Type to search a vessel&hellip;"
+                    autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                    aria-controls="ovVesselList" required
+                  />
+                  <input type="hidden" id="ovVessel" />
+                  <ul class="combobox-list hidden" id="ovVesselList" role="listbox"></ul>
+                </div>
+              </label>
+              <label class="field-required">Status
+                <select id="ovStatus" required>
+                  <option value="" disabled selected>Select a status</option>
+                </select>
+              </label>
+              <p class="form-hint">
+                FIXED is treated as good for 5 days from entry (e.g. heard it was
+                taken by another company, or it's a Cargill vessel) before Shipfix
+                data is trusted again.
+              </p>
+
+              <p class="form-section-label">Optional &mdash; only if you have fresh word on it</p>
+              <div class="field-row">
+                <label>Open area
+                  <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
+                </label>
+                <label>Order assignment
+                  <input id="ovOrderAssignment" type="text" maxlength="64" placeholder="e.g. order id" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Open date start
+                  <input id="ovOpenDateStart" type="date" />
+                </label>
+                <label>Open date end
+                  <input id="ovOpenDateEnd" type="date" />
+                </label>
+              </div>
+
+              <p class="form-section-label">Attribution</p>
+              <label class="field-required">Entered by
+                <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
+              </label>
+              <button type="submit" id="ovSubmit">Submit Update</button>
+              <div class="form-message" id="ovMessage"></div>
+            </form>
+          </div>
+
+          <div class="record-panel">
+            <h3>Current Record</h3>
+            <p class="sub" style="margin-bottom:0.5rem;">
+              Every reported position on file for the selected vessel, newest first.
+              Click a row to override that trip's record instead of the newest one.
+            </p>
+            <div class="table-wrap scroll-capped"><table id="currentRecordTable">
+              <thead><tr></tr></thead>
+              <tbody><tr><td class="record-empty">Select a vessel to see its current record.</td></tr></tbody>
+            </table></div>
+            <p class="sub" style="margin:0.4rem 0 0; font-size:0.78rem;" id="currentRecordCount"></p>
+
+            <div class="record-section-gap">
+              <h3>New Record</h3>
+              <p class="sub" style="margin-bottom:0.75rem;">
+                What the latest row will look like once this update is saved &mdash;
+                updates live as you fill in the form.
+              </p>
+              <div class="table-wrap"><table id="newRecordTable">
+                <thead><tr></tr></thead>
+                <tbody><tr><td class="record-empty">Select a vessel first.</td></tr></tbody>
+              </table></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="drilldown-head" style="margin-top:2.5rem;">
+          <h2>Audit Trail</h2>
+          <p class="sub" style="margin:0.15rem 0 0;">
+            Every status update submitted through this form, newest first --
+            scoped to trader submissions only, not every position report.
+          </p>
+        </div>
+        <div class="table-wrap"><table id="auditTable">
+          <thead><tr>
+            <th>Vessel</th><th>Status</th><th>Open area</th><th>Open window</th>
+            <th>Order assignment</th><th>Entered by</th><th>When</th>
+          </tr></thead>
+          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+        </table></div>
+      </section>
+      </div>
     </main>
 
     <script>
@@ -480,6 +744,17 @@
       });
       updateThemeButton();
 
+      // ---- top-level tabs ---------------------------------------------
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+          document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+          btn.classList.add("active");
+          document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
+          document.querySelector("main").classList.toggle("wide", btn.dataset.tab === "overrides");
+        });
+      });
+
       function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>"']/g, (ch) => (
           { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
@@ -518,6 +793,24 @@
           throw new Error(body.detail || `HTTP ${response.status}`);
         }
         return response.json();
+      }
+
+      async function postJson(path, payload) {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          let detail = body.detail || `HTTP ${response.status}`;
+          // FastAPI/Pydantic validation errors arrive as a list of {msg, loc}.
+          if (Array.isArray(detail)) {
+            detail = detail.map((e) => e.msg || JSON.stringify(e)).join("; ");
+          }
+          throw new Error(detail);
+        }
+        return body;
       }
 
       // ---- regional supply & demand: map ----------------------------------
@@ -1230,6 +1523,420 @@
         });
       });
 
+      // ---- trader status override ------------------------------------------
+      const OVERRIDE_STATUSES = [
+        "AVAILABLE", "ON SUBS", "FIXED", "FAILED", "CANCELLED", "POSS FIXED",
+        "PROGRAM", "CONTRACT", "RELET", "BALLAST FIXED", "DO NOT COUNT", "WATCHLIST",
+      ];
+
+      function populateStatusOptions() {
+        const select = document.getElementById("ovStatus");
+        select.innerHTML =
+          '<option value="" disabled selected>Select a status</option>' +
+          OVERRIDE_STATUSES.map((s) => `<option value="${s}">${escapeHtml(s)}</option>`).join("");
+      }
+
+      // ---- vessel combobox: type-to-filter over a client-side cache -------
+      // Populated once from /api/trader-override/vessels (a few hundred to a
+      // few thousand rows, well within what a client-side substring filter
+      // can handle instantly) rather than a <select> the trader would have
+      // to scroll through, or a per-keystroke server request.
+      const VESSEL_SUGGESTION_LIMIT = 30;
+      let vesselsCache = [];
+      let vesselActiveIndex = -1;
+
+      const vesselInput = () => document.getElementById("ovVesselInput");
+      const vesselHidden = () => document.getElementById("ovVessel");
+      const vesselList = () => document.getElementById("ovVesselList");
+
+      function vesselLabel(v) {
+        return v.commercial_status ? `${v.vessel_id} — ${v.commercial_status}` : v.vessel_id;
+      }
+
+      function closeVesselList() {
+        vesselList().classList.add("hidden");
+        vesselInput().setAttribute("aria-expanded", "false");
+        vesselActiveIndex = -1;
+      }
+
+      function selectVessel(v) {
+        vesselHidden().value = v.vessel_id;
+        vesselInput().value = vesselLabel(v);
+        closeVesselList();
+        loadRecordPanel(v.vessel_id);
+      }
+
+      // ---- current record / new record: real tables (columns = fields,
+      // rows = reported positions), live-diffed against the form as the
+      // trader types. vessel_id is NOT unique in tonnage_test -- it's a
+      // position-report log -- so Current Record shows every row on file
+      // for the vessel, newest first, not just one. Only the newest (first)
+      // row is compared against the form -- older rows are history/context
+      // only. Only columns with overridable:true ever get diff-highlighted
+      // or take a form value in New Record -- context-only columns (AIS
+      // status, DWT, ship type/size, order id) pass through unchanged.
+      const dateOnly = (value) => (value ? String(value).slice(0, 10) : "");
+
+      // Every tonnage_test column vessel_history_sql selects is shown --
+      // nothing the backend fetches is dropped, so the frontend column set
+      // always tallies with what's actually queried. Order is NOT Supabase's
+      // ordinal position: the 5 columns a trader override actually writes
+      // (overridable: true) are pulled to the front, right after the
+      // vessel_id identifier, so what this form submits is visible without
+      // scrolling; the remaining read-only/context columns follow in their
+      // real Supabase order. "Order assignment" writes into order_id itself
+      // (there's no separate tonnage_test column for it), so that's one
+      // column here, not two -- ovOrderAssignment overrides order_id
+      // directly, same shape every other overridable field here already has.
+      const RECORD_COLUMNS = [
+        { key: "vessel_id", label: "vessel id" },
+        { key: "commercial_status", label: "commercial status", overridable: true, inputId: "ovStatus",
+          formValue: () => document.getElementById("ovStatus").value || null,
+          diffColor: "var(--diff-commercial-status)" },
+        { key: "open_area", label: "open area", overridable: true, inputId: "ovOpenArea",
+          formValue: () => document.getElementById("ovOpenArea").value.trim() || null,
+          diffColor: "var(--diff-open-area)" },
+        { key: "order_id", label: "order id", overridable: true, inputId: "ovOrderAssignment",
+          formValue: () => document.getElementById("ovOrderAssignment").value.trim() || null,
+          diffColor: "var(--diff-order-id)" },
+        { key: "open_date_start", label: "open date start", overridable: true, fmt: formatDate, inputId: "ovOpenDateStart",
+          formValue: () => document.getElementById("ovOpenDateStart").value || null,
+          normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-open-date-start)" },
+        { key: "open_date_end", label: "open date end", overridable: true, fmt: formatDate, inputId: "ovOpenDateEnd",
+          formValue: () => document.getElementById("ovOpenDateEnd").value || null,
+          normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-open-date-end)" },
+        { key: "update_date", label: "update date", fmt: formatDate },
+        { key: "parent_zone", label: "parent zone" },
+        { key: "vessel_status", label: "vessel status" },
+        { key: "dwt", label: "dwt" },
+        { key: "ship_type", label: "ship type" },
+        { key: "ship_size", label: "ship size" },
+        { key: "ballast_laden", label: "ballast laden" },
+        { key: "destination", label: "destination" },
+        { key: "eta", label: "eta", fmt: formatDate },
+        { key: "first_date_received", label: "first date received", fmt: formatDate },
+      ];
+
+      let currentRecords = null; // array, newest first; null = nothing loaded
+      // Index into currentRecords the form is being diffed against -- a
+      // trader can override any past trip's record, not only the newest,
+      // by clicking its row in Current Record. Reset to 0 (newest) whenever
+      // a different vessel is loaded.
+      let selectedRecordIndex = 0;
+
+      function renderTableHeaders() {
+        const headerHtml = RECORD_COLUMNS.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+        document.querySelector("#currentRecordTable thead tr").innerHTML = headerHtml;
+        document.querySelector("#newRecordTable thead tr").innerHTML = headerHtml;
+      }
+
+      function displayValue(raw, fmt, changed, diffColor) {
+        const classes = [raw === null || raw === undefined || raw === "" ? "value-unavailable" : "", changed ? "diff-cell" : ""]
+          .filter(Boolean).join(" ");
+        const classAttr = classes ? ` class="${classes}"` : "";
+        // Inline per-field color (so Commercial status is always green, Open
+        // area always light yellow, etc.) overrides the generic accent tint
+        // .diff-cell falls back to in CSS.
+        const styleAttr = changed && diffColor
+          ? ` style="background: color-mix(in srgb, ${diffColor} 24%, transparent);"`
+          : "";
+        const content = raw === null || raw === undefined || raw === "" ? "NULL" : escapeHtml(fmt ? fmt(raw) : raw);
+        return `<td${classAttr}${styleAttr}>${content}</td>`;
+      }
+
+      function isFieldChanged(column, raw) {
+        const formValue = column.formValue();
+        if (formValue === null) return false; // trader hasn't touched this field
+        const normalize = column.normalize || ((v) => v || "");
+        return normalize(formValue) !== normalize(raw);
+      }
+
+      function renderRecordTables() {
+        const currentBody = document.querySelector("#currentRecordTable tbody");
+        const newBody = document.querySelector("#newRecordTable tbody");
+        const colCount = RECORD_COLUMNS.length;
+
+        const countLabel = document.getElementById("currentRecordCount");
+        if (!currentRecords || !currentRecords.length) {
+          currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select a vessel to see its current record.</td></tr>`;
+          newBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select a vessel first.</td></tr>`;
+          countLabel.textContent = "";
+          RECORD_COLUMNS.forEach((column) => {
+            if (column.inputId) document.getElementById(column.inputId).classList.remove("field-changed");
+          });
+          return;
+        }
+        countLabel.textContent = currentRecords.length > 5
+          ? `${currentRecords.length} reported positions on file — showing the latest 5, scroll for older ones.`
+          : `${currentRecords.length} reported position${currentRecords.length === 1 ? "" : "s"} on file.`;
+
+        // Current Record: every reported row, newest first -- but only the
+        // selected row (selectedRecordIndex; defaults to the newest, index
+        // 0) is diffed against the form, so a trader can override an older
+        // trip's record by clicking its row instead of always the latest.
+        // The matching form control also gets flagged (.field-changed) so
+        // a changed field is visible in three places at once: the input
+        // itself, its Current Record cell, and its New Record cell.
+        currentBody.innerHTML = currentRecords.map((record, index) => {
+          const isSelected = index === selectedRecordIndex;
+          const cells = RECORD_COLUMNS.map((column) => {
+            const raw = record[column.key];
+            const changed = isSelected && column.overridable && isFieldChanged(column, raw);
+            if (isSelected && column.inputId) {
+              const inputEl = document.getElementById(column.inputId);
+              inputEl.classList.toggle("field-changed", changed);
+              if (column.diffColor) inputEl.style.setProperty("--field-diff-color", column.diffColor);
+            }
+            return displayValue(raw, column.fmt, changed, column.diffColor);
+          }).join("");
+          return `<tr data-index="${index}" class="${isSelected ? "selected-row" : ""}">${cells}</tr>`;
+        }).join("");
+
+        // New Record: one row -- the selected trip's record merged with
+        // whatever the trader has typed so far. "touched" (has a form
+        // value) and "changed" (that value actually differs from what's on
+        // file) are separate: the preview always shows what would actually
+        // be submitted for a touched field, even when it happens to match
+        // the selected record's existing value -- only the diff highlight
+        // is gated on "changed".
+        const selectedRecord = currentRecords[selectedRecordIndex];
+        const newCells = RECORD_COLUMNS.map((column) => {
+          const raw = selectedRecord[column.key];
+          const formValue = column.overridable ? column.formValue() : null;
+          const touched = formValue !== null;
+          const changed = touched && isFieldChanged(column, raw);
+          const effective = touched ? formValue : raw;
+          // A touched date column's effective value is a bare "YYYY-MM-DD"
+          // from the <input type=date>, not a timestamp -- formatDate()
+          // would otherwise mangle it, so it's shown as-is.
+          const fmt = column.formIsDateOnly && touched ? null : column.fmt;
+          return displayValue(effective, fmt, changed, column.diffColor);
+        }).join("");
+        newBody.innerHTML = `<tr>${newCells}</tr>`;
+      }
+
+      async function loadRecordPanel(vesselId) {
+        const currentBody = document.querySelector("#currentRecordTable tbody");
+        const newBody = document.querySelector("#newRecordTable tbody");
+        const colCount = RECORD_COLUMNS.length;
+        const loadingRow = `<tr><td class="record-empty" colspan="${colCount}"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr>`;
+        currentBody.innerHTML = loadingRow;
+        newBody.innerHTML = loadingRow;
+        document.getElementById("currentRecordCount").textContent = "";
+        selectedRecordIndex = 0; // a different vessel always starts diffed against its newest trip
+        try {
+          currentRecords = await getJson(`/api/trader-override/vessels/${encodeURIComponent(vesselId)}`);
+          renderRecordTables();
+        } catch (error) {
+          currentRecords = null;
+          const msg = `<tr><td class="error" colspan="${colCount}">Could not load current record: ${escapeHtml(error.message)}</td></tr>`;
+          currentBody.innerHTML = msg;
+          newBody.innerHTML = msg;
+        }
+      }
+
+      // Row selection: click any Current Record row to diff/override that
+      // trip instead of always the newest one. Delegated on the table (not
+      // re-bound per row) since currentBody's innerHTML is replaced wholesale
+      // on every render.
+      document.querySelector("#currentRecordTable tbody").addEventListener("click", (event) => {
+        const row = event.target.closest("tr[data-index]");
+        if (!row || !currentRecords) return;
+        const index = Number(row.dataset.index);
+        if (index === selectedRecordIndex) return;
+        selectedRecordIndex = index;
+        renderRecordTables();
+      });
+
+      function renderVesselSuggestions(query) {
+        const list = vesselList();
+        const q = query.trim().toLowerCase();
+        const matches = (q ? vesselsCache.filter((v) => v.vessel_id.toLowerCase().includes(q)) : vesselsCache)
+          .slice(0, VESSEL_SUGGESTION_LIMIT);
+
+        vesselActiveIndex = -1;
+        if (!matches.length) {
+          list.innerHTML = `<li class="combobox-empty">No vessels match "${escapeHtml(query)}"</li>`;
+        } else {
+          list.innerHTML = matches.map((v, i) => `
+            <li class="combobox-option" role="option" data-index="${i}">
+              <span>${escapeHtml(v.vessel_id)}</span>
+              ${v.commercial_status ? `<span class="status">${escapeHtml(v.commercial_status)}</span>` : ""}
+            </li>
+          `).join("");
+          list.querySelectorAll(".combobox-option").forEach((el, i) => {
+            el.addEventListener("mousedown", (event) => {
+              // mousedown (not click) fires before the input's blur handler,
+              // so the list is still in the DOM when the selection is read.
+              event.preventDefault();
+              selectVessel(matches[i]);
+            });
+          });
+        }
+        list.classList.remove("hidden");
+        vesselInput().setAttribute("aria-expanded", "true");
+        list.dataset.matchCount = String(matches.length);
+        list._matches = matches;
+      }
+
+      function moveVesselActive(delta) {
+        const list = vesselList();
+        const options = list.querySelectorAll(".combobox-option");
+        if (!options.length) return;
+        vesselActiveIndex = (vesselActiveIndex + delta + options.length) % options.length;
+        options.forEach((el, i) => el.classList.toggle("active", i === vesselActiveIndex));
+        options[vesselActiveIndex].scrollIntoView({ block: "nearest" });
+      }
+
+      vesselInput().addEventListener("input", () => {
+        // Typing invalidates whatever was previously selected -- only a
+        // click or Enter on a suggestion below sets ovVessel again, so the
+        // form can never submit a vessel_id that doesn't match the visible text.
+        vesselHidden().value = "";
+        renderVesselSuggestions(vesselInput().value);
+      });
+      vesselInput().addEventListener("focus", () => {
+        // If a vessel is already selected, the input shows its full
+        // "id — status" label, not something meant to be searched against --
+        // re-focusing should browse the whole list, not filter by that label
+        // and come back empty.
+        const query = vesselHidden().value ? "" : vesselInput().value;
+        renderVesselSuggestions(query);
+      });
+      vesselInput().addEventListener("blur", closeVesselList);
+      vesselInput().addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (vesselList().classList.contains("hidden")) renderVesselSuggestions(vesselInput().value);
+          moveVesselActive(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveVesselActive(-1);
+        } else if (event.key === "Enter") {
+          if (vesselActiveIndex >= 0 && vesselList()._matches) {
+            event.preventDefault();
+            selectVessel(vesselList()._matches[vesselActiveIndex]);
+          }
+        } else if (event.key === "Escape") {
+          closeVesselList();
+        }
+      });
+
+      // Live diff: any change to an overridable field re-renders both
+      // record tables so the highlight/New Record value stays in sync as
+      // the trader types, without waiting for form submission.
+      ["ovStatus", "ovOpenArea", "ovOpenDateStart", "ovOpenDateEnd", "ovOrderAssignment"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", renderRecordTables);
+        document.getElementById(id).addEventListener("change", renderRecordTables);
+      });
+
+      async function loadVesselOptions() {
+        try {
+          vesselsCache = await getJson("/api/trader-override/vessels");
+          vesselInput().placeholder = vesselsCache.length
+            ? "Type to search a vessel…"
+            : "No vessels available";
+        } catch (error) {
+          vesselInput().placeholder = "Could not load vessels";
+        }
+      }
+
+      function openWindow(row) {
+        if (!row.open_date_start && !row.open_date_end) return "—";
+        return `${formatDate(row.open_date_start)} – ${formatDate(row.open_date_end)}`;
+      }
+
+      function auditRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.vessel_id)}</td>
+            <td><span class="badge">${escapeHtml(row.override_status)}</span></td>
+            <td>${escapeHtml(row.open_area || "—")}</td>
+            <td>${openWindow(row)}</td>
+            <td>${escapeHtml(row.order_assignment || "—")}</td>
+            <td>${escapeHtml(row.entered_by)}</td>
+            <td>${formatDate(row.created_at)}</td>
+          </tr>
+        `;
+      }
+
+      async function loadAudit(isRefresh = false) {
+        const tbody = document.querySelector("#auditTable tbody");
+        try {
+          const rows = await getJson("/api/trader-override/audit");
+          tbody.innerHTML = rows.length
+            ? rows.map(auditRow).join("")
+            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
+        } catch (error) {
+          if (isRefresh) throw error;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+        }
+      }
+
+      function showFormMessage(kind, text) {
+        const el = document.getElementById("ovMessage");
+        el.className = `form-message visible ${kind}`;
+        el.textContent = text;
+      }
+
+      document.getElementById("overrideForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const submitBtn = document.getElementById("ovSubmit");
+        const vesselId = document.getElementById("ovVessel").value;
+        const overrideStatus = document.getElementById("ovStatus").value;
+        const enteredBy = document.getElementById("ovEnteredBy").value.trim();
+        const openArea = document.getElementById("ovOpenArea").value.trim();
+        const openDateStart = document.getElementById("ovOpenDateStart").value;
+        const openDateEnd = document.getElementById("ovOpenDateEnd").value;
+        const orderAssignment = document.getElementById("ovOrderAssignment").value.trim();
+
+        if (!vesselId) {
+          showFormMessage("error", "Select a vessel from the list.");
+          vesselInput().focus();
+          return;
+        }
+        if (!overrideStatus || !enteredBy) {
+          showFormMessage("error", "Status and Entered by are required.");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        try {
+          await postJson("/api/trader-override", {
+            vessel_id: vesselId,
+            override_status: overrideStatus,
+            entered_by: enteredBy,
+            open_area: openArea || null,
+            open_date_start: openDateStart || null,
+            open_date_end: openDateEnd || null,
+            order_assignment: orderAssignment || null,
+          });
+          showFormMessage("success", `Recorded a new position report for ${vesselId}.`);
+          document.getElementById("overrideForm").reset();
+          populateStatusOptions();
+          await Promise.all([loadRecordPanel(vesselId), loadVesselOptions(), loadAudit()]);
+          // The vessel stays selected after a successful submit rather than
+          // making the trader re-search for it just to see what they just
+          // recorded -- form.reset() above cleared both the visible input
+          // and (in some browsers) the hidden one, so both are restored
+          // here once the picker cache has reloaded with this vessel's
+          // now-current label.
+          const submitted = vesselsCache.find((v) => v.vessel_id === vesselId);
+          vesselHidden().value = vesselId;
+          vesselInput().value = submitted ? vesselLabel(submitted) : vesselId;
+        } catch (error) {
+          showFormMessage("error", `Could not save update: ${error.message}`);
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      populateStatusOptions();
+      renderTableHeaders();
+      renderRecordTables();
+      loadVesselOptions();
+      loadAudit();
+
       // ---- auto-refresh, last-updated timestamp, stale-data indication ----
       // Traders want the dashboard current without a manual reload; an
       // hourly sync matches how brokers actually send updates through the
@@ -1261,7 +1968,7 @@
       // yet for a stale banner to reference.
       async function refreshAll() {
         const sections = document.querySelectorAll(
-          "#summary-section, #vessels-section, #changes-section, #ecsa-section"
+          "#summary-section, #vessels-section, #changes-section, #ecsa-section, #overrides-section"
         );
         sections.forEach((el) => el.classList.add("section-refreshing"));
 
@@ -1273,6 +1980,7 @@
           ["Vessel tracker", loadVessels(true)],
           ["Change feed", loadChanges(currentChangeWindow, true)],
           ["ECSA tracker", loadEcsa(true)],
+          ["Override audit trail", loadAudit(true)],
         ];
         const results = await Promise.allSettled(named.map(([, promise]) => promise));
         sections.forEach((el) => el.classList.remove("section-refreshing"));
