@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ai_platform.app.api.dashboard import router as dashboard_router
-from ai_platform.app.api.trader_override import router as trader_override_router
+from ai_platform.trader_override.trader_override import router as trader_override_router
 
 load_dotenv()
 

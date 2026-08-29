@@ -10,7 +10,7 @@
 --
 -- Idempotent: safe to re-run. Not applied automatically by anything in this
 -- repo -- run once manually (psql "$SUPABASE_DB_URL" -f
--- infra/sql/trader_override_setup.sql, or paste into the Supabase SQL
+-- ai_platform/trader_override/trader_override_setup.sql, or paste into the Supabase SQL
 -- editor) before the trader override tab's endpoints will resolve.
 --
 -- Deliberately out of scope here: deriving an "effective" open/closed status

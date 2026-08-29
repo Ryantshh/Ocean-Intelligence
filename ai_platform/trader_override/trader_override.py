@@ -3,7 +3,7 @@
 Lets a trader manually record a vessel's commercial status heard privately
 (via broker/messaging) before it reaches Shipfix/the pipeline. Reads/writes
 ``public.vessel_status_overrides`` -- see
-``infra/sql/trader_override_setup.sql``, which must be applied to the
+``ai_platform/trader_override/trader_override_setup.sql``, which must be applied to the
 database once before these endpoints will resolve.
 
 Deliberately does not compute or serve any derived "effective status" for a
@@ -18,8 +18,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ai_platform.backend import trader_override_queries as toq
 from ai_platform.backend.db import fetch_rows
+from ai_platform.trader_override import trader_override_queries as toq
 
 router = APIRouter(prefix="/api/trader-override", tags=["trader-override"])
 
@@ -45,7 +45,7 @@ async def _run(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     ------
     HTTPException
         502 when the database cannot be reached or queried -- most commonly
-        because ``infra/sql/trader_override_setup.sql`` has not been applied
+        because ``ai_platform/trader_override/trader_override_setup.sql`` has not been applied
         to this database yet.
     """
     try:

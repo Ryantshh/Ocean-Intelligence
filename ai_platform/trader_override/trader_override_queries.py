@@ -1,7 +1,7 @@
 """Parameterised SQL for the Trader Status Override endpoints.
 
 Reads/writes ``public.vessel_status_overrides`` (see
-``infra/sql/trader_override_setup.sql``, which must be applied to the
+``ai_platform/trader_override/trader_override_setup.sql``, which must be applied to the
 database once before these queries will resolve) plus ``public.tonnage_test``
 directly, read-only, for the vessel picker.
 
@@ -165,7 +165,7 @@ def insert_override_sql(
     """Record one trader-entered override.
 
     Append-only -- never updates or deletes an existing row, so this is
-    always an INSERT. See ``infra/sql/trader_override_setup.sql`` for why:
+    always an INSERT. See ``ai_platform/trader_override/trader_override_setup.sql`` for why:
     a vessel's "current" override is just its latest row by ``created_at``,
     and the full row history doubles as the audit trail.
 
