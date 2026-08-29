@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ocean Intelligence</title>
+    <link rel="icon" href="/chat/public/favicon.svg" />
+    <script>
+      // Applied before the stylesheet paints, so a saved manual choice
+      // doesn't flash the OS-preferred theme first. No saved choice falls
+      // through to the @media (prefers-color-scheme) rules below.
+      (function () {
+        var saved = localStorage.getItem("theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.setAttribute("data-theme", saved);
+        }
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #0d0d0d;
+        --muted: #5c5c5c;
+        --card: #f6f7f8;
+        --border: #e3e5e8;
+        --accent: #0f766e;
+        --stale: #b91c1c;
+        --success: #0f766e;
+        --bg-glow-2: #123b4d;
+        /* Per-field tag colors for the override diff (Current Record / New
+           Record / the form input itself all share the same color per
+           field). This is the dataviz skill's validated 8-slot categorical
+           palette in its own proven-safe adjacency order -- re-ordering it
+           to match specific fields was tried and broke colorblind
+           separation (checked with the skill's validator), so fields are
+           assigned in this fixed slot order rather than by field name. */
+        --tag-status: #2a78d6;
+        --tag-open-area: #eb6834;
+        --tag-region: #1baf7a;
+        --tag-destination: #eda100;
+        --tag-ballast: #e87ba4;
+        --tag-eta: #008300;
+        --tag-open-start: #4a3aa7;
+        --tag-open-end: #e34948;
+      }
+      /* Dark values are declared twice: the media query covers the OS
+         setting, the [data-theme="dark"] scope covers the manual toggle --
+         which must win over OS-light, hence :not([data-theme="light"])
+         letting an explicit light choice beat OS-dark too. */
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #212121;
+          --fg: #ededed;
+          --muted: #b4b4b4;
+          --card: #2f2f2f;
+          --border: #424242;
+          --accent: #2dd4bf;
+          --stale: #f87171;
+          --success: #2dd4bf;
+          --bg-glow-2: #0f766e;
+          --tag-status: #3987e5;
+          --tag-open-area: #d95926;
+          --tag-region: #199e70;
+          --tag-destination: #c98500;
+          --tag-ballast: #d55181;
+          --tag-eta: #008300;
+          --tag-open-start: #9085e9;
+          --tag-open-end: #e66767;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #212121;
+        --fg: #ededed;
+        --muted: #b4b4b4;
+        --card: #2f2f2f;
+        --border: #424242;
+        --accent: #2dd4bf;
+        --stale: #f87171;
+        --success: #2dd4bf;
+        --bg-glow-2: #0f766e;
+        --tag-status: #3987e5;
+        --tag-open-area: #d95926;
+        --tag-region: #199e70;
+        --tag-destination: #c98500;
+        --tag-ballast: #d55181;
+        --tag-eta: #008300;
+        --tag-open-start: #9085e9;
+        --tag-open-end: #e66767;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(1100px 550px at 10% -8%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%),
+          radial-gradient(900px 500px at 100% 0%, color-mix(in srgb, var(--bg-glow-2) 9%, transparent), transparent 55%),
+          var(--bg);
+        background-attachment: fixed;
+        color: var(--fg);
+        font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 96rem; margin: 0 auto; padding: 2rem 2rem 5rem; }
+
+      /* ---- hero header ---------------------------------------------------
+         A fixed dark gradient band, independent of the light/dark toggle --
+         same reasoning many dashboards use a distinct nav/hero treatment
+         regardless of body theme. CSS-only (radial highlights, no image
+         asset), so nothing external to fetch or embed. */
+      header {
+        position: relative; overflow: hidden; border-radius: 1.1rem;
+        padding: 2.25rem 2rem; margin-bottom: 1.75rem;
+        background: linear-gradient(135deg, #0a1e2b 0%, #123b4d 48%, #0f766e 100%);
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+      }
+      header::after {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background:
+          radial-gradient(circle at 15% 20%, rgba(255,255,255,0.10), transparent 55%),
+          radial-gradient(circle at 85% 85%, rgba(0,0,0,0.28), transparent 60%);
+      }
+      header > * { position: relative; z-index: 1; }
+      header h1 { color: #fff; }
+      header p.sub { color: rgba(255,255,255,0.72); margin: 0.3rem 0 0; }
+      h1 { font-size: 1.75rem; margin: 0; letter-spacing: -0.01em; font-weight: 700; }
+      h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
+      p.sub { color: var(--muted); margin: 0.25rem 0 2rem; }
+      a.cta {
+        display: inline-block; padding: 0.6rem 1.1rem; border-radius: 0.6rem;
+        background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
+      }
+      .header-actions { display: flex; align-items: center; gap: 0.6rem; }
+      /* Fixed light-on-dark styling, independent of the page's own toggle --
+         the hero itself is always dark, so --card/--border (which flip with
+         the toggle) would mismatch it in light mode. */
+      .theme-toggle {
+        width: 2.25rem; height: 2.25rem; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 0.625rem; border: 1px solid rgba(255,255,255,0.28);
+        background: rgba(255,255,255,0.12); color: #fff; cursor: pointer;
+      }
+      .theme-toggle:hover { background: rgba(255,255,255,0.2); }
+      .theme-toggle svg { display: block; }
+      .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
+      .tile {
+        background: var(--card); border: 1px solid var(--border); border-radius: 0.9rem; padding: 1.25rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      }
+      .tile .label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+      .tile .value { font-size: 2.1rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 0.35rem; }
+      .env { font-size: 0.8rem; color: var(--muted); margin-top: 1.5rem; }
+      .env code { background: var(--card); border: 1px solid var(--border); padding: 0.1rem 0.4rem; border-radius: 0.35rem; }
+      .error { color: var(--stale); }
+      .muted { color: var(--muted); }
+
+      /* ---- tab navigation --------------------------------------------- */
+      .tabs { display: flex; gap: 0.3rem; margin: 0 0 2rem; padding: 0.3rem; background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; width: fit-content; }
+      .tab-btn {
+        font: inherit; font-size: 0.88rem; font-weight: 600; padding: 0.5rem 1rem;
+        border: none; border-radius: 0.55rem; background: none; color: var(--muted); cursor: pointer; transition: background-color 0.12s ease, color 0.12s ease;
+      }
+      .tab-btn:hover { color: var(--fg); }
+      .tab-btn.active { color: #fff; background: var(--accent); }
+      .tab-panel.hidden { display: none; }
+
+      /* ---- trader override form ---------------------------------------- */
+      .override-layout { display: grid; gap: 2rem; grid-template-columns: minmax(22rem, 30rem) 1fr; align-items: start; }
+      @media (max-width: 64rem) { .override-layout { grid-template-columns: 1fr; } }
+      /* Grid items default to min-width: auto, so a wide unwrapped table
+         forces its whole grid column (and the page) to grow instead of
+         scrolling within .table-wrap. min-width: 0 here is what actually
+         makes overflow-x: auto below contain the scroll to the table. */
+      .override-layout > div { min-width: 0; }
+      form.override-form {
+        display: grid; gap: 0.9rem; background: var(--card); border: 1px solid var(--border);
+        border-radius: 1rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      }
+      form.override-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 500; }
+      form.override-form select, form.override-form input, form.override-form textarea {
+        font: inherit; font-size: 0.9rem; padding: 0.55rem 0.65rem; border-radius: 0.55rem;
+        border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+        transition: border-color 0.12s ease, box-shadow 0.12s ease;
+      }
+      form.override-form select:focus, form.override-form input:focus, form.override-form textarea:focus {
+        outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+      }
+      form.override-form textarea { resize: vertical; min-height: 4rem; }
+      form.override-form button {
+        font: inherit; font-size: 0.92rem; font-weight: 600; padding: 0.7rem 1rem; border-radius: 0.65rem;
+        border: none; background: var(--accent); color: #fff; cursor: pointer; transition: filter 0.12s ease;
+      }
+      form.override-form button:hover:not(:disabled) { filter: brightness(1.08); }
+      form.override-form button:disabled { opacity: 0.6; cursor: default; }
+      .form-message { font-size: 0.85rem; padding: 0.5rem 0.7rem; border-radius: 0.5rem; display: none; }
+      .form-message.visible { display: block; }
+      .form-message.success { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+      .form-message.error { color: var(--stale); background: color-mix(in srgb, var(--stale) 14%, transparent); }
+      .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+      .field-required::after { content: " *"; color: var(--stale); }
+      .form-section-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0.4rem 0 -0.2rem; }
+      /* ---- current/new record tables -------------------------------------- */
+      .record-empty { color: var(--muted); font-size: 0.88rem; padding: 1rem; }
+      td.value-unavailable { color: var(--muted); font-style: italic; }
+      /* Each overridable field carries its own persistent color (set via the
+         --tag-color custom property on the specific td/input, from
+         RECORD_COLUMNS.colorVar) so the same field reads as the same color
+         across the form input, Current Record, and New Record. */
+      td.diff-cell { background: color-mix(in srgb, var(--tag-color, var(--stale)) 22%, transparent); font-weight: 600; }
+      form.override-form .field-changed {
+        border-color: var(--tag-color, var(--stale)) !important;
+        background: color-mix(in srgb, var(--tag-color, var(--stale)) 12%, var(--bg)) !important;
+      }
+      #currentRecordTable tbody tr:first-child td { font-weight: 600; }
+      .record-section-gap { margin-top: 1.75rem; }
+      /* Current Record shows every reported position for a vessel -- can run
+         to dozens of rows -- so it's height-capped to roughly 5 rows with
+         its own scrollbar (per explicit request) rather than growing the
+         page indefinitely. The header stays pinned while scrolling so
+         column labels are never lost. */
+      .table-wrap.scroll-capped { max-height: 28rem; overflow-y: auto; }
+      .table-wrap.scroll-capped thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
+
+      /* width: max-content (not 100%) lets a table grow past its wrapper
+         when columns don't fit -- combined with nowrap cells below, that's
+         what makes .table-wrap's overflow-x actually kick in as a
+         horizontal scrollbar instead of every column being squeezed and
+         wrapping into multi-line cells with mismatched row heights. */
+      .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.9rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+      table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+      thead th {
+        text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em;
+        color: var(--muted); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+        padding: 0.5rem 0.6rem; white-space: nowrap;
+      }
+      tbody td {
+        padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+        vertical-align: top; white-space: nowrap; max-width: 16rem; overflow: hidden; text-overflow: ellipsis;
+      }
+      thead th:last-child, tbody td:last-child { border-right: none; }
+      tbody tr:last-child td { border-bottom: none; }
+      .badge {
+        display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px;
+        font-size: 0.72rem; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+        background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
+      }
+
+      /* ---- vessel combobox (type-to-filter, no framework) ---------------- */
+      .combobox { position: relative; }
+      .combobox-list {
+        list-style: none; margin: 0.25rem 0 0; padding: 0.25rem; position: absolute; z-index: 10;
+        top: 100%; left: 0; right: 0; max-height: 14rem; overflow-y: auto;
+        background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+      }
+      .combobox-list.hidden { display: none; }
+      .combobox-option {
+        padding: 0.4rem 0.55rem; border-radius: 0.4rem; cursor: pointer; font-size: 0.88rem;
+        display: flex; justify-content: space-between; gap: 0.5rem;
+      }
+      .combobox-option .status { color: var(--muted); font-size: 0.78rem; }
+      .combobox-option:hover, .combobox-option.active { background: var(--card); }
+      .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Ocean Intelligence</h1>
+          <p class="sub" id="pageSub">Chat persistence overview</p>
+        </div>
+        <div class="header-actions">
+          <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
+          <a class="cta" href="/chat">Open chat</a>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <button type="button" class="tab-btn active" data-tab="overview">Overview</button>
+        <button type="button" class="tab-btn" data-tab="overrides">Trader Overrides</button>
+      </nav>
+
+      <section id="tab-overview" class="tab-panel">
+        <div class="grid" id="tiles"></div>
+        <p class="env" id="env"></p>
+      </section>
+
+      <section id="tab-overrides" class="tab-panel hidden">
+        <div class="override-layout">
+          <div>
+            <h2>Enter a Status Override</h2>
+            <p class="sub" style="margin-bottom:1rem;">
+              Record what you've heard privately (broker, chat) before it appears in
+              Shipfix. Saved immediately and shown in the audit trail below. Only
+              Vessel, Status, and Entered by are required &mdash; fill in whatever
+              else you actually have fresh word on.
+            </p>
+            <form class="override-form" id="overrideForm">
+              <label class="field-required">Vessel
+                <div class="combobox" id="ovVesselCombobox">
+                  <input
+                    type="text" id="ovVesselInput" placeholder="Type to search a vessel&hellip;"
+                    autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                    aria-controls="ovVesselList" required
+                  />
+                  <input type="hidden" id="ovVessel" />
+                  <ul class="combobox-list hidden" id="ovVesselList" role="listbox"></ul>
+                </div>
+              </label>
+              <label class="field-required">Status
+                <select id="ovStatus" required>
+                  <option value="" disabled selected>Select a status</option>
+                </select>
+              </label>
+
+              <p class="form-section-label">Optional &mdash; only if you have fresh word on it</p>
+              <div class="field-row">
+                <label>Open area
+                  <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
+                </label>
+                <label>Region
+                  <input id="ovParentZone" type="text" maxlength="120" placeholder="e.g. Far East" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Destination
+                  <input id="ovDestination" type="text" maxlength="120" placeholder="e.g. Qingdao" />
+                </label>
+                <label>Ballast / Laden
+                  <select id="ovBallastLaden">
+                    <option value="">&mdash;</option>
+                    <option value="BALLAST">Ballast</option>
+                    <option value="LADEN">Laden</option>
+                  </select>
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Open date start
+                  <input id="ovOpenDateStart" type="date" />
+                </label>
+                <label>Open date end
+                  <input id="ovOpenDateEnd" type="date" />
+                </label>
+              </div>
+              <label>ETA
+                <input id="ovEta" type="date" />
+              </label>
+
+              <p class="form-section-label">Attribution</p>
+              <label class="field-required">Entered by
+                <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
+              </label>
+              <label>Note (optional)
+                <textarea id="ovNote" maxlength="500" placeholder="Context, source, anything worth recording"></textarea>
+              </label>
+              <button type="submit" id="ovSubmit">Submit Override</button>
+              <div class="form-message" id="ovMessage"></div>
+            </form>
+          </div>
+
+          <div>
+            <h2>Current Record</h2>
+            <p class="sub" style="margin-bottom:0.5rem;">
+              Every reported position on file for the selected vessel, newest first &mdash;
+              a vessel_id is not unique in the source data, so this is its full history,
+              not a single row.
+            </p>
+            <div class="table-wrap scroll-capped"><table id="currentRecordTable">
+              <thead><tr></tr></thead>
+              <tbody><tr><td class="record-empty">Select a vessel to see its current record.</td></tr></tbody>
+            </table></div>
+            <p class="sub" style="margin:0.4rem 0 0; font-size:0.78rem;" id="currentRecordCount"></p>
+
+            <div class="record-section-gap">
+              <h2>New Record</h2>
+              <p class="sub" style="margin-bottom:0.75rem;">
+                What the latest row will look like once this override is saved &mdash;
+                updates live as you fill in the form.
+              </p>
+              <div class="table-wrap"><table id="newRecordTable">
+                <thead><tr></tr></thead>
+                <tbody><tr><td class="record-empty">Select a vessel first.</td></tr></tbody>
+              </table></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:2.5rem;">
+          <h2>Audit Trail</h2>
+          <p class="sub" style="margin:0.15rem 0 0.75rem;">Every override ever submitted, newest first.</p>
+        </div>
+        <div class="table-wrap"><table id="auditTable">
+          <thead><tr>
+            <th>Vessel</th><th>Status</th><th>Open area</th><th>Region</th><th>Destination</th>
+            <th>Ballast/Laden</th><th>ETA</th><th>Open window</th><th>Entered by</th><th>Note</th><th>When</th>
+          </tr></thead>
+          <tbody><tr><td colspan="11" class="muted">Loading&hellip;</td></tr></tbody>
+        </table></div>
+      </section>
+    </main>
+
+    <script>
+      // ---- theme toggle ---------------------------------------------------
+      // Icon-only, sun/moon: the icon shown is the mode a click switches TO
+      // (sun while dark, so clicking it goes light; moon while light).
+      const SUN_ICON =
+        '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="4"></circle>' +
+        '<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>' +
+        "</svg>";
+      const MOON_ICON =
+        '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"></path>' +
+        "</svg>";
+
+      function currentTheme() {
+        const explicit = document.documentElement.getAttribute("data-theme");
+        if (explicit === "light" || explicit === "dark") return explicit;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+
+      function updateThemeButton() {
+        const btn = document.getElementById("themeToggleBtn");
+        if (currentTheme() === "dark") {
+          btn.innerHTML = SUN_ICON;
+          btn.setAttribute("aria-label", "Switch to light mode");
+          btn.title = "Switch to light mode";
+        } else {
+          btn.innerHTML = MOON_ICON;
+          btn.setAttribute("aria-label", "Switch to dark mode");
+          btn.title = "Switch to dark mode";
+        }
+      }
+
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem("theme", theme);
+        updateThemeButton();
+      }
+
+      document.getElementById("themeToggleBtn").addEventListener("click", () => {
+        applyTheme(currentTheme() === "dark" ? "light" : "dark");
+      });
+      updateThemeButton();
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (ch) => (
+          { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+        ));
+      }
+
+      function formatDate(value) {
+        if (!value) return "—";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return escapeHtml(value);
+        return d.toLocaleString(undefined, {
+          year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+        });
+      }
+
+      async function getJson(path) {
+        const response = await fetch(path);
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || `HTTP ${response.status}`);
+        }
+        return response.json();
+      }
+
+      async function postJson(path, payload) {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          let detail = body.detail || `HTTP ${response.status}`;
+          // FastAPI/Pydantic validation errors arrive as a list of {msg, loc}.
+          if (Array.isArray(detail)) {
+            detail = detail.map((e) => e.msg || JSON.stringify(e)).join("; ");
+          }
+          throw new Error(detail);
+        }
+        return body;
+      }
+
+      // ---- tab navigation -----------------------------------------------
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+          document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+          btn.classList.add("active");
+          document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
+          document.getElementById("pageSub").textContent =
+            btn.dataset.tab === "overview" ? "Chat persistence overview" : "Manual vessel status entry";
+        });
+      });
+
+      // ---- overview tab ---------------------------------------------------
+      const TILES = [
+        ["users", "Users"],
+        ["threads", "Threads"],
+        ["steps", "Steps"],
+        ["feedbacks", "Feedback"],
+      ];
+
+      async function loadOverview() {
+        const tiles = document.getElementById("tiles");
+        const env = document.getElementById("env");
+        try {
+          const data = await getJson("/api/stats");
+          tiles.innerHTML = TILES.map(
+            ([key, label]) =>
+              `<div class="tile"><div class="label">${label}</div><div class="value">${data.counts[key]}</div></div>`
+          ).join("");
+          env.innerHTML = `Environment schema <code>${escapeHtml(data.schema)}</code>`;
+        } catch (error) {
+          env.innerHTML = `<span class="error">Could not load stats: ${escapeHtml(error.message)}</span>`;
+        }
+      }
+
+      // ---- trader status override tab ------------------------------------
+      const OVERRIDE_STATUSES = [
+        "AVAILABLE", "ON SUBS", "FIXED", "FAILED", "CANCELLED", "POSS FIXED",
+        "PROGRAM", "CONTRACT", "RELET", "BALLAST FIXED", "DO NOT COUNT", "WATCHLIST",
+      ];
+
+      function populateStatusOptions() {
+        const select = document.getElementById("ovStatus");
+        select.innerHTML =
+          '<option value="" disabled selected>Select a status</option>' +
+          OVERRIDE_STATUSES.map((s) => `<option value="${s}">${escapeHtml(s)}</option>`).join("");
+      }
+
+      // ---- vessel combobox: type-to-filter over a client-side cache -------
+      // Populated once from /api/trader-override/vessels (a few hundred to a
+      // few thousand rows, well within what a client-side substring filter
+      // can handle instantly) rather than a <select> the trader would have
+      // to scroll through, or a per-keystroke server request.
+      const VESSEL_SUGGESTION_LIMIT = 30;
+      let vesselsCache = [];
+      let vesselActiveIndex = -1;
+
+      const vesselInput = () => document.getElementById("ovVesselInput");
+      const vesselHidden = () => document.getElementById("ovVessel");
+      const vesselList = () => document.getElementById("ovVesselList");
+
+      function vesselLabel(v) {
+        return v.commercial_status ? `${v.vessel_id} — ${v.commercial_status}` : v.vessel_id;
+      }
+
+      function closeVesselList() {
+        vesselList().classList.add("hidden");
+        vesselInput().setAttribute("aria-expanded", "false");
+        vesselActiveIndex = -1;
+      }
+
+      function selectVessel(v) {
+        vesselHidden().value = v.vessel_id;
+        vesselInput().value = vesselLabel(v);
+        closeVesselList();
+        loadRecordPanel(v.vessel_id);
+      }
+
+      // ---- current record / new record: real tables (columns = fields,
+      // rows = reported positions), live-diffed against the form as the
+      // trader types. vessel_id is NOT unique in tonnage_test -- it's a
+      // position-report log (see trader_override_queries.vessel_history_sql),
+      // so Current Record shows every row on file for the vessel, newest
+      // first, not just one. Only the newest (first) row is compared
+      // against the form -- older rows are history/context only. Only
+      // columns with overridable:true ever get diff-highlighted or take a
+      // form value in New Record -- context-only columns (AIS status, DWT,
+      // ship type/size, order id) pass through unchanged.
+      const dateOnly = (value) => (value ? String(value).slice(0, 10) : "");
+
+      // A null commercial_status means unfixed/available -- same convention
+      // ai_platform/backend/tables/tonnage.py's DISPLAY_DEFAULTS uses --
+      // so the diff doesn't flag "AVAILABLE" as a change against a vessel
+      // that simply has no commercial_status on file yet.
+      const normalizeStatus = (value) => value || "AVAILABLE";
+
+      const RECORD_COLUMNS = [
+        { key: "update_date", label: "Updated", fmt: formatDate },
+        { key: "commercial_status", label: "Commercial status", overridable: true, inputId: "ovStatus",
+          colorVar: "--tag-status",
+          formValue: () => document.getElementById("ovStatus").value || null,
+          normalize: normalizeStatus },
+        { key: "open_area", label: "Open area", overridable: true, inputId: "ovOpenArea",
+          colorVar: "--tag-open-area",
+          formValue: () => document.getElementById("ovOpenArea").value.trim() || null },
+        { key: "parent_zone", label: "Region", overridable: true, inputId: "ovParentZone",
+          colorVar: "--tag-region",
+          formValue: () => document.getElementById("ovParentZone").value.trim() || null },
+        { key: "destination", label: "Destination", overridable: true, inputId: "ovDestination",
+          colorVar: "--tag-destination",
+          formValue: () => document.getElementById("ovDestination").value.trim() || null },
+        { key: "ballast_laden", label: "Ballast/Laden", overridable: true, inputId: "ovBallastLaden",
+          colorVar: "--tag-ballast",
+          formValue: () => document.getElementById("ovBallastLaden").value || null },
+        { key: "eta", label: "ETA", overridable: true, fmt: formatDate, inputId: "ovEta",
+          colorVar: "--tag-eta",
+          formValue: () => document.getElementById("ovEta").value || null,
+          normalize: dateOnly, formIsDateOnly: true },
+        { key: "open_date_start", label: "Open start", overridable: true, fmt: formatDate, inputId: "ovOpenDateStart",
+          colorVar: "--tag-open-start",
+          formValue: () => document.getElementById("ovOpenDateStart").value || null,
+          normalize: dateOnly, formIsDateOnly: true },
+        { key: "open_date_end", label: "Open end", overridable: true, fmt: formatDate, inputId: "ovOpenDateEnd",
+          colorVar: "--tag-open-end",
+          formValue: () => document.getElementById("ovOpenDateEnd").value || null,
+          normalize: dateOnly, formIsDateOnly: true },
+        { key: "vessel_status", label: "AIS status" },
+        { key: "dwt", label: "DWT" },
+        { key: "ship_type", label: "Ship type" },
+        { key: "ship_size", label: "Ship size" },
+        { key: "order_id", label: "Order ID" },
+      ];
+
+      let currentRecords = null; // array, newest first; null = nothing loaded
+
+      function renderTableHeaders() {
+        const headerHtml = RECORD_COLUMNS.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+        document.querySelector("#currentRecordTable thead tr").innerHTML = headerHtml;
+        document.querySelector("#newRecordTable thead tr").innerHTML = headerHtml;
+      }
+
+      function displayValue(raw, fmt, changed, colorVar) {
+        const classes = [raw === null || raw === undefined || raw === "" ? "value-unavailable" : "", changed ? "diff-cell" : ""]
+          .filter(Boolean).join(" ");
+        const classAttr = classes ? ` class="${classes}"` : "";
+        const styleAttr = changed && colorVar ? ` style="--tag-color:var(${colorVar})"` : "";
+        const content = raw === null || raw === undefined || raw === "" ? "not on file" : escapeHtml(fmt ? fmt(raw) : raw);
+        return `<td${classAttr}${styleAttr}>${content}</td>`;
+      }
+
+      function isFieldChanged(column, raw) {
+        const formValue = column.formValue();
+        if (formValue === null) return false; // trader hasn't touched this field
+        const normalize = column.normalize || ((v) => v || "");
+        return normalize(formValue) !== normalize(raw);
+      }
+
+      function renderRecordTables() {
+        const currentBody = document.querySelector("#currentRecordTable tbody");
+        const newBody = document.querySelector("#newRecordTable tbody");
+        const colCount = RECORD_COLUMNS.length;
+
+        const countLabel = document.getElementById("currentRecordCount");
+        if (!currentRecords || !currentRecords.length) {
+          currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select a vessel to see its current record.</td></tr>`;
+          newBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select a vessel first.</td></tr>`;
+          countLabel.textContent = "";
+          RECORD_COLUMNS.forEach((column) => {
+            if (column.inputId) document.getElementById(column.inputId).classList.remove("field-changed");
+          });
+          return;
+        }
+        countLabel.textContent = currentRecords.length > 5
+          ? `${currentRecords.length} reported positions on file — showing the latest 5, scroll for older ones.`
+          : `${currentRecords.length} reported position${currentRecords.length === 1 ? "" : "s"} on file.`;
+
+        // Current Record: every reported row, newest first -- only the
+        // first (newest) row is diffed against the form. The matching form
+        // control also gets flagged (.field-changed) so a changed field is
+        // visible in three places at once: the input itself, its Current
+        // Record cell, and its New Record cell.
+        currentBody.innerHTML = currentRecords.map((record, index) => {
+          const isLatest = index === 0;
+          const cells = RECORD_COLUMNS.map((column) => {
+            const raw = record[column.key];
+            const changed = isLatest && column.overridable && isFieldChanged(column, raw);
+            if (isLatest && column.inputId) {
+              const input = document.getElementById(column.inputId);
+              input.classList.toggle("field-changed", changed);
+              input.style.setProperty("--tag-color", `var(${column.colorVar})`);
+            }
+            return displayValue(raw, column.fmt, changed, column.colorVar);
+          }).join("");
+          return `<tr>${cells}</tr>`;
+        }).join("");
+
+        // New Record: one row -- the newest report merged with whatever
+        // the trader has typed so far.
+        const latest = currentRecords[0];
+        const newCells = RECORD_COLUMNS.map((column) => {
+          const raw = latest[column.key];
+          const changed = column.overridable && isFieldChanged(column, raw);
+          const effective = changed ? column.formValue() : raw;
+          // A changed date column's effective value is a bare "YYYY-MM-DD"
+          // from the <input type=date>, not a timestamp -- formatDate()
+          // would otherwise mangle it, so it's shown as-is.
+          const fmt = column.formIsDateOnly && changed ? null : column.fmt;
+          return displayValue(effective, fmt, changed, column.colorVar);
+        }).join("");
+        newBody.innerHTML = `<tr>${newCells}</tr>`;
+      }
+
+      async function loadRecordPanel(vesselId) {
+        const currentBody = document.querySelector("#currentRecordTable tbody");
+        const newBody = document.querySelector("#newRecordTable tbody");
+        const colCount = RECORD_COLUMNS.length;
+        currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Loading&hellip;</td></tr>`;
+        newBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Loading&hellip;</td></tr>`;
+        document.getElementById("currentRecordCount").textContent = "";
+        try {
+          currentRecords = await getJson(`/api/trader-override/vessels/${encodeURIComponent(vesselId)}`);
+          renderRecordTables();
+        } catch (error) {
+          currentRecords = null;
+          const msg = `<tr><td class="error" colspan="${colCount}">Could not load current record: ${escapeHtml(error.message)}</td></tr>`;
+          currentBody.innerHTML = msg;
+          newBody.innerHTML = msg;
+        }
+      }
+
+      function renderVesselSuggestions(query) {
+        const list = vesselList();
+        const q = query.trim().toLowerCase();
+        const matches = (q ? vesselsCache.filter((v) => v.vessel_id.toLowerCase().includes(q)) : vesselsCache)
+          .slice(0, VESSEL_SUGGESTION_LIMIT);
+
+        vesselActiveIndex = -1;
+        if (!matches.length) {
+          list.innerHTML = `<li class="combobox-empty">No vessels match "${escapeHtml(query)}"</li>`;
+        } else {
+          list.innerHTML = matches.map((v, i) => `
+            <li class="combobox-option" role="option" data-index="${i}">
+              <span>${escapeHtml(v.vessel_id)}</span>
+              ${v.commercial_status ? `<span class="status">${escapeHtml(v.commercial_status)}</span>` : ""}
+            </li>
+          `).join("");
+          list.querySelectorAll(".combobox-option").forEach((el, i) => {
+            el.addEventListener("mousedown", (event) => {
+              // mousedown (not click) fires before the input's blur handler,
+              // so the list is still in the DOM when the selection is read.
+              event.preventDefault();
+              selectVessel(matches[i]);
+            });
+          });
+        }
+        list.classList.remove("hidden");
+        vesselInput().setAttribute("aria-expanded", "true");
+        list.dataset.matchCount = String(matches.length);
+        list._matches = matches;
+      }
+
+      function moveVesselActive(delta) {
+        const list = vesselList();
+        const options = list.querySelectorAll(".combobox-option");
+        if (!options.length) return;
+        vesselActiveIndex = (vesselActiveIndex + delta + options.length) % options.length;
+        options.forEach((el, i) => el.classList.toggle("active", i === vesselActiveIndex));
+        options[vesselActiveIndex].scrollIntoView({ block: "nearest" });
+      }
+
+      vesselInput().addEventListener("input", () => {
+        // Typing invalidates whatever was previously selected -- only a
+        // click or Enter on a suggestion below sets ovVessel again, so the
+        // form can never submit a vessel_id that doesn't match the visible text.
+        vesselHidden().value = "";
+        renderVesselSuggestions(vesselInput().value);
+      });
+      vesselInput().addEventListener("focus", () => {
+        // If a vessel is already selected, the input shows its full
+        // "id — status" label, not something meant to be searched against --
+        // re-focusing should browse the whole list, not filter by that label
+        // and come back empty.
+        const query = vesselHidden().value ? "" : vesselInput().value;
+        renderVesselSuggestions(query);
+      });
+      vesselInput().addEventListener("blur", closeVesselList);
+      vesselInput().addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (vesselList().classList.contains("hidden")) renderVesselSuggestions(vesselInput().value);
+          moveVesselActive(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveVesselActive(-1);
+        } else if (event.key === "Enter") {
+          if (vesselActiveIndex >= 0 && vesselList()._matches) {
+            event.preventDefault();
+            selectVessel(vesselList()._matches[vesselActiveIndex]);
+          }
+        } else if (event.key === "Escape") {
+          closeVesselList();
+        }
+      });
+
+      // Live diff: any change to an overridable field re-renders both
+      // record tables so the highlight/New Record value stays in sync as
+      // the trader types, without waiting for form submission.
+      ["ovStatus", "ovOpenArea", "ovParentZone", "ovDestination", "ovBallastLaden",
+       "ovEta", "ovOpenDateStart", "ovOpenDateEnd"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", renderRecordTables);
+        document.getElementById(id).addEventListener("change", renderRecordTables);
+      });
+
+      async function loadVesselOptions() {
+        try {
+          vesselsCache = await getJson("/api/trader-override/vessels");
+          vesselInput().placeholder = vesselsCache.length
+            ? "Type to search a vessel…"
+            : "No vessels available";
+        } catch (error) {
+          vesselInput().placeholder = "Could not load vessels";
+        }
+      }
+
+      function openWindow(row) {
+        if (!row.open_date_start && !row.open_date_end) return "—";
+        return `${formatDate(row.open_date_start)} – ${formatDate(row.open_date_end)}`;
+      }
+
+      function auditRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.vessel_id)}</td>
+            <td><span class="badge">${escapeHtml(row.override_status)}</span></td>
+            <td>${escapeHtml(row.open_area || "—")}</td>
+            <td>${escapeHtml(row.parent_zone || "—")}</td>
+            <td>${escapeHtml(row.destination || "—")}</td>
+            <td>${escapeHtml(row.ballast_laden || "—")}</td>
+            <td>${formatDate(row.eta)}</td>
+            <td>${openWindow(row)}</td>
+            <td>${escapeHtml(row.entered_by)}</td>
+            <td>${escapeHtml(row.note || "—")}</td>
+            <td>${formatDate(row.created_at)}</td>
+          </tr>
+        `;
+      }
+
+      async function loadAudit() {
+        const tbody = document.querySelector("#auditTable tbody");
+        try {
+          const rows = await getJson("/api/trader-override/audit");
+          tbody.innerHTML = rows.length
+            ? rows.map(auditRow).join("")
+            : '<tr><td colspan="11" class="muted">No overrides submitted yet.</td></tr>';
+        } catch (error) {
+          tbody.innerHTML = `<tr><td colspan="11" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+        }
+      }
+
+      function showFormMessage(kind, text) {
+        const el = document.getElementById("ovMessage");
+        el.className = `form-message visible ${kind}`;
+        el.textContent = text;
+      }
+
+      document.getElementById("overrideForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const submitBtn = document.getElementById("ovSubmit");
+        const vesselId = document.getElementById("ovVessel").value;
+        const overrideStatus = document.getElementById("ovStatus").value;
+        const enteredBy = document.getElementById("ovEnteredBy").value.trim();
+        const note = document.getElementById("ovNote").value.trim();
+        const openArea = document.getElementById("ovOpenArea").value.trim();
+        const parentZone = document.getElementById("ovParentZone").value.trim();
+        const destination = document.getElementById("ovDestination").value.trim();
+        const ballastLaden = document.getElementById("ovBallastLaden").value;
+        const openDateStart = document.getElementById("ovOpenDateStart").value;
+        const openDateEnd = document.getElementById("ovOpenDateEnd").value;
+        const eta = document.getElementById("ovEta").value;
+
+        if (!vesselId) {
+          showFormMessage("error", "Select a vessel from the list.");
+          vesselInput().focus();
+          return;
+        }
+        if (!overrideStatus || !enteredBy) {
+          showFormMessage("error", "Status and Entered by are required.");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        try {
+          await postJson("/api/trader-override", {
+            vessel_id: vesselId,
+            override_status: overrideStatus,
+            entered_by: enteredBy,
+            note: note || null,
+            open_area: openArea || null,
+            parent_zone: parentZone || null,
+            destination: destination || null,
+            ballast_laden: ballastLaden || null,
+            open_date_start: openDateStart || null,
+            open_date_end: openDateEnd || null,
+            eta: eta || null,
+          });
+          showFormMessage("success", `Override saved for ${vesselId}.`);
+          document.getElementById("overrideForm").reset();
+          // form.reset() doesn't clear a hidden input's value in Chromium/Firefox,
+          // so the combobox's selection has to be cleared explicitly here too.
+          vesselHidden().value = "";
+          currentRecords = null;
+          renderRecordTables();
+          populateStatusOptions();
+          await loadAudit();
+        } catch (error) {
+          showFormMessage("error", `Could not save override: ${error.message}`);
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      // ---- init -----------------------------------------------------------
+      loadOverview();
+      populateStatusOptions();
+      renderTableHeaders();
+      renderRecordTables();
+      loadVesselOptions();
+      loadAudit();
+    </script>
+  </body>
+</html>

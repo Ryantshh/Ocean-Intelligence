@@ -62,7 +62,13 @@ updated, and cargo weight.
 Just ask in plain language and I will take it from there."""
 
 AGENT_STARTER_PROMPTS = (
-    "Vessels open in December 2025 in ballast",
+    "Show me today's cargo list in West Aussie",
+    "Show me the latest C3 iron ore orders",
+    "What orders are loading in ECSA?",
+    "Show me orders from PDM to North China",
+    "Show me today's tonnage list open in the Pacific",
+    "Show me the ECSA ballasters",
+    "Show me the WAF openers",
     "Vessels of at least 180,000 dwt open in January 2026",
     "Cargoes with laycan in November 2025 over 150,000 tonnes",
 )
