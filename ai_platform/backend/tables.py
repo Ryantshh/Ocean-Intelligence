@@ -444,3 +444,33 @@ class OrderSearch(OrderFilters, OrderTerms):
 
 class VesselSearch(VesselFilters, VesselTerms):
     """Every vessel search field in one flat object."""
+
+
+TABLES: dict[str, TableSpec] = {"orders": ORDERS, "tonnage": TONNAGE}
+"""Specs by the name the search tools use."""
+
+
+def resolve_table(target: str) -> TableSpec:
+    """Look up a spec by table name.
+
+    Parameters
+    ----------
+    target : str
+        ``orders`` or ``tonnage``.
+
+    Returns
+    -------
+    TableSpec
+        That table's spec.
+
+    Raises
+    ------
+    ValueError
+        If the target is not a known table.
+    """
+    try:
+        return TABLES[target]
+    except KeyError:
+        raise ValueError(
+            f"Unknown target table {target!r}. Expected one of {tuple(TABLES)}."
+        ) from None

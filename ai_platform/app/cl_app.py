@@ -23,8 +23,8 @@ from ai_platform.backend.context import (
     history_tokens,
     usable_tokens,
 )
-from ai_platform.backend.extraction import resolve_table
 from ai_platform.backend.llm import stream_chat
+from ai_platform.backend.tables import resolve_table
 
 __all__ = ["get_data_layer"]
 
@@ -35,7 +35,6 @@ PLAIN_MODEL_PROFILE = "plain-model"
 AGENT_PROFILE = "agent"
 
 GAUGE_SESSION_KEY = "context_gauge"
-COMPACTION_SESSION_KEY = "compaction"
 
 RESULTS_ELEMENT = "Results"
 """Element name for the results table.
@@ -86,24 +85,17 @@ cl.instrument_openai()
 
 
 def agent_history() -> list[dict[str, str]]:
-    """Assemble the conversation the graph should see.
+    """Read the conversation so far, for the context gauge.
 
-    Chainlit's data layer is the durable record of a thread, so a compaction
-    summary is derived data rather than truth and lives only in the session.
-    When one exists it stands in for the messages it replaced and later turns
-    are appended raw; when it does not — a restart, or a resumed thread — the
-    full transcript is used and compaction simply runs again.
+    Only the gauge needs this now. The agent keeps its own message history in the
+    checkpointer and summarises it through middleware, so nothing here feeds it.
 
     Returns
     -------
     list of dict
         Prior turns in OpenAI format, excluding the question being asked.
     """
-    raw = cl.chat_context.to_openai()[:-1]
-    stored = cl.user_session.get(COMPACTION_SESSION_KEY)
-    if stored and len(raw) >= stored["raw_count"]:
-        return [*stored["history"], *raw[stored["raw_count"] :]]
-    return raw
+    return cl.chat_context.to_openai()[:-1]
 
 
 def json_safe(value: Any) -> Any:
