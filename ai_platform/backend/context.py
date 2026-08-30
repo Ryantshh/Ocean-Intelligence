@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 
-from ai_platform.backend.prompts import EXTRACTION_SYSTEM
-from ai_platform.backend.tables import EXTRACTION_RESPONSE_FORMAT
+from ai_platform.backend.prompts import AGENT_SYSTEM
+from ai_platform.backend.tools import ask_user, search_orders, search_tonnage
 
 CONTEXT_WINDOW = 131_072
 """Published limit for ``openai/gpt-oss-120b``, shared by prompt and completion."""
@@ -74,13 +74,17 @@ def history_tokens(history: list[dict[str, str]]) -> int:
     return sum(estimate_tokens(message.get("content", "")) for message in history)
 
 
-SEED_OVERHEAD = estimate_tokens(EXTRACTION_SYSTEM) + estimate_tokens(
-    json.dumps(EXTRACTION_RESPONSE_FORMAT)
+SEED_OVERHEAD = estimate_tokens(AGENT_SYSTEM) + sum(
+    estimate_tokens(json.dumps(tool.args_schema.model_json_schema()))
+    + estimate_tokens(tool.description)
+    for tool in (search_orders, search_tonnage, ask_user)
 )
-"""Fixed cost of an extraction call before any history.
+"""Fixed cost of a model call before any history.
 
-Recomputed at import from the live prompt and schema, so editing either cannot
-leave a stale constant behind. Replaced by a real measurement once one arrives.
+The system prompt plus every tool's description and argument schema, all of which
+are sent on every call. Recomputed at import from the live objects, so editing a
+prompt or a tool docstring cannot leave a stale constant behind. Replaced by a
+real measurement once one arrives.
 """
 
 _measured_overhead: int | None = None

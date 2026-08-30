@@ -1,6 +1,6 @@
-"""Shared machinery for per-table filter modules.
+"""Assembles one parameterised SELECT from a table spec and a filter.
 
-Column names come from the spec tables in this package; values come from the
+Column names come from the table specs in ``tables.py``; values come from the
 model but only ever as bound parameters. Nothing is interpolated into SQL, so a
 bad extraction returns the wrong rows rather than executing anything.
 """

@@ -24,6 +24,11 @@ from pydantic import ValidationError
 from ai_platform.backend.context import record_prompt_tokens, should_compact
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.embeddings import embed_search_terms
+from ai_platform.backend.extraction import (
+    EXTRACTION_RESPONSE_FORMAT,
+    Extraction,
+    resolve_table,
+)
 from ai_platform.backend.llm import (
     get_client,
     get_model_name,
@@ -38,11 +43,6 @@ from ai_platform.backend.prompts import (
     EXTRACTION_SYSTEM,
 )
 from ai_platform.backend.state import AgentState
-from ai_platform.backend.tables import (
-    EXTRACTION_RESPONSE_FORMAT,
-    Extraction,
-    resolve_table,
-)
 
 _logger = get_logger("agent")
 

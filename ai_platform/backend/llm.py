@@ -29,9 +29,11 @@ from collections.abc import AsyncIterator
 from typing import Any, cast
 
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 from langfuse.openai import AsyncOpenAI
 from langgraph.config import get_config
 from openai.types.chat import ChatCompletionMessageParam
+from pydantic import SecretStr
 
 from ai_platform.backend.tracing import langfuse_handler
 
@@ -39,6 +41,13 @@ load_dotenv()
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+MAX_INPUT_TOKENS = 131_072
+"""Context window of the default model.
+
+Declared here because LangChain carries profiles for known providers only,
+and a custom base URL is not one. Without it any middleware working in
+fractions of the window raises rather than guessing."""
 
 SYSTEM_PROMPT = (
     "You are the assistant for Ocean Intelligence, a platform covering shipping "
@@ -114,6 +123,36 @@ def trace_kwargs() -> dict[str, Any]:
     if span is None:
         return {}
     return {"trace_id": span.trace_id, "parent_observation_id": span.id}
+
+
+def get_chat_model() -> ChatOpenAI:
+    """Build the LangChain chat model the agent runs on.
+
+    The same Groq endpoint ``get_client`` uses, wrapped in the LangChain
+    interface ``create_agent`` requires. Two clients rather than one because the
+    plain-model chat profile streams through the OpenAI SDK directly.
+
+    Returns
+    -------
+    ChatOpenAI
+        Pointed at Groq's OpenAI-compatible endpoint.
+
+    Raises
+    ------
+    RuntimeError
+        If ``GROQ_API_KEY`` is unset.
+    """
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY is not set. Check .env.")
+
+    return ChatOpenAI(
+        model=get_model_name(),
+        api_key=SecretStr(api_key),
+        base_url=os.environ.get("GROQ_BASE_URL", "").strip() or DEFAULT_BASE_URL,
+        temperature=0,
+        profile={"max_input_tokens": MAX_INPUT_TOKENS},
+    )
 
 
 async def stream_chat(

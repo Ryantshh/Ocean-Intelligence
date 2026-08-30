@@ -1,8 +1,8 @@
-"""Registry of queryable tables, and the schema the model is constrained to.
+"""The strict schema the extraction node constrains generation to.
 
-Each module exposes the same five names — ``Filters``, ``SemanticTerms``,
-``SEMANTIC_COLUMNS``, ``FIELD_GUIDE`` and ``build_sql`` — so callers resolve a
-target once and never branch on it.
+Temporary. This is everything the old ``StateGraph`` needs that the table specs
+do not carry, kept in one file so the agent rewrite deletes it in one move rather
+than unpicking it from ``tables.py``.
 
 ``Extraction.request`` is a plain union, deliberately not a discriminated one.
 Pydantic renders a discriminated union as ``oneOf``, which Groq's strict mode
@@ -16,19 +16,23 @@ the implementation. Notes like this one belong here, where they do not.
 
 from __future__ import annotations
 
-from types import ModuleType
 from typing import Literal
 
 from openai.lib._pydantic import to_strict_json_schema
 from openai.types.chat import completion_create_params
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_platform.backend.tables import orders, tonnage
+from ai_platform.backend.tables import (
+    ORDERS,
+    TONNAGE,
+    OrderFilters,
+    OrderTerms,
+    TableSpec,
+    VesselFilters,
+    VesselTerms,
+)
 
-TABLES: dict[str, ModuleType] = {
-    "orders": orders,
-    "tonnage": tonnage,
-}
+TABLES: dict[str, TableSpec] = {"orders": ORDERS, "tonnage": TONNAGE}
 
 
 class OrdersRequest(BaseModel):
@@ -37,8 +41,8 @@ class OrdersRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target: Literal["orders"]
-    filters: orders.Filters
-    semantic: orders.SemanticTerms
+    filters: OrderFilters
+    semantic: OrderTerms
 
 
 class TonnageRequest(BaseModel):
@@ -47,8 +51,8 @@ class TonnageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target: Literal["tonnage"]
-    filters: tonnage.Filters
-    semantic: tonnage.SemanticTerms
+    filters: VesselFilters
+    semantic: VesselTerms
 
 
 class Extraction(BaseModel):
@@ -58,7 +62,7 @@ class Extraction(BaseModel):
 
     request: OrdersRequest | TonnageRequest
     needs_clarification: bool = Field(
-        description="true when nothing usable was named, or a date, size or table is ambiguous"
+        description="true when nothing filterable was named"
     )
     clarifying_question: str | None = Field(
         description="one short question, null unless needs_clarification"
@@ -85,10 +89,8 @@ the model resolves by inventing values.
 """
 
 
-
-
-def resolve_table(target: str) -> ModuleType:
-    """Look up the module handling a target table.
+def resolve_table(target: str) -> TableSpec:
+    """Look up the spec for a target table.
 
     Parameters
     ----------
@@ -97,9 +99,8 @@ def resolve_table(target: str) -> ModuleType:
 
     Returns
     -------
-    ModuleType
-        Module exposing ``Filters``, ``SemanticTerms``, ``SEMANTIC_COLUMNS``,
-        ``FIELD_GUIDE`` and ``build_sql``.
+    TableSpec
+        Spec carrying that table's columns, ranges and ``build_sql``.
 
     Raises
     ------
@@ -114,7 +115,7 @@ def resolve_table(target: str) -> ModuleType:
         ) from None
 
 
-FIELD_GUIDES = "\n\n".join(module.FIELD_GUIDE for module in TABLES.values())
+FIELD_GUIDES = "\n\n".join(spec.guide for spec in TABLES.values())
 """Every table's prompt fragment, joined.
 
 Each table documents its own fields next to the model that validates them, so

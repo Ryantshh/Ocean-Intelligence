@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Required, TypedDict
 
-from ai_platform.backend.tables.orders import Filters as OrdersFilters
-from ai_platform.backend.tables.tonnage import Filters as TonnageFilters
+from ai_platform.backend.tables import OrderFilters, VesselFilters
 
-TableFilters = OrdersFilters | TonnageFilters
+TableFilters = OrderFilters | VesselFilters
 
 
 class AgentState(TypedDict, total=False):

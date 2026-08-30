@@ -14,17 +14,17 @@ from typing import Any, cast
 
 import chainlit as cl
 from chainlit.types import ThreadDict
+from langgraph.types import Command
 
 from ai_platform.app.data_layer import get_data_layer
+from ai_platform.backend.agent import agent
 from ai_platform.backend.context import (
     fill_fraction,
     history_tokens,
-    should_compact,
     usable_tokens,
 )
-from ai_platform.backend.graph import graph
+from ai_platform.backend.extraction import resolve_table
 from ai_platform.backend.llm import stream_chat
-from ai_platform.backend.tables import resolve_table
 
 __all__ = ["get_data_layer"]
 
@@ -46,10 +46,15 @@ into the link that reopens the panel. It therefore cannot carry the row count,
 which lives in the reply prose and in the table's own footer instead.
 """
 
-STEP_READING = "Reading your question"
-STEP_EMBEDDING = "Embedding search terms"
-STEP_RETRIEVING = "Retrieving data"
-STEP_COMPACTING = "Compacting conversation"
+TOOL_STEPS = {
+    "search_orders": "Searching cargoes",
+    "search_tonnage": "Searching vessels",
+    "ask_user": "Waiting on you",
+}
+"""Progress step shown while each tool runs."""
+
+REFINE_ELEMENT = "RefineSearch"
+"""Element name for the form ``ask_user`` renders."""
 
 AGENT_DESCRIPTION = """Your supply and demand AI Agent for vessel positions and cargo enquiries.
 
@@ -154,9 +159,9 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     dict
         ``columns``, ``rows`` and ``noun``, ready to hand to the element.
     """
-    module = resolve_table(target)
-    columns = list(module.DISPLAY_COLUMNS)
-    defaults = module.DISPLAY_DEFAULTS
+    spec = resolve_table(target)
+    columns = list(spec.display_columns)
+    defaults = spec.display_defaults
     return {
         "columns": columns,
         "rows": [
@@ -170,7 +175,7 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
             ]
             for row in rows
         ],
-        "noun": module.DISPLAY_NOUN,
+        "noun": spec.display_noun,
     }
 
 
@@ -226,21 +231,22 @@ async def refresh_gauge(
 
 
 async def run_agent(question: str) -> None:
-    """Run the retrieval graph and render everything it produces.
+    """Run the agent and render everything it produces.
 
-    The graph never imports chainlit; it emits tagged payloads on LangGraph's
-    custom stream and one update per node. This is the only place the two meet.
+    The agent decides which tools to call and how many times, so there is no
+    fixed sequence of steps to wrap. Tool calls are shown as they are chosen and
+    closed when their result arrives.
 
-    Progress steps wrap segments of that stream rather than the whole run, so
-    the stream is pulled explicitly instead of with a single ``async for``.
+    ``ask_user`` interrupts the run rather than returning, which ends the stream.
+    The outer loop exists for that: it shows the form, waits, and resumes with
+    what was submitted. It runs more than twice only when the agent asks twice,
+    and ``RUN_LIMIT`` bounds it.
 
     The table's name is appended to the reply on a line of its own, and that line
     is load-bearing. Chainlit builds a regex from the names of a message's
     elements and turns every match in the message text into the link that opens
     the side panel. Without an occurrence of the name there is no link, so once a
-    user closes the panel it cannot be reopened. It is appended here rather than
-    asked of the model, because the match is an exact string and the model would
-    not reliably produce it.
+    user closes the panel it cannot be reopened.
 
     Parameters
     ----------
@@ -251,84 +257,158 @@ async def run_agent(question: str) -> None:
     -------
     None
     """
-    history = agent_history()
+    config = {"configurable": {"thread_id": cl.context.session.id}}
+    payload: Any = {"messages": [{"role": "user", "content": question}]}
     reply = root_message()
-    events = graph.astream(
-        {"question": question, "history": history},
-        stream_mode=["updates", "custom"],
-    ).__aiter__()
+    results_element_name = ""
 
-    compaction_step: cl.Step | None = None
-    tokens_spent = 0
+    while True:
+        interrupt_value: dict[str, Any] | None = None
+        open_steps: dict[str, cl.Step] = {}
 
-    async def drain_until(wait_for: set[str]) -> dict[str, Any]:
-        """Consume events until one of the named nodes reports."""
-        nonlocal tokens_spent
-        async for mode, payload in events:
-            # mid-run text: whichever node is streaming right now
-            if mode == "custom":
-                streamed = cast("dict[str, str]", payload)
-                if "answer" in streamed:
-                    await reply.stream_token(streamed["answer"])
-                elif "compact" in streamed and compaction_step is not None:
-                    await compaction_step.stream_token(streamed["compact"])
+        async for mode, event in agent.astream(
+            payload, config, stream_mode=["updates", "messages"]
+        ):
+            # token-by-token reply text, but only from the agent's own turn
+            if mode == "messages":
+                chunk, meta = cast("tuple[Any, dict[str, Any]]", event)
+                if meta.get("langgraph_node") == "model" and chunk.content:
+                    await reply.stream_token(chunk.content)
                 continue
 
-            # a node finished, so record its cost whether or not it was the one awaited
-            node, returned_update = next(
-                iter(cast("dict[str, dict[str, Any] | None]", payload).items())
+            update = cast("dict[str, Any]", event)
+            if "__interrupt__" in update:
+                interrupt_value = update["__interrupt__"][0].value
+                break
+
+            for node, node_update in update.items():
+                for message in (node_update or {}).get("messages", []) or []:
+                    name = await _render_node_message(
+                        message, node, open_steps, reply
+                    )
+                    results_element_name = name or results_element_name
+
+        for step in open_steps.values():
+            await step.__aexit__(None, None, None)
+
+        if interrupt_value is None:
+            break
+
+        submitted = await _ask_to_refine(interrupt_value)
+        if submitted is None:
+            await reply.stream_token(
+                "\n\nNo problem — ask again whenever you have those details."
             )
-            node_output = returned_update or {}
-            tokens_spent += sum(node_output.get("tokens", {}).values())
-            if node in wait_for:
-                return node_output
-        return {}
+            break
+        payload = Command(resume=submitted)
 
-    # compaction first, so extraction reads the shortened history
-    if should_compact(history):
-        async with cl.Step(name=STEP_COMPACTING) as step:
-            compaction_step = step
-            compaction = await drain_until({"compact"})
-        compaction_step = None
-        if "history" in compaction:
-            cl.user_session.set(
-                COMPACTION_SESSION_KEY,
-                {
-                    "history": compaction["history"],
-                    "raw_count": len(cl.chat_context.to_openai()) - 1,
-                },
-            )
-
-    async with cl.Step(name=STEP_READING):
-        extraction = await drain_until({"extract_filters"})
-
-    answered_without_query = bool(
-        extraction.get("clarifying_question") or extraction.get("error")
-    )
-    results_element_name = ""
-    if not answered_without_query:
-        # drained only so the spinner appears; build_query reads the vectors off the state
-        if any(extraction.get("semantic", {}).values()):
-            async with cl.Step(name=STEP_EMBEDDING):
-                await drain_until({"embed"})
-        async with cl.Step(name=STEP_RETRIEVING):
-            query_result = await drain_until({"narrow"})
-        rows = query_result.get("rows")
-        if rows:
-            results_element_name = RESULTS_ELEMENT
-            table = cl.CustomElement(
-                name=RESULTS_ELEMENT,
-                props=results_props(extraction.get("target", ""), rows),
-                display="side",
-            )
-            reply.elements = cast("list[Any]", [table])
-
-    # nothing named, so this drains the reply being written
-    await drain_until(set())
     if results_element_name:
         await reply.stream_token(f"\n\n{results_element_name}")
     await reply.send()
-    await refresh_gauge(agent_history(), tokens_spent, anchor=reply.id)
+
+
+async def _render_node_message(
+    message: Any, node: str, open_steps: dict[str, cl.Step], reply: cl.Message
+) -> str:
+    """Show one message from the agent as a progress step or a results panel.
+
+    Parameters
+    ----------
+    message : Any
+        A LangChain message emitted by a node.
+    node : str
+        Which node produced it.
+    open_steps : dict of str to cl.Step
+        Steps opened for tool calls, keyed by tool call id, closed on result.
+    reply : cl.Message
+        The reply the results panel attaches to.
+
+    Returns
+    -------
+    str
+        The results element name when a panel was attached, else empty.
+    """
+    if node == "model":
+        for call in getattr(message, "tool_calls", None) or []:
+            step = cl.Step(name=TOOL_STEPS.get(call["name"], call["name"]))
+            await step.__aenter__()
+            open_steps[call["id"]] = step
+        return ""
+
+    if node != "tools":
+        return ""
+
+    step = open_steps.pop(getattr(message, "tool_call_id", ""), None)
+    if step is not None:
+        await step.__aexit__(None, None, None)
+
+    rows = _rows_from(message)
+    if not rows:
+        return ""
+
+    target = "orders" if getattr(message, "name", "") == "search_orders" else "tonnage"
+    reply.elements = cast(
+        "list[Any]",
+        [
+            cl.CustomElement(
+                name=RESULTS_ELEMENT,
+                props=results_props(target, rows),
+                display="side",
+            )
+        ],
+    )
+    return RESULTS_ELEMENT
+
+
+def _rows_from(message: Any) -> list[dict[str, Any]]:
+    """Read the row list back out of a tool result message.
+
+    Tool results arrive as text, so the rows are parsed rather than passed. A
+    result that is not a list of rows -- ``ask_user`` returning a form, or an
+    error string -- yields nothing.
+
+    Parameters
+    ----------
+    message : Any
+        A tool message.
+
+    Returns
+    -------
+    list of dict
+        The rows, or empty when the result was not a row list.
+    """
+    content = getattr(message, "content", None)
+    if not isinstance(content, str) or not content.startswith("["):
+        return []
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return []
+    return parsed if isinstance(parsed, list) and parsed else []
+
+
+async def _ask_to_refine(payload: dict[str, Any]) -> dict[str, str] | None:
+    """Show the refinement form and wait for the desk to fill it in.
+
+    Parameters
+    ----------
+    payload : dict
+        The interrupt value, carrying ``reason`` and ``fields``.
+
+    Returns
+    -------
+    dict of str to str or None
+        What was submitted, or None if it timed out or was cancelled.
+    """
+    answer = await cl.AskElementMessage(
+        content=payload.get("reason", "Which values did you mean?"),
+        element=cl.CustomElement(
+            name=REFINE_ELEMENT, props={"fields": payload.get("fields", {})}
+        ),
+    ).send()
+    if answer is None or not answer.get("submitted"):
+        return None
+    return {k: v for k, v in answer.items() if k not in {"submitted", "id"}}
 
 
 def root_message(content: str = "") -> cl.Message:
