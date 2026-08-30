@@ -12,8 +12,11 @@ in front of a desk.
 
 from __future__ import annotations
 
+from typing import Any
+
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
+    AgentMiddleware,
     ModelCallLimitMiddleware,
     SummarizationMiddleware,
     ToolErrorMiddleware,
@@ -79,19 +82,24 @@ def build_agent():
         apart from needing a thread id and a resume path.
     """
     model = get_chat_model()
+
+    # ModelCallLimitMiddleware widens the agent state, and the middleware
+    # parameter is invariant in it, so the mixed list needs the annotation
+    middleware: list[AgentMiddleware[Any, Any, Any]] = [
+        SummarizationMiddleware(
+            model=model,
+            trigger=("fraction", SUMMARISE_AT),
+            keep=("messages", KEEP_RECENT_MESSAGES),
+        ),
+        ToolErrorMiddleware(on_error=_describe_tool_failure),
+        ModelCallLimitMiddleware(run_limit=RUN_LIMIT, exit_behavior="end"),
+    ]
+
     agent = create_agent(
         model=model,
         tools=[search_orders, search_tonnage, ask_user],
         system_prompt=AGENT_SYSTEM,
-        middleware=[
-            SummarizationMiddleware(
-                model=model,
-                trigger=("fraction", SUMMARISE_AT),
-                keep=("messages", KEEP_RECENT_MESSAGES),
-            ),
-            ToolErrorMiddleware(on_error=_describe_tool_failure),
-            ModelCallLimitMiddleware(run_limit=RUN_LIMIT, exit_behavior="end"),
-        ],
+        middleware=middleware,
         checkpointer=InMemorySaver(),
     )
     _logger.info("agent compiled with %d tools", 3)

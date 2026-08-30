@@ -68,7 +68,7 @@ def history_tokens(history: list[dict[str, str]]) -> int:
 
 
 SEED_OVERHEAD = estimate_tokens(AGENT_SYSTEM) + sum(
-    estimate_tokens(json.dumps(tool.args_schema.model_json_schema()))
+    estimate_tokens(json.dumps(tool.args))
     + estimate_tokens(tool.description)
     for tool in (search_orders, search_tonnage, ask_user)
 )

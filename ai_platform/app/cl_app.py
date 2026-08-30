@@ -258,9 +258,10 @@ async def run_agent(question: str) -> None:
         interrupt_value: dict[str, Any] | None = None
         open_steps: dict[str, cl.Step] = {}
 
-        async for mode, event in agent.astream(
-            payload, config, stream_mode=["updates", "messages"]
-        ):
+        stream = agent.astream(
+            payload, cast("Any", config), stream_mode=["updates", "messages"]
+        )
+        async for mode, event in stream:
             # token-by-token reply text, but only from the agent's own turn
             if mode == "messages":
                 chunk, meta = cast("tuple[Any, dict[str, Any]]", event)
@@ -395,12 +396,17 @@ async def _ask_to_refine(payload: dict[str, Any]) -> dict[str, str] | None:
     answer = await cl.AskElementMessage(
         content=payload.get("reason", "Which values did you mean?"),
         element=cl.CustomElement(
-            name=REFINE_ELEMENT, props={"fields": payload.get("fields", {})}
+            name=REFINE_ELEMENT,
+            props=cast("dict[str, Any]", {"fields": payload.get("fields", {})}),
         ),
     ).send()
     if answer is None or not answer.get("submitted"):
         return None
-    return {k: v for k, v in answer.items() if k not in {"submitted", "id"}}
+    return {
+        str(key): str(value)
+        for key, value in answer.items()
+        if key not in {"submitted", "id"}
+    }
 
 
 def root_message(content: str = "") -> cl.Message:
