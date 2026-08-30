@@ -203,9 +203,9 @@ class TableSpec:
     ranges : tuple of RangeSpec
         Range comparisons this table offers.
     id_field : str
-        Attribute on the filter model holding an exact-match id list.
-    id_column : str
-        Column that list matches against.
+        Attribute on the filter model holding an exact-match id list. The column
+        it matches is the same name without the plural: ``order_ids`` to
+        ``order_id``.
     equalities : tuple of EqualitySpec
         Exact matches this table offers. Empty for tables with none.
     latest_key : str or None
@@ -213,8 +213,6 @@ class TableSpec:
         table already holds one row per entity.
     latest_order : str
         ORDER BY deciding which report wins, applied within ``latest_key``.
-    guide : str
-        Field documentation the model reads when filling a search.
     """
 
     table: str
@@ -224,12 +222,10 @@ class TableSpec:
     semantic_columns: tuple[str, ...]
     ranges: tuple[RangeSpec, ...]
     id_field: str
-    id_column: str
     display_defaults: dict[str, str] = field(default_factory=dict)
     equalities: tuple[EqualitySpec, ...] = ()
     latest_key: str | None = None
     latest_order: str = ""
-    guide: str = ""
 
     def build_sql(
         self,
@@ -274,8 +270,9 @@ class TableSpec:
         # exact comparisons first: these decide which rows are eligible at all
         identifiers = getattr(filters, self.id_field)
         if identifiers:
-            builder.add_clause(
-                f"{self.id_column} = ANY({builder.bind_parameter(identifiers)})"
+            column = self.id_field.removesuffix("s")
+            builder.clauses.append(
+                f"{column} = ANY({builder.bind_parameter(identifiers)})"
             )
         builder.add_ranges(filters, self.ranges)
         builder.add_equalities(filters, self.equalities)
@@ -327,29 +324,6 @@ ORDERS = TableSpec(
         RangeSpec("weight_max", "cargo_weight_max", "<="),
     ),
     id_field="order_ids",
-    id_column="order_id",
-    guide="""orders — cargo enquiries. Fields:
-  order_ids       list of integers, only when the user quotes order numbers
-  laycan_start_from ISO date, laycan first day on or after
-  laycan_start_to   ISO date, laycan first day on or before
-  laycan_end_from   ISO date, laycan cancels on or after — still open at that date
-  laycan_end_to     ISO date, laycan cancels on or before — must be fixed by then
-  received_from   ISO date, when the enquiry arrived, on or after
-  received_to     ISO date, when the enquiry arrived, on or before
-  updated_from    ISO date, last amended on or after
-  updated_to      ISO date, last amended on or before
-  weight_min      cargo tonnes, floor. The stem's smallest size must reach it, so
-                  a cargo of 153,000-187,000 does not answer "at least 160,000"
-  weight_max      cargo tonnes, ceiling. The stem's largest size must fit under it
-  include_future  true only when the user asks about upcoming or forward-dated records
-
-Semantic fields:
-  cargo_type              commodity, e.g. iron ore, coal, bauxite
-  cargo_description       wording from the enquiry itself
-  load_port               load port, terminal or country
-  load_zone               broad load region containing it, from the zone list
-  discharge_port          discharge port, terminal or country
-  discharge_parent_zone   broad discharge region containing it, from the zone list""",
 )
 
 
@@ -400,34 +374,8 @@ TONNAGE = TableSpec(
         ),
     ),
     id_field="vessel_ids",
-    id_column="vessel_id",
     latest_key="vessel_id",
     latest_order="update_date DESC, first_date_received DESC",
-    guide="""tonnage — vessel positions. Fields:
-  vessel_ids        list of strings, copied verbatim including the prefix, e.g.
-                    "VESSEL 0001". Never strip the word VESSEL or drop leading zeros
-  open_start_from   ISO date, first free date on or after
-  open_start_to     ISO date, first free date on or before
-  open_end_from     ISO date, window closes on or after — still open at that date
-  open_end_to       ISO date, window closes on or before — must be fixed by then
-  updated_from      ISO date, position last updated on or after
-  updated_to        ISO date, position last updated on or before
-  received_from     ISO date, position first reported on or after
-  received_to       ISO date, position first reported on or before
-  dwt_min           deadweight tonnes, lower bound
-  dwt_max           deadweight tonnes, upper bound
-  ballast_laden     LADEN or BALLAST
-  commercial_status FIXED, ON SUBS, or AVAILABLE. Unfixed vessels are AVAILABLE
-  include_history   true only when the user asks for past positions or history
-  include_future    true only when the user asks about upcoming or forward-dated records
-
-Every vessel here is Capesize, dwt 160,000 to 190,000. Smaller classes do not
-appear at all. Ship type and ship size cannot be filtered or searched.
-
-Semantic fields:
-  vessel_status     navigational status, from the status list only
-  open_area         specific open area, port or country
-  parent_zone       broad region containing it, from the zone list only""",
 )
 
 

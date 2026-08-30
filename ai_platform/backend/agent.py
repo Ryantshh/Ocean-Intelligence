@@ -72,38 +72,26 @@ def _describe_tool_failure(error: Exception, request: object) -> str:
     )
 
 
-def build_agent():
-    """Compile the agent with its tools and middleware.
+model = get_chat_model()
 
-    Returns
-    -------
-    CompiledStateGraph
-        Streams and invokes like the old graph did, so the caller is unchanged
-        apart from needing a thread id and a resume path.
-    """
-    model = get_chat_model()
-
-    # ModelCallLimitMiddleware widens the agent state, and the middleware
-    # parameter is invariant in it, so the mixed list needs the annotation
-    middleware: list[AgentMiddleware[Any, Any, Any]] = [
-        SummarizationMiddleware(
-            model=model,
-            trigger=("fraction", SUMMARISE_AT),
-            keep=("messages", KEEP_RECENT_MESSAGES),
-        ),
-        ToolErrorMiddleware(on_error=_describe_tool_failure),
-        ModelCallLimitMiddleware(run_limit=RUN_LIMIT, exit_behavior="end"),
-    ]
-
-    agent = create_agent(
+# ModelCallLimitMiddleware widens the agent state, and the middleware
+# parameter is invariant in it, so the mixed list needs the annotation
+_middleware: list[AgentMiddleware[Any, Any, Any]] = [
+    SummarizationMiddleware(
         model=model,
-        tools=[search_orders, search_tonnage, ask_user],
-        system_prompt=AGENT_SYSTEM,
-        middleware=middleware,
-        checkpointer=InMemorySaver(),
-    )
-    _logger.info("agent compiled with %d tools", 3)
-    return agent
+        trigger=("fraction", SUMMARISE_AT),
+        keep=("messages", KEEP_RECENT_MESSAGES),
+    ),
+    ToolErrorMiddleware(on_error=_describe_tool_failure),
+    ModelCallLimitMiddleware(run_limit=RUN_LIMIT, exit_behavior="end"),
+]
 
+agent = create_agent(
+    model=model,
+    tools=[search_orders, search_tonnage, ask_user],
+    system_prompt=AGENT_SYSTEM,
+    middleware=_middleware,
+    checkpointer=InMemorySaver(),
+)
 
-agent = build_agent()
+_logger.info("agent compiled with 3 tools")

@@ -134,20 +134,6 @@ class StatementBuilder:
         self.params.append(value)
         return f"${len(self.params)}"
 
-    def add_clause(self, clause: str) -> None:
-        """Append a clause built by a caller.
-
-        Parameters
-        ----------
-        clause : str
-            SQL fragment, already using placeholders from :meth:`bind_parameter`.
-
-        Returns
-        -------
-        None
-        """
-        self.clauses.append(clause)
-
     def add_ranges(self, filters: BaseModel, specs: tuple[RangeSpec, ...]) -> None:
         """Apply every range bound that was set.
 
@@ -165,7 +151,7 @@ class StatementBuilder:
         for spec in specs:
             value = getattr(filters, spec.field, None)
             if value is not None:
-                self.add_clause(
+                self.clauses.append(
                     f"{spec.column} {spec.operator} {self.bind_parameter(value)}"
                 )
 
@@ -191,7 +177,7 @@ class StatementBuilder:
                     if spec.expression
                     else spec.column
                 )
-                self.add_clause(f"{target} = {self.bind_parameter(value)}")
+                self.clauses.append(f"{target} = {self.bind_parameter(value)}")
 
     def set_horizon(self, column: str, cutoff: date) -> None:
         """Hide rows stamped after a cutoff.

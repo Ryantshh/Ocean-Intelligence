@@ -18,11 +18,7 @@ from langgraph.types import Command
 
 from ai_platform.app.data_layer import get_data_layer
 from ai_platform.backend.agent import agent
-from ai_platform.backend.context import (
-    fill_fraction,
-    history_tokens,
-    usable_tokens,
-)
+from ai_platform.backend.context import USABLE_TOKENS, history_tokens
 from ai_platform.backend.llm import stream_chat
 from ai_platform.backend.tables import resolve_table
 
@@ -200,10 +196,11 @@ async def refresh_gauge(
     -------
     None
     """
+    used = history_tokens(history)
     props = {
-        "percent": round(fill_fraction(history) * 100, 2),
-        "used": history_tokens(history),
-        "usable": usable_tokens(),
+        "percent": round(min(used / USABLE_TOKENS, 1.0) * 100, 2),
+        "used": used,
+        "usable": USABLE_TOKENS,
         "spent": spent,
     }
     stored = cl.user_session.get(GAUGE_SESSION_KEY)

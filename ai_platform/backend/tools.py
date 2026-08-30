@@ -154,7 +154,7 @@ async def search_tonnage(**search: Any) -> list[dict[str, Any]]:
 
 @tool
 def ask_user(reason: str, fields: dict[str, str]) -> dict[str, str]:
-    """Ask the desk to fill in values you could not resolve.
+    """Ask the user to fill in values you could not resolve.
 
     Call this when a search came back with rows that plainly do not match what
     was asked for, when a place could be either a zone or a port, or when a term
