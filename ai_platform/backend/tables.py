@@ -39,11 +39,16 @@ from ai_platform.backend.clock import working_date
 from ai_platform.backend.sql import EqualitySpec, RangeSpec, StatementBuilder
 
 
-class OrderFilters(BaseModel):
-    """Exact comparisons over cargo enquiries.
+class OrderSearch(BaseModel):
+    """Every field a cargo search can set.
+
+    Flat, with no filter-versus-semantic split, because that split is not the
+    model's to make: it put laycan dates under semantic and the call was
+    rejected. ``TableSpec.semantic_columns`` decides which of these are embedded
+    and which become exact comparisons, in the code that knows the difference.
 
     Unknown fields are rejected rather than dropped. Pydantic ignores extras by
-    default, which would silently discard a tonnage field aimed at this table and
+    default, which would silently discard a vessel field aimed at this table and
     return unfiltered rows that look like an answer.
     """
 
@@ -81,16 +86,6 @@ class OrderFilters(BaseModel):
     include_future: bool = Field(
         default=False, description="true only when the user asks about upcoming records"
     )
-
-
-class OrderTerms(BaseModel):
-    """Free-text cargo terms matched by similarity rather than equality.
-
-    Every field is optional. Null means the question did not name that column.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
     cargo_type: str | None = Field(default=None, description="commodity, e.g. iron ore")
     cargo_description: str | None = Field(
         default=None, description="wording from the enquiry itself"
@@ -105,11 +100,10 @@ class OrderTerms(BaseModel):
     )
 
 
-class VesselFilters(BaseModel):
-    """Exact comparisons over vessel positions.
+class VesselSearch(BaseModel):
+    """Every field a vessel search can set.
 
-    Unknown fields are rejected rather than dropped, for the same reason as
-    :class:`OrderFilters`.
+    Flat for the same reason as :class:`OrderSearch`.
 
     ``ship_size`` and ``ship_type`` are deliberately absent — every row is
     Capesize and 99.8% are Bulk Carriers, so filtering on them narrows nothing.
@@ -159,16 +153,6 @@ class VesselFilters(BaseModel):
     include_future: bool = Field(
         default=False, description="true only when the user asks about upcoming records"
     )
-
-
-class VesselTerms(BaseModel):
-    """Free-text vessel terms matched by similarity rather than equality.
-
-    Every field is optional. Null means the question did not name that column.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
     vessel_status: str | None = Field(
         default=None, description="navigational status, from the status list"
     )
@@ -377,21 +361,6 @@ TONNAGE = TableSpec(
     latest_key="vessel_id",
     latest_order="update_date DESC, first_date_received DESC",
 )
-
-
-class OrderSearch(OrderFilters, OrderTerms):
-    """Every cargo search field in one flat object.
-
-    The agent fills one object rather than choosing between a filters nest and a
-    semantic nest — a distinction it got wrong, putting laycan dates under
-    semantic where they are rejected. ``TableSpec.build_sql`` reads the exact
-    fields it knows and ignores the rest, so the split happens in the code that
-    understands it.
-    """
-
-
-class VesselSearch(VesselFilters, VesselTerms):
-    """Every vessel search field in one flat object."""
 
 
 TABLES: dict[str, TableSpec] = {"orders": ORDERS, "tonnage": TONNAGE}
