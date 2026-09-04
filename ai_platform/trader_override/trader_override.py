@@ -2,11 +2,13 @@
 
 Lets a trader manually record a vessel's commercial status heard privately
 (via broker/messaging) before it reaches Shipfix/the pipeline. The
-override itself goes straight into ``public.tonnage_test`` as a brand-new
-position-report row -- not a separate overrides table -- so the Dashboard
-tab's own ``vessel_current_status`` view (which always takes the newest
-``tonnage_test`` row per vessel) picks the change up automatically, with no
-change to any dashboard-side code.
+override goes straight into ``public.tonnage_test`` -- not a separate
+overrides table -- by replacing the trader's chosen baseline row with a
+copy carrying their edits (see
+:func:`trader_override_queries.override_tonnage_row_sql`), so the
+Dashboard tab's own ``vessel_current_status`` view (which always takes the
+newest ``tonnage_test`` row per vessel) picks the change up automatically,
+with no change to any dashboard-side code.
 
 A successful submission is also logged to ``public.trader_override_audit``
 (see ``ai_platform/trader_override/trader_override_audit_setup.sql``) --
@@ -70,6 +72,11 @@ class OverrideRequest(BaseModel):
     """
 
     vessel_id: str = Field(min_length=1, max_length=64)
+    # tonnage_row_key of the existing tonnage_test row this submission
+    # replaces -- from a row GET /vessels/{vessel_id} returned; the vessel's
+    # newest row by default, or an older one if the trader clicked a
+    # different row in Current Record. See override_tonnage_row_sql.
+    base_tonnage_row_key: str = Field(min_length=1, max_length=128)
     override_status: toq.OverrideStatus
     entered_by: str = Field(min_length=1, max_length=120)
     open_area: str | None = Field(default=None, max_length=120)
@@ -126,31 +133,35 @@ async def vessel_detail(vessel_id: str) -> list[dict[str, Any]]:
 
 @router.post("", status_code=201)
 async def submit_override(body: OverrideRequest) -> dict[str, Any]:
-    """Record one trader-entered status update as a new ``tonnage_test`` row.
+    """Record one trader-entered status update by replacing its baseline row.
 
     Also logs the submission to ``trader_override_audit`` once the
-    ``tonnage_test`` insert succeeds -- the audit entry is a record of what
+    ``tonnage_test`` swap succeeds -- the audit entry is a record of what
     happened, not a second attempt at the real write, so a failure logging
-    it does not roll back or fail the ``tonnage_test`` insert, which has
-    already committed by that point.
+    it does not roll back or fail the swap, which has already committed by
+    that point.
 
     Parameters
     ----------
     body : OverrideRequest
-        Vessel, status, who's entering it, and whatever else the trader
-        has fresh word on.
+        Vessel, the baseline row being replaced, status, who's entering it,
+        and whatever else the trader has fresh word on.
 
     Returns
     -------
     dict
-        The ``tonnage_test`` row that was inserted.
+        The ``tonnage_test`` row that was inserted in the baseline row's
+        place.
 
     Raises
     ------
     HTTPException
-        404 if ``vessel_id`` isn't a real vessel in ``tonnage_test``; 502 on
-        a database failure (including an ``order_assignment`` that isn't a
-        valid integer -- rejected by the ``::bigint`` cast in the insert).
+        404 if ``vessel_id`` isn't a real vessel in ``tonnage_test``, or if
+        ``base_tonnage_row_key`` no longer matches an existing row for it
+        (edited/deleted concurrently, or a stale key from an old page load);
+        502 on a database failure (including an ``order_assignment`` that
+        isn't a valid integer -- rejected by the ``::bigint`` cast in the
+        insert).
     """
     exists = await _run(*toq.vessel_exists_sql(body.vessel_id))
     if not exists:
@@ -158,8 +169,24 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             status_code=404, detail=f"Unknown vessel_id: {body.vessel_id!r}"
         )
 
+    # Read the baseline row's own values before it's swapped out, purely so
+    # the audit log below can record what each field changed *from* -- also
+    # doubles as the existence check for base_tonnage_row_key, ahead of the
+    # swap itself.
+    snapshot_rows = await _run(*toq.tonnage_row_snapshot_sql(body.base_tonnage_row_key, body.vessel_id))
+    if not snapshot_rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Record to override no longer exists for vessel_id={body.vessel_id!r} "
+                "-- it may have just been edited or reloaded elsewhere. Refresh and try again."
+            ),
+        )
+    snapshot = snapshot_rows[0]
+
     rows = await _run(
-        *toq.insert_tonnage_row_sql(
+        *toq.override_tonnage_row_sql(
+            body.base_tonnage_row_key,
             body.vessel_id,
             body.override_status,
             open_area=body.open_area,
@@ -168,17 +195,36 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             order_assignment=body.order_assignment,
         )
     )
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Record to override no longer exists for vessel_id={body.vessel_id!r} "
+                "-- it may have just been edited or reloaded elsewhere. Refresh and try again."
+            ),
+        )
+    new_row = rows[0]
 
     try:
         await _run(
             *toq.insert_audit_sql(
                 body.vessel_id,
-                body.override_status,
+                # The audit log's "new" side is the swap's own effective
+                # values, not the raw request body -- a field the trader
+                # left blank resolved to the base row's old value via
+                # COALESCE, so logging the (blank) body field here would
+                # make an untouched field look cleared. See insert_audit_sql.
+                new_row["commercial_status"],
                 body.entered_by,
-                open_area=body.open_area,
-                open_date_start=body.open_date_start,
-                open_date_end=body.open_date_end,
-                order_assignment=body.order_assignment,
+                open_area=new_row["open_area"],
+                open_date_start=new_row["open_date_start"],
+                open_date_end=new_row["open_date_end"],
+                order_assignment=new_row["order_id"],
+                old_override_status=snapshot["commercial_status"],
+                old_open_area=snapshot["open_area"],
+                old_open_date_start=snapshot["open_date_start"],
+                old_open_date_end=snapshot["open_date_end"],
+                old_order_assignment=snapshot["order_id"],
             )
         )
     except HTTPException:

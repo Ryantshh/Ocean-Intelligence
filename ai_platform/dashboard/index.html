@@ -295,15 +295,29 @@
          Record cell, New Record cell, and form control -- distinct from
          the page's existing categorical/status palettes, which are
          reserved for the Dashboard tab. */
-      .override-layout { display: grid; gap: 1.5rem; grid-template-columns: minmax(22rem, 28rem) 1fr; align-items: stretch; }
+      .override-layout {
+        display: grid; gap: 1.5rem; grid-template-columns: minmax(22rem, 28rem) 1fr; align-items: stretch;
+        background: var(--card); border: 1px solid var(--border); border-radius: 1rem; padding: 1.5rem;
+      }
       @media (max-width: 64rem) { .override-layout { grid-template-columns: 1fr; } }
       .override-layout > div { min-width: 0; }
-      /* Current Record + New Record stretch to the same total height as the
-         form column -- Current Record's own table absorbs the leftover
-         space (and scrolls internally) so the two columns' bottoms align. */
+      /* Current Record's table is hard-capped to ~10 rows (below) so its
+         height is deterministic regardless of how many reports a vessel
+         has on file. With both columns' natural heights now bounded, plain
+         grid `align-items: stretch` (above) equalizes the form column and
+         the record-panel column to the same fixed height -- whichever is
+         naturally shorter gets stretched to match, no flex/JS needed. */
       .record-panel { display: flex; flex-direction: column; min-height: 0; }
-      .record-panel .table-wrap.scroll-capped { flex: 1 1 auto; min-height: 8rem; max-height: none; }
-      .record-panel .record-section-gap { flex: none; }
+      .form-panel { overflow-y: auto; }
+      .record-search {
+        width: 100%; font: inherit; font-size: 0.85rem; padding: 0.45rem 0.6rem;
+        border-radius: 0.5rem; border: 1px solid var(--border); background: var(--bg);
+        color: var(--fg); margin-bottom: 0.6rem;
+      }
+      .record-search:focus {
+        outline: none; border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+      }
       form.override-form {
         display: grid; gap: 0.9rem; background: var(--card); border: 1px solid var(--border);
         border-radius: 0.75rem; padding: 1.25rem;
@@ -359,10 +373,30 @@
         background: color-mix(in srgb, var(--accent) 5%, var(--bg));
       }
       .record-section-gap { margin-top: 1.5rem; }
-      .table-wrap.scroll-capped { max-height: 22rem; overflow-y: auto; }
+      /* Sized for 10 data rows (measured: thead ~2.1rem + 10 * ~2.4rem tbody
+         rows) before it scrolls -- see the .record-panel comment above. */
+      .table-wrap.scroll-capped { max-height: 26rem; overflow-y: auto; }
       .table-wrap.scroll-capped thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
       #overrides-section .table-wrap table { min-width: max-content; }
+      /* Audit Trail status coloring -- distinct from the Dashboard tab's
+         OPEN/ON SUBS/FIXED badges (.badge-open/-watchlist/-fixed above),
+         since this covers all 12 raw override_status values a trader can
+         submit (OVERRIDE_STATUSES in trader_override_queries.py), not the
+         3-way derived dashboard_status. Default (no modifier) stays the
+         neutral card/border look for statuses that are neither good nor
+         bad news for the vessel's tonnage. */
+      #auditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
       #auditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+      #auditTable .badge-good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); border-color: transparent; }
+      #auditTable .badge-bad { background: color-mix(in srgb, var(--status-critical) 18%, transparent); color: var(--status-critical); border-color: transparent; }
+      #auditTable .badge-caution { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: color-mix(in srgb, var(--status-warning) 70%, var(--fg) 30%); border-color: transparent; }
+      #auditTable .audit-diff-muted { color: var(--muted); }
+      #auditTable .audit-diff-arrow { color: var(--muted); margin: 0 0.35em; }
+      #auditTable .audit-diff-new { color: #16a34a; font-weight: 600; }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) #auditTable .audit-diff-new { color: #4ade80; }
+      }
+      :root[data-theme="dark"] #auditTable .audit-diff-new { color: #4ade80; }
 
       /* Circle loading spinner, used in place of a bare "Loading..." string
          while the record panel / audit trail fetch. */
@@ -590,14 +624,14 @@
           <h2>Trader Overrides</h2>
           <p class="sub">
             Record what you've heard privately (broker, chat) on a vessel before it
-            reaches Shipfix. Saved as a new position report for the vessel, so it
-            takes precedence immediately -- the Dashboard tab always shows a
-            vessel's newest report. Every submission is also logged in the Audit
-            Trail below.
+            reaches Shipfix. Replaces the selected record with a copy carrying your
+            edits, so it takes precedence immediately -- the Dashboard tab always
+            shows a vessel's newest report. Every submission is also logged in the
+            Audit Trail below.
           </p>
         </div>
         <div class="override-layout">
-          <div>
+          <div class="form-panel">
             <h3>Enter a Status Update</h3>
             <p class="sub" style="margin-bottom:1rem;">
               Only Vessel, Status, and Entered by are required -- fill in
@@ -643,6 +677,10 @@
                   <input id="ovOpenDateEnd" type="date" />
                 </label>
               </div>
+              <p class="form-hint">
+                Enter real calendar dates &mdash; they're saved one year earlier to
+                line up with the Dashboard's simulated clock.
+              </p>
 
               <p class="form-section-label">Attribution</p>
               <label class="field-required">Entered by
@@ -657,8 +695,13 @@
             <h3>Current Record</h3>
             <p class="sub" style="margin-bottom:0.5rem;">
               Every reported position on file for the selected vessel, newest first.
-              Click a row to override that trip's record instead of the newest one.
+              Click a row to compare your update against that trip instead of the newest one --
+              submitting always adds a new report rather than editing the row you clicked.
             </p>
+            <input
+              type="text" id="currentRecordSearch" class="record-search"
+              placeholder="Search this vessel's records&hellip;" autocomplete="off"
+            />
             <div class="table-wrap scroll-capped"><table id="currentRecordTable">
               <thead><tr></tr></thead>
               <tbody><tr><td class="record-empty">Select a vessel to see its current record.</td></tr></tbody>
@@ -688,7 +731,7 @@
         </div>
         <div class="table-wrap"><table id="auditTable">
           <thead><tr>
-            <th>Vessel</th><th>Status</th><th>Open area</th><th>Open window</th>
+            <th>Vessel</th><th>Commercial Status</th><th>Open area</th><th>Open window</th>
             <th>Order assignment</th><th>Entered by</th><th>When</th>
           </tr></thead>
           <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
@@ -1577,6 +1620,22 @@
       // status, DWT, ship type/size, order id) pass through unchanged.
       const dateOnly = (value) => (value ? String(value).slice(0, 10) : "");
 
+      // The open date fields are calendar-picked in real time, but every
+      // Dashboard view (vessel_current_status's active_bookings) checks
+      // booking-window containment against tonnage_reference_now() -- real
+      // wall-clock now() minus one year, not today's actual date (see
+      // dashboard_gold_views.sql, function 0). A window entered on today's
+      // real calendar would never contain that simulated "now" and the
+      // vessel would show OPEN regardless of the status just recorded, so
+      // shift the trader's real-world date back a year here before it's
+      // sent or previewed -- transparent to the trader, who keeps typing
+      // real dates.
+      function toSimulatedDate(value) {
+        if (!value) return null;
+        const [year, month, day] = value.split("-").map(Number);
+        return `${String(year - 1).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+
       // Every tonnage_test column vessel_history_sql selects is shown --
       // nothing the backend fetches is dropped, so the frontend column set
       // always tallies with what's actually queried. Order is NOT Supabase's
@@ -1600,10 +1659,10 @@
           formValue: () => document.getElementById("ovOrderAssignment").value.trim() || null,
           diffColor: "var(--diff-order-id)" },
         { key: "open_date_start", label: "open date start", overridable: true, fmt: formatDate, inputId: "ovOpenDateStart",
-          formValue: () => document.getElementById("ovOpenDateStart").value || null,
+          formValue: () => toSimulatedDate(document.getElementById("ovOpenDateStart").value) || null,
           normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-open-date-start)" },
         { key: "open_date_end", label: "open date end", overridable: true, fmt: formatDate, inputId: "ovOpenDateEnd",
-          formValue: () => document.getElementById("ovOpenDateEnd").value || null,
+          formValue: () => toSimulatedDate(document.getElementById("ovOpenDateEnd").value) || null,
           normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-open-date-end)" },
         { key: "update_date", label: "update date", fmt: formatDate },
         { key: "parent_zone", label: "parent zone" },
@@ -1623,6 +1682,33 @@
       // by clicking its row in Current Record. Reset to 0 (newest) whenever
       // a different vessel is loaded.
       let selectedRecordIndex = 0;
+      // Free-text filter over Current Record's rows -- the table itself is
+      // capped to ~10 visible rows (scroll-capped, above) so a vessel with
+      // a long reporting history needs a way to jump straight to a row
+      // instead of scrolling through all of it.
+      let currentRecordQuery = "";
+
+      function matchesRecordQuery(record, query) {
+        if (!query) return true;
+        const needle = query.toLowerCase();
+        return RECORD_COLUMNS.some((column) => {
+          const raw = record[column.key];
+          if (raw === null || raw === undefined || raw === "") return false;
+          const text = column.fmt ? column.fmt(raw) : String(raw);
+          return String(text).toLowerCase().includes(needle);
+        });
+      }
+
+      // Pairs each matching record with its index in the unfiltered
+      // currentRecords array, since selectedRecordIndex/data-index and the
+      // New Record diff both key off that original index, not a position
+      // within the filtered subset.
+      function getFilteredRecords() {
+        if (!currentRecords) return [];
+        return currentRecords
+          .map((record, index) => ({ record, index }))
+          .filter(({ record }) => matchesRecordQuery(record, currentRecordQuery));
+      }
 
       function renderTableHeaders() {
         const headerHtml = RECORD_COLUMNS.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
@@ -1666,31 +1752,52 @@
           });
           return;
         }
-        countLabel.textContent = currentRecords.length > 5
-          ? `${currentRecords.length} reported positions on file — showing the latest 5, scroll for older ones.`
-          : `${currentRecords.length} reported position${currentRecords.length === 1 ? "" : "s"} on file.`;
+        const filtered = getFilteredRecords();
+        countLabel.textContent = currentRecordQuery
+          ? `${filtered.length} of ${currentRecords.length} reported position${currentRecords.length === 1 ? "" : "s"} match "${currentRecordQuery}".`
+          : `${currentRecords.length} reported position${currentRecords.length === 1 ? "" : "s"} on file — showing up to 10 at a time, scroll for more.`;
 
-        // Current Record: every reported row, newest first -- but only the
-        // selected row (selectedRecordIndex; defaults to the newest, index
-        // 0) is diffed against the form, so a trader can override an older
-        // trip's record by clicking its row instead of always the latest.
-        // The matching form control also gets flagged (.field-changed) so
-        // a changed field is visible in three places at once: the input
+        // Current Record: every reported row matching the search filter (or
+        // all of them, unfiltered), newest first -- but only the selected
+        // row (selectedRecordIndex; defaults to the newest, index 0) is
+        // diffed against the form, so a trader can override an older trip's
+        // record by clicking its row instead of always the latest. The
+        // matching form control also gets flagged (.field-changed) so a
+        // changed field is visible in three places at once: the input
         // itself, its Current Record cell, and its New Record cell.
-        currentBody.innerHTML = currentRecords.map((record, index) => {
-          const isSelected = index === selectedRecordIndex;
-          const cells = RECORD_COLUMNS.map((column) => {
-            const raw = record[column.key];
-            const changed = isSelected && column.overridable && isFieldChanged(column, raw);
-            if (isSelected && column.inputId) {
-              const inputEl = document.getElementById(column.inputId);
-              inputEl.classList.toggle("field-changed", changed);
-              if (column.diffColor) inputEl.style.setProperty("--field-diff-color", column.diffColor);
-            }
-            return displayValue(raw, column.fmt, changed, column.diffColor);
+        const selectedIsVisible = filtered.some(({ index }) => index === selectedRecordIndex);
+        if (!filtered.length) {
+          currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">No records match "${currentRecordQuery}".</td></tr>`;
+        } else {
+          currentBody.innerHTML = filtered.map(({ record, index }) => {
+            const isSelected = index === selectedRecordIndex;
+            const cells = RECORD_COLUMNS.map((column) => {
+              const raw = record[column.key];
+              const changed = isSelected && column.overridable && isFieldChanged(column, raw);
+              if (isSelected && column.inputId) {
+                const inputEl = document.getElementById(column.inputId);
+                inputEl.classList.toggle("field-changed", changed);
+                if (column.diffColor) inputEl.style.setProperty("--field-diff-color", column.diffColor);
+              }
+              return displayValue(raw, column.fmt, changed, column.diffColor);
+            }).join("");
+            return `<tr data-index="${index}" class="${isSelected ? "selected-row" : ""}">${cells}</tr>`;
           }).join("");
-          return `<tr data-index="${index}" class="${isSelected ? "selected-row" : ""}">${cells}</tr>`;
-        }).join("");
+        }
+        // The search filter can hide the selected row entirely -- its
+        // .field-changed flagging above only runs for rows actually
+        // rendered, so recompute it here directly against the selected
+        // record whenever the filter has scrolled it out of view.
+        if (!selectedIsVisible) {
+          const selected = currentRecords[selectedRecordIndex];
+          RECORD_COLUMNS.forEach((column) => {
+            if (!column.inputId) return;
+            const changed = column.overridable && isFieldChanged(column, selected[column.key]);
+            const inputEl = document.getElementById(column.inputId);
+            inputEl.classList.toggle("field-changed", changed);
+            if (column.diffColor) inputEl.style.setProperty("--field-diff-color", column.diffColor);
+          });
+        }
 
         // New Record: one row -- the selected trip's record merged with
         // whatever the trader has typed so far. "touched" (has a form
@@ -1724,6 +1831,8 @@
         newBody.innerHTML = loadingRow;
         document.getElementById("currentRecordCount").textContent = "";
         selectedRecordIndex = 0; // a different vessel always starts diffed against its newest trip
+        currentRecordQuery = "";
+        document.getElementById("currentRecordSearch").value = "";
         try {
           currentRecords = await getJson(`/api/trader-override/vessels/${encodeURIComponent(vesselId)}`);
           renderRecordTables();
@@ -1745,6 +1854,11 @@
         const index = Number(row.dataset.index);
         if (index === selectedRecordIndex) return;
         selectedRecordIndex = index;
+        renderRecordTables();
+      });
+
+      document.getElementById("currentRecordSearch").addEventListener("input", (event) => {
+        currentRecordQuery = event.target.value.trim();
         renderRecordTables();
       });
 
@@ -1841,19 +1955,77 @@
         }
       }
 
-      function openWindow(row) {
-        if (!row.open_date_start && !row.open_date_end) return "—";
-        return `${formatDate(row.open_date_start)} – ${formatDate(row.open_date_end)}`;
+      // Maps every OVERRIDE_STATUSES value (trader_override_queries.py) to
+      // a badge color: red for statuses that mean the tonnage is off the
+      // market or the deal fell through, green for statuses that mean it's
+      // successfully booked/secured, amber for genuinely uncertain ones,
+      // and the plain neutral badge (no class) for the rest.
+      const AUDIT_STATUS_CLASS = {
+        FIXED: "badge-good",
+        "ON SUBS": "badge-good",
+        CONTRACT: "badge-good",
+        "BALLAST FIXED": "badge-good",
+        FAILED: "badge-bad",
+        CANCELLED: "badge-bad",
+        "DO NOT COUNT": "badge-bad",
+        "POSS FIXED": "badge-caution",
+        WATCHLIST: "badge-caution",
+        RELET: "badge-caution",
+      };
+
+      function auditStatusBadge(status) {
+        const cls = AUDIT_STATUS_CLASS[status] || "";
+        return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
+      }
+
+      // Every Audit Trail column shows what that field changed *from* as
+      // well as *to* -- old_* columns (trader_override_audit) are the
+      // overridden row's own values just before the swap, read via
+      // tonnage_row_snapshot_sql. NULL there means "logged before this
+      // column existed", same as a genuinely blank field -- both render as
+      // literal "Null", so it reads as an actual value, not a rendering
+      // gap. An unchanged field (old === new) still collapses to just the
+      // one (green) value instead of "value → value" -- there's nothing to
+      // diff when nothing changed.
+      const AUDIT_DASH = `<span class="audit-diff-muted">Null</span>`;
+      const AUDIT_ARROW = `<span class="audit-diff-arrow">&rarr;</span>`;
+      const auditNew = (html) => `<span class="audit-diff-new">${html}</span>`;
+
+      function auditDiffText(oldVal, newVal) {
+        const oldText = oldVal === null || oldVal === undefined || oldVal === "" ? null : escapeHtml(String(oldVal));
+        const newText = newVal === null || newVal === undefined || newVal === "" ? null : escapeHtml(String(newVal));
+        const newSide = auditNew(newText ?? "Null");
+        if (oldText === newText) return newSide;
+        return `${oldText ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
+      }
+
+      function auditStatusDiff(row) {
+        const newBadge = auditStatusBadge(row.override_status);
+        if (row.old_override_status === row.override_status) return newBadge;
+        const oldBadge = row.old_override_status ? auditStatusBadge(row.old_override_status) : AUDIT_DASH;
+        return `${oldBadge}${AUDIT_ARROW}${newBadge}`;
+      }
+
+      function auditWindowDiff(row) {
+        const oldWindow = row.old_open_date_start || row.old_open_date_end
+          ? `${formatDate(row.old_open_date_start)} – ${formatDate(row.old_open_date_end)}`
+          : null;
+        const newWindow = row.open_date_start || row.open_date_end
+          ? `${formatDate(row.open_date_start)} – ${formatDate(row.open_date_end)}`
+          : null;
+        const newSide = auditNew(newWindow ?? "Null");
+        if (oldWindow === newWindow) return newSide;
+        return `${oldWindow ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
       }
 
       function auditRow(row) {
         return `
           <tr>
             <td>${escapeHtml(row.vessel_id)}</td>
-            <td><span class="badge">${escapeHtml(row.override_status)}</span></td>
-            <td>${escapeHtml(row.open_area || "—")}</td>
-            <td>${openWindow(row)}</td>
-            <td>${escapeHtml(row.order_assignment || "—")}</td>
+            <td>${auditStatusDiff(row)}</td>
+            <td>${auditDiffText(row.old_open_area, row.open_area)}</td>
+            <td>${auditWindowDiff(row)}</td>
+            <td>${auditDiffText(row.old_order_assignment, row.order_assignment)}</td>
             <td>${escapeHtml(row.entered_by)}</td>
             <td>${formatDate(row.created_at)}</td>
           </tr>
@@ -1899,19 +2071,28 @@
           showFormMessage("error", "Status and Entered by are required.");
           return;
         }
+        // The submission replaces whichever Current Record row is
+        // selected (baseTonnageRowKey) -- see override_tonnage_row_sql --
+        // so there must be a loaded record to replace.
+        if (!currentRecords || !currentRecords[selectedRecordIndex]) {
+          showFormMessage("error", "Could not find the record being overridden -- reselect the vessel and try again.");
+          return;
+        }
+        const baseTonnageRowKey = currentRecords[selectedRecordIndex].tonnage_row_key;
 
         submitBtn.disabled = true;
         try {
           await postJson("/api/trader-override", {
             vessel_id: vesselId,
+            base_tonnage_row_key: baseTonnageRowKey,
             override_status: overrideStatus,
             entered_by: enteredBy,
             open_area: openArea || null,
-            open_date_start: openDateStart || null,
-            open_date_end: openDateEnd || null,
+            open_date_start: toSimulatedDate(openDateStart),
+            open_date_end: toSimulatedDate(openDateEnd),
             order_assignment: orderAssignment || null,
           });
-          showFormMessage("success", `Recorded a new position report for ${vesselId}.`);
+          showFormMessage("success", `Replaced the selected record for ${vesselId}.`);
           document.getElementById("overrideForm").reset();
           populateStatusOptions();
           await Promise.all([loadRecordPanel(vesselId), loadVesselOptions(), loadAudit()]);
