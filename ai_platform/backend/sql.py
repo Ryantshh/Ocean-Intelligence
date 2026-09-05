@@ -1,6 +1,6 @@
-"""Shared machinery for per-table filter modules.
+"""Assembles one parameterised SELECT from a table spec and a filter.
 
-Column names come from the spec tables in this package; values come from the
+Column names come from the table specs in ``tables.py``; values come from the
 model but only ever as bound parameters. Nothing is interpolated into SQL, so a
 bad extraction returns the wrong rows rather than executing anything.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -20,6 +20,15 @@ MAX_RANKED_ROWS = 50
 A WHERE clause is binary, so a filter-only query needs no cap. A distance
 ordering matches every row in the table, so without one it returns the whole
 table sorted. Reached only when ``DISTANCE_TOLERANCE`` admits more than this.
+"""
+
+DISTANCE_CEILING = 0.55
+"""Furthest a row may sit from the query and still count as a match at all.
+
+Absolute, applied per term inside the ranked set, so a description nothing
+resembles returns no rows rather than its nearest fifty. Exact matches score
+0.29 to 0.44 and the first wrong rows 0.62 to 0.67, so 0.55 sits in the gap; it
+governs ``cargo_description`` alone and should be re-measured on that column.
 """
 
 DISTANCE_TOLERANCE = 1.15
@@ -52,6 +61,27 @@ class RangeSpec:
     field: str
     column: str
     operator: str
+
+
+@dataclass(frozen=True)
+class MatchSpec:
+    """A text match tested against each comma-separated element of a cell.
+
+    Attributes
+    ----------
+    field : str
+        Attribute on the filter model.
+    column : str
+        Database column, possibly holding several names joined by ``", "``.
+    mode : str
+        ``exact`` for a closed vocabulary, ``prefix`` for a family such as
+        ``IRON ORE`` covering ``IRON ORE PELLETS``, ``contains`` for a port that
+        may sit inside a longer label such as ``Itaguai / Sepetiba``.
+    """
+
+    field: str
+    column: str
+    mode: Literal["exact", "prefix", "contains"]
 
 
 @dataclass(frozen=True)
@@ -110,6 +140,7 @@ class StatementBuilder:
         self.latest_key = latest_key
         self.latest_order = latest_order
         self.include_history = False
+        self.exhaustive = False
         self.horizon: str = ""
         self.clauses: list[str] = []
         self.params: list[Any] = []
@@ -134,20 +165,6 @@ class StatementBuilder:
         self.params.append(value)
         return f"${len(self.params)}"
 
-    def add_clause(self, clause: str) -> None:
-        """Append a clause built by a caller.
-
-        Parameters
-        ----------
-        clause : str
-            SQL fragment, already using placeholders from :meth:`bind_parameter`.
-
-        Returns
-        -------
-        None
-        """
-        self.clauses.append(clause)
-
     def add_ranges(self, filters: BaseModel, specs: tuple[RangeSpec, ...]) -> None:
         """Apply every range bound that was set.
 
@@ -165,7 +182,7 @@ class StatementBuilder:
         for spec in specs:
             value = getattr(filters, spec.field, None)
             if value is not None:
-                self.add_clause(
+                self.clauses.append(
                     f"{spec.column} {spec.operator} {self.bind_parameter(value)}"
                 )
 
@@ -191,7 +208,40 @@ class StatementBuilder:
                     if spec.expression
                     else spec.column
                 )
-                self.add_clause(f"{target} = {self.bind_parameter(value)}")
+                self.clauses.append(f"{target} = {self.bind_parameter(value)}")
+
+    def add_matches(self, filters: BaseModel, specs: tuple[MatchSpec, ...]) -> None:
+        """Add one per-element text match for every spec the filters set.
+
+        The cell is split on ``", "`` and the test runs against each piece, so a
+        name buried third in a list still matches, and ``Australia`` does not
+        match ``West Australia`` when the mode is exact.
+
+        Parameters
+        ----------
+        filters : BaseModel
+            The filter model.
+        specs : tuple of MatchSpec
+            Matches this table offers.
+
+        Returns
+        -------
+        None
+        """
+        for spec in specs:
+            value = getattr(filters, spec.field, None)
+            if not value:
+                continue
+            pattern = {
+                "exact": value,
+                "prefix": f"{value}%",
+                "contains": f"%{value}%",
+            }[spec.mode]
+            operator = "=" if spec.mode == "exact" else "ILIKE"
+            self.clauses.append(
+                f"""EXISTS (SELECT 1 FROM unnest(string_to_array("{spec.column}", ', ')) """
+                f"AS element WHERE element {operator} {self.bind_parameter(pattern)})"
+            )
 
     def set_horizon(self, column: str, cutoff: date) -> None:
         """Hide rows stamped after a cutoff.
@@ -298,11 +348,16 @@ class StatementBuilder:
             f'("{column}" <=> {placeholder}::vector)'
             for column, placeholder in self.similarity_terms
         )
+        ceiling = " AND ".join(
+            f'("{column}" <=> {placeholder}::vector) <= {DISTANCE_CEILING}'
+            for column, placeholder in self.similarity_terms
+        )
         sql = (
             f"WITH ranked AS (SELECT {selected_columns}, {distance_expression} "
-            f"AS distance FROM {source} WHERE {where_clause}) "
+            f"AS distance FROM {source} WHERE {where_clause} AND {ceiling}) "
             f"SELECT {selected_columns} FROM ranked "
             f"WHERE distance <= (SELECT min(distance) FROM ranked) * {DISTANCE_TOLERANCE} "
-            f"ORDER BY distance LIMIT {MAX_RANKED_ROWS}"
+            f"ORDER BY distance"
+            + ("" if self.exhaustive else f" LIMIT {MAX_RANKED_ROWS}")
         )
         return sql, self.params
