@@ -3,8 +3,9 @@ import { useEffect, useRef, useState } from "react";
 const COMPOSER_SELECTORS = ["#message-composer", "#chat-input"];
 const GAP_ABOVE_COMPOSER = 10;
 const FALLBACK_BOTTOM = 96;
+const SETTLE_MS = 600;
 
-export default function ContextGauge() {
+export default function ComposerBar() {
   const anchorRef = useRef(null);
   const [box, setBox] = useState(null);
 
@@ -60,18 +61,32 @@ export default function ContextGauge() {
     // width-capped, so widening the window past the cap only re-centres it and
     // the observer stays silent. Sampling while a pointer is held covers the
     // drag of a panel divider, which is when that happens.
+    //
+    // Sampling outlives the pointer by SETTLE_MS because opening or closing the
+    // side panel animates after the click lands: stopping on pointerup leaves
+    // the bar behind for the whole transition.
     let frame = 0;
+    let settle = 0;
     const followDrag = () => {
       measure();
       frame = requestAnimationFrame(followDrag);
     };
-    const startFollow = () => {
-      if (!frame) frame = requestAnimationFrame(followDrag);
-    };
-    const stopFollow = () => {
+    const endFollow = () => {
+      settle = 0;
       if (frame) cancelAnimationFrame(frame);
       frame = 0;
       measure();
+    };
+    const startFollow = () => {
+      if (settle) {
+        clearTimeout(settle);
+        settle = 0;
+      }
+      if (!frame) frame = requestAnimationFrame(followDrag);
+    };
+    const stopFollow = () => {
+      if (settle) clearTimeout(settle);
+      settle = setTimeout(endFollow, SETTLE_MS);
     };
 
     const observer = new ResizeObserver(measure);
@@ -84,6 +99,7 @@ export default function ContextGauge() {
     document.addEventListener("pointercancel", stopFollow);
     return () => {
       clearTimeout(retry);
+      if (settle) clearTimeout(settle);
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener("resize", measure);

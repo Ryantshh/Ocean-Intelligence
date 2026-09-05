@@ -4,38 +4,29 @@ Imports no chainlit. That is what lets this run in the eval suite with no web
 server, and what keeps the reply path usable outside the chat interface.
 
 Groq is reached through the OpenAI-compatible endpoint rather than the ``groq``
-SDK, because ``cl.instrument_openai()`` only instruments the OpenAI client — and,
-per the same shape, because ``langfuse.openai`` is a drop-in ``AsyncOpenAI`` that
-sends every completion call to Langfuse as a trace/generation with no per-call
-instrumentation code.
+SDK, so any OpenAI-client instrumentation applies to it unchanged.
 
-Left alone, that client opens a fresh trace for every completion, disconnected
-from the LangGraph trace the node calling it is already part of --
-``langfuse.openai`` only nests under a parent when told to via ``trace_id``/
-``parent_observation_id`` kwargs on the call, and never reads OpenTelemetry's
-ambient "current span" the way the LangChain callback machinery does.
-``trace_kwargs`` supplies those two IDs by reading the run id LangGraph already
-threads through ``get_config()`` for the node in progress and looking up the
-span Langfuse's ``CallbackHandler`` opened for it -- so a request routed
-through the graph gets one trace with every node and every completion inside
-it, and a request outside the graph (the plain-model chat profile) just falls
-back to a standalone trace per call, same as before.
+Nothing here may monkeypatch ``AsyncCompletions.create`` process-wide. Once a
+streaming callback is attached, ``langchain_openai`` awaits ``create`` and then
+uses the result as an async context manager; an instrumenter that returns an
+async generator instead of the ``AsyncStream`` breaks every agent turn with a
+TypeError. That is why ``cl.instrument_openai()`` is not called anywhere.
+Langfuse reaches the agent through the ``CallbackHandler`` on its run config,
+which is the supported LangChain path and patches nothing.
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from pathlib import Path
+from typing import cast
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langfuse.openai import AsyncOpenAI
-from langgraph.config import get_config
+from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import SecretStr
-
-from ai_platform.backend.tracing import langfuse_handler
 
 load_dotenv()
 
@@ -49,18 +40,16 @@ Declared here because LangChain carries profiles for known providers only,
 and a custom base URL is not one. Without it any middleware working in
 fractions of the window raises rather than guessing."""
 
-SYSTEM_PROMPT = (
-    "You are the assistant for Ocean Intelligence, a platform covering shipping "
-    "fleet and cargo data: vessels, tonnage, open positions, laycans, load and "
-    "discharge ports, and cargo orders.\n"
-    "\n"
-    "You currently have no access to the database or to any retrieval system. "
-    "Answer from general maritime and shipping knowledge only. When a question "
-    "needs specific records — a particular vessel, a live position, counts, "
-    "anything that would require looking data up — say plainly that you cannot "
-    "see the data yet, rather than inventing a plausible answer. Never present a "
-    "guess as a lookup."
-)
+MAX_OUTPUT_TOKENS = 2048
+"""Cap on one completion, reasoning included.
+
+A reply is a sentence and five bullets; the reasoning before it measured four to
+five times that. The cap ends a degenerating generation — ``gpt-oss`` on Groq
+has emitted thousands of zero-width spaces in one turn — before it runs to the
+model's own limit.
+"""
+
+SYSTEM_PROMPT = Path(__file__).with_name("plain_model.md").read_text(encoding="utf-8")
 
 
 def get_model_name() -> str:
@@ -97,34 +86,6 @@ def get_client() -> AsyncOpenAI:
     )
 
 
-def trace_kwargs() -> dict[str, Any]:
-    """Link a completion call to the graph node currently running, if any.
-
-    ``langfuse_handler`` tracks each LangChain run it has opened a span for,
-    keyed by that run's id. ``get_config()`` is how LangGraph exposes the
-    running node's own ``RunnableConfig`` -- its callback manager's
-    ``parent_run_id`` is that node's run id, so looking it up in the handler
-    gives back the exact span the completion should nest under. Both reads
-    are undocumented handler internals rather than public API, so any failure
-    here just means no linkage rather than a broken completion call.
-
-    Returns
-    -------
-    dict of str to Any
-        ``trace_id`` and ``parent_observation_id`` for ``langfuse.openai`` to
-        nest this call under, or empty outside a graph run (e.g. the
-        plain-model chat profile), where the call gets its own trace instead.
-    """
-    try:
-        parent_run_id = get_config()["callbacks"].parent_run_id
-        span = langfuse_handler._runs.get(parent_run_id)
-    except (RuntimeError, KeyError, AttributeError):
-        return {}
-    if span is None:
-        return {}
-    return {"trace_id": span.trace_id, "parent_observation_id": span.id}
-
-
 def get_chat_model() -> ChatOpenAI:
     """Build the LangChain chat model the agent runs on.
 
@@ -151,6 +112,7 @@ def get_chat_model() -> ChatOpenAI:
         api_key=SecretStr(api_key),
         base_url=os.environ.get("GROQ_BASE_URL", "").strip() or DEFAULT_BASE_URL,
         temperature=0,
+        max_completion_tokens=MAX_OUTPUT_TOKENS,
         profile={"max_input_tokens": MAX_INPUT_TOKENS},
     )
 
@@ -203,7 +165,6 @@ async def stream_chat(
         messages=payload,
         stream=True,
         stream_options={"include_usage": True},
-        **trace_kwargs(),
     )
 
     async for chunk in stream:

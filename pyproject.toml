@@ -37,6 +37,7 @@ dependencies = [
     "openai>=2.53.0",
     "python-dotenv>=1.2.2",
     "sqlalchemy[asyncio]>=2.0.51",
+    "tiktoken>=0.14.0",
     "uvicorn[standard]>=0.52.1",
 ]
 

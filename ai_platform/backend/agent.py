@@ -26,7 +26,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from ai_platform.backend.llm import get_chat_model
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.prompts import AGENT_SYSTEM
-from ai_platform.backend.tools import ask_user, search_orders, search_tonnage
+from ai_platform.backend.tools import ask_user, search_orders_and_tonnage
 
 _logger = get_logger("agent")
 
@@ -88,10 +88,8 @@ _middleware: list[AgentMiddleware[Any, Any, Any]] = [
 
 agent = create_agent(
     model=model,
-    tools=[search_orders, search_tonnage, ask_user],
+    tools=[search_orders_and_tonnage, ask_user],
     system_prompt=AGENT_SYSTEM,
     middleware=_middleware,
     checkpointer=InMemorySaver(),
 )
-
-_logger.info("agent compiled with 3 tools")

@@ -1,8 +1,9 @@
 """What the agent can do.
 
-Each search tool is the old embed, build_query and narrow nodes collapsed into
-one function. The docstring is what the model reads to choose a tool and fill its
-arguments, so the field guidance lives there rather than in a system prompt.
+The search tool embeds any free-text term, compiles the SQL and fetches the rows in
+one function. Its docstring is what the model reads to choose it; the field-level
+guidance — what each column accepts and the names it must be spelled with — lives
+in the system prompt, structured per table, so it is written once.
 
 ``ask_user`` is a tool rather than middleware because the decision to ask belongs
 to the model. It calls ``interrupt``, which saves the run and stops; the agent
@@ -11,23 +12,25 @@ resumes into the same call once the user submits.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import Any
 
 from langchain_core.tools import tool
 from langgraph.types import interrupt
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai_platform.backend import tables
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.embeddings import embed_search_terms
 from ai_platform.backend.logging_utils import get_logger
+from ai_platform.backend.sql import MAX_RANKED_ROWS
 
 _logger = get_logger("agent")
 
 
 async def _search(
-    spec: tables.TableSpec, search: BaseModel
+    spec: tables.TableSpec, search: BaseModel | None
 ) -> list[dict[str, Any]]:
     """Embed any free-text terms, compile the SQL and fetch the rows.
 
@@ -39,14 +42,18 @@ async def _search(
     ----------
     spec : TableSpec
         The table being searched.
-    search : BaseModel
-        That table's flat search model.
+    search : BaseModel or None
+        That table's flat search model, or None to skip the table so both halves
+        can be gathered unconditionally.
 
     Returns
     -------
     list of dict
-        Matching rows, JSON-friendly.
+        Matching rows, JSON-friendly. Empty when ``search`` is None.
     """
+    if search is None:
+        return []
+
     filled = search.model_dump(exclude_none=True)
     terms = {
         field: value
@@ -71,108 +78,129 @@ async def _search(
     return rows
 
 
-@tool("search_orders", args_schema=tables.OrderSearch)
-async def search_orders(**search: Any) -> list[dict[str, Any]]:
-    """Search cargo enquiries. Returns every matching row.
+@tool("search_orders_and_tonnage", args_schema=tables.Search)
+async def search_orders_and_tonnage(**request: Any) -> dict[str, Any]:
+    """Search cargo enquiries, vessel positions, or both at once.
+
+    Set ``cargoes`` to search orders, ``vessels`` to search tonnage, or both when
+    the question needs both — they run concurrently, so asking for both costs one
+    round trip rather than two. Call this a second time only when the second
+    search depends on what the first returned, such as sizing vessels against the
+    cargoes you just found.
 
     Read the rows before answering. If they do not match what was asked for — a
     load port you did not name, a region on the wrong continent — the search
     missed, and ask_user is the right next step rather than describing them.
 
-    All fields are optional and flat — there is no nesting. Filter fields:
-      order_ids         list of integers, only when the user quotes order numbers
-      laycan_start_from ISO date, laycan first day on or after
-      laycan_start_to   ISO date, laycan first day on or before
-      laycan_end_from   ISO date, laycan cancels on or after, still open then
-      laycan_end_to     ISO date, laycan cancels on or before, must be fixed by then
-      received_from     ISO date, when the enquiry arrived, on or after
-      received_to       ISO date, when the enquiry arrived, on or before
-      updated_from      ISO date, last amended on or after
-      updated_to        ISO date, last amended on or before
-      weight_min        cargo tonnes, floor. The stem's smallest size must reach
-                        it, so 153,000-187,000 does not answer "at least 160,000"
-      weight_max        cargo tonnes, ceiling. The largest size must fit under it
-      include_future    true only for upcoming or forward-dated records
+    Every field, what it accepts and the names it must be spelled with are set
+    out per table in the system prompt. Zones, statuses, cargo types and ports are
+    matched by name; cargo_description is the only field searched by meaning.
 
-    A month means the laycan OVERLAPS that month, which takes two fields on
-    opposite ends: laycan_end_from = the 1st, laycan_start_to = the last day.
-    Setting both bounds on the same end is the narrower question of when a window
-    begins or ends.
-
-    Semantic fields, matched by meaning rather than exact text:
-      cargo_type              commodity, e.g. iron ore, coal, bauxite
-      cargo_description       wording from the enquiry itself
-      load_port               load port, terminal or country
-      load_zone               broad load region, from the zone list only
-      discharge_port          discharge port, terminal or country
-      discharge_parent_zone   broad discharge region, from the zone list only
+    Returns
+    -------
+    dict
+        ``cargoes`` and ``vessels``, each a list of rows; a search not asked for
+        returns an empty list. ``counts`` holds the number of rows per table —
+        use it for any count you report; never tally the rows yourself.
+        ``capped`` names a table whose cargo_description search hit the fifty-row
+        limit, meaning more matches exist than were returned — ask whether the
+        user wants the closest fifty or every match, then re-run with
+        ``exhaustive`` set. Name matches are never capped, however many rows.
     """
-    return await _search(tables.ORDERS, tables.OrderSearch(**search))
+    parsed = tables.Search(**request)
+    cargoes, vessels = await asyncio.gather(
+        _search(tables.ORDERS, parsed.cargoes),
+        _search(tables.TONNAGE, parsed.vessels),
+    )
+    capped = [
+        name
+        for name, rows, spec, search in (
+            ("cargoes", cargoes, tables.ORDERS, parsed.cargoes),
+            ("vessels", vessels, tables.TONNAGE, parsed.vessels),
+        )
+        if search is not None
+        and not search.exhaustive
+        and any(getattr(search, column, None) for column in spec.semantic_columns)
+        and len(rows) >= MAX_RANKED_ROWS
+    ]
+    return {
+        "cargoes": cargoes,
+        "vessels": vessels,
+        "counts": {"cargoes": len(cargoes), "vessels": len(vessels)},
+        "capped": capped,
+    }
 
 
-@tool("search_tonnage", args_schema=tables.VesselSearch)
-async def search_tonnage(**search: Any) -> list[dict[str, Any]]:
-    """Search vessel positions. Returns every matching row.
-
-    Read the rows before answering. If they do not match what was asked for, the
-    search missed, and ask_user is the right next step.
-
-    Each vessel appears once, at its most recent report. The table holds 11,105
-    reports over 1,037 vessels, so without that a ship would appear many times.
-
-    All fields are optional and flat — there is no nesting. Filter fields:
-      vessel_ids        list of strings, verbatim including the prefix, e.g.
-                        "VESSEL 0001". Never strip VESSEL or drop leading zeros
-      open_start_from   ISO date, first free date on or after
-      open_start_to     ISO date, first free date on or before
-      open_end_from     ISO date, window closes on or after, still open then
-      open_end_to       ISO date, window closes on or before, must be fixed by then
-      updated_from      ISO date, position last updated on or after
-      updated_to        ISO date, position last updated on or before
-      received_from     ISO date, position first reported on or after
-      received_to       ISO date, position first reported on or before
-      dwt_min           deadweight tonnes, lower bound
-      dwt_max           deadweight tonnes, upper bound
-      ballast_laden     LADEN or BALLAST
-      commercial_status FIXED, ON SUBS, or AVAILABLE. Unfixed vessels are AVAILABLE
-      include_history   true only for past positions or how a vessel has moved
-      include_future    true only for upcoming or forward-dated records
-
-    A month means the open window OVERLAPS it: open_end_from = the 1st,
-    open_start_to = the last day.
-
-    Every vessel here is Capesize, dwt 160,000 to 190,000. Ship type and ship
-    size cannot be filtered or searched at all.
-
-    Semantic fields, matched by meaning rather than exact text:
-      vessel_status     navigational status, from the status list only
-      open_area         specific open area, port or country
-      parent_zone       broad region containing it, from the zone list only
-    """
-    return await _search(tables.TONNAGE, tables.VesselSearch(**search))
+OTHER_LABELS = frozenset({"other", "others", "something else", "none of these", "none"})
 
 
-@tool
-def ask_user(reason: str, fields: dict[str, str]) -> dict[str, str]:
-    """Ask the user to fill in values you could not resolve.
+class Option(BaseModel):
+    """One answer the user can pick."""
 
-    Call this when a search came back with rows that plainly do not match what
-    was asked for, when a place could be either a zone or a port, or when a term
-    is shorthand you cannot expand. For a single missing value, ask in your reply
-    instead — this is for when several fields need filling at once.
+    model_config = ConfigDict(extra="forbid")
 
-    Parameters
-    ----------
-    reason : str
-        One line the user reads above the form. Say what could not be resolved.
-    fields : dict of str to str
-        Field name to pre-filled value. Use the field names from the search
-        tools, and an empty string where you have no guess.
+    label: str = Field(description="short text the user clicks, in plain words")
+    description: str = Field(description="one line saying what picking it means")
+
+
+class Question(BaseModel):
+    """One question on the form, with its options."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(description="the full question; also the key in the answer")
+    header: str = Field(description="chip of one or two words, twelve characters at most")
+    options: list[Option] = Field(
+        min_length=1,
+        max_length=4,
+        description=(
+            "one to four real choices, best guess first; the form adds Other, so "
+            "never invent a choice to fill a slot"
+        ),
+    )
+    multi_select: bool | None = Field(
+        default=None, description="true when more than one option may apply"
+    )
+
+
+class AskUser(BaseModel):
+    """The form ``ask_user`` shows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    questions: list[Question] = Field(
+        min_length=1, max_length=4, description="one to four questions"
+    )
+
+
+@tool("ask_user", args_schema=AskUser)
+def ask_user(**request: Any) -> dict[str, str]:
+    """Ask the user to settle something you cannot resolve.
+
+    One to four questions, each with one to four real options — your best guess
+    first, in plain words, never a column name, never invented to fill a slot.
+    The form adds its own "Other" for free text, so an option named Other is
+    dropped before the form is shown; never include one.
+
+    Use it whenever a search field needs a value the user did not give: a vague
+    time word, a place that could be a zone or a port, a bare month, a term you
+    do not recognise, a search whose rows contradict the question.
 
     Returns
     -------
     dict of str to str
-        What the user submitted, ready to pass to a search tool.
+        Question text to the answer chosen or typed. Read it and fill the
+        search fields yourself.
     """
-    _logger.info("ask_user: %s fields=%s", reason, list(fields))
-    return interrupt({"reason": reason, "fields": fields})
+    parsed = AskUser(**request)
+    questions = []
+    for question in parsed.questions:
+        shown = question.model_dump()
+        shown["options"] = [
+            option
+            for option in shown["options"]
+            if option["label"].strip().lower() not in OTHER_LABELS
+        ]
+        questions.append(shown)
+    _logger.info("ask_user: %s", [question["header"] for question in questions])
+    return interrupt({"questions": questions})

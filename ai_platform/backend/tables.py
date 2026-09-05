@@ -36,7 +36,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_platform.backend.clock import working_date
-from ai_platform.backend.sql import EqualitySpec, RangeSpec, StatementBuilder
+from ai_platform.backend.sql import EqualitySpec, MatchSpec, RangeSpec, StatementBuilder
 
 
 class OrderSearch(BaseModel):
@@ -54,8 +54,8 @@ class OrderSearch(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    order_ids: list[int] = Field(
-        default_factory=list, description="exact order numbers, when quoted"
+    order_ids: list[int] | None = Field(
+        default=None, description="exact order numbers, when quoted"
     )
     laycan_start_from: date | None = Field(
         default=None, description="laycan first day on or after"
@@ -83,20 +83,24 @@ class OrderSearch(BaseModel):
     weight_max: float | None = Field(
         default=None, description="whole stem at or below this, in tonnes"
     )
-    include_future: bool = Field(
-        default=False, description="true only when the user asks about upcoming records"
+    include_future: bool | None = Field(
+        default=None, description="true only when the user asks about upcoming records"
     )
-    cargo_type: str | None = Field(default=None, description="commodity, e.g. iron ore")
+    exhaustive: bool | None = Field(
+        default=None,
+        description="true for every match rather than the closest fifty",
+    )
+    cargo_type: str | None = Field(default=None, description="stored cargo type, e.g. IRON ORE; a family name finds its members")
     cargo_description: str | None = Field(
-        default=None, description="wording from the enquiry itself"
+        default=None, description="free-text wording from the enquiry, the one field searched by meaning"
     )
-    load_port: str | None = Field(default=None, description="load port, terminal or country")
-    load_zone: str | None = Field(default=None, description="load region, from the zone list")
+    load_port: str | None = Field(default=None, description="load port from the port list, stored spelling")
+    load_zone: str | None = Field(default=None, description="load zone from the zone list, stored spelling")
     discharge_port: str | None = Field(
-        default=None, description="discharge port, terminal or country"
+        default=None, description="discharge port from the port list, stored spelling"
     )
     discharge_parent_zone: str | None = Field(
-        default=None, description="discharge region, from the zone list"
+        default=None, description="discharge zone from the zone list, stored spelling"
     )
 
 
@@ -112,8 +116,8 @@ class VesselSearch(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    vessel_ids: list[str] = Field(
-        default_factory=list, description="exact vessel identifiers, when quoted"
+    vessel_ids: list[str] | None = Field(
+        default=None, description="exact vessel identifiers, when quoted"
     )
     open_start_from: date | None = Field(
         default=None, description="first free date on or after"
@@ -147,20 +151,28 @@ class VesselSearch(BaseModel):
     commercial_status: Literal["FIXED", "ON SUBS", "AVAILABLE"] | None = Field(
         default=None, description="fixture status; unfixed vessels are AVAILABLE"
     )
-    include_history: bool = Field(
-        default=False, description="true only when past positions were asked for"
+    include_history: bool | None = Field(
+        default=None,
+        description=(
+            "true only when the user asks for history; returns every report of a "
+            "vessel, which repeats the same position at different update times"
+        ),
     )
-    include_future: bool = Field(
-        default=False, description="true only when the user asks about upcoming records"
+    include_future: bool | None = Field(
+        default=None, description="true only when the user asks about upcoming records"
+    )
+    exhaustive: bool | None = Field(
+        default=None,
+        description="true for every match rather than the closest fifty",
     )
     vessel_status: str | None = Field(
-        default=None, description="navigational status, from the status list"
+        default=None, description="navigational status from the status list, stored spelling"
     )
     parent_zone: str | None = Field(
-        default=None, description="broad region, from the zone list"
+        default=None, description="zone from the zone list, stored spelling"
     )
     open_area: str | None = Field(
-        default=None, description="specific open area, port or country"
+        default=None, description="open port or area from the port list, stored spelling"
     )
 
 
@@ -183,7 +195,11 @@ class TableSpec:
     display_defaults : dict of str to str
         Values substituted for nulls before display.
     semantic_columns : tuple of str
-        Free-text columns carrying a ``{name}_embedding`` vector alongside them.
+        Free-text columns carrying a ``{name}_embedding`` vector alongside them,
+        searched by meaning. Only prose belongs here; names go in ``matches``.
+    matches : tuple of MatchSpec
+        Text columns matched per comma-separated element — exact for a closed
+        vocabulary, prefix for a family, contains for a port name.
     ranges : tuple of RangeSpec
         Range comparisons this table offers.
     id_field : str
@@ -207,6 +223,7 @@ class TableSpec:
     ranges: tuple[RangeSpec, ...]
     id_field: str
     display_defaults: dict[str, str] = field(default_factory=dict)
+    matches: tuple[MatchSpec, ...] = ()
     equalities: tuple[EqualitySpec, ...] = ()
     latest_key: str | None = None
     latest_order: str = ""
@@ -248,6 +265,7 @@ class TableSpec:
             self.latest_order,
         )
         builder.include_history = getattr(filters, "include_history", False)
+        builder.exhaustive = getattr(filters, "exhaustive", False)
         if not getattr(filters, "include_future", False):
             builder.set_horizon("update_date", working_date())
 
@@ -260,6 +278,7 @@ class TableSpec:
             )
         builder.add_ranges(filters, self.ranges)
         builder.add_equalities(filters, self.equalities)
+        builder.add_matches(filters, self.matches)
 
         # a field the model invented is dropped rather than reaching a column name
         for field_name, term_vector in term_vectors:
@@ -287,13 +306,13 @@ ORDERS = TableSpec(
         "cargo_description",
     ),
     display_noun="cargoes",
-    semantic_columns=(
-        "cargo_type",
-        "cargo_description",
-        "load_port",
-        "load_zone",
-        "discharge_port",
-        "discharge_parent_zone",
+    semantic_columns=("cargo_description",),
+    matches=(
+        MatchSpec("load_zone", "load_zone", "exact"),
+        MatchSpec("discharge_parent_zone", "discharge_parent_zone", "exact"),
+        MatchSpec("cargo_type", "cargo_type", "prefix"),
+        MatchSpec("load_port", "load_port", "contains"),
+        MatchSpec("discharge_port", "discharge_port", "contains"),
     ),
     ranges=(
         RangeSpec("laycan_start_from", "laycan_start", ">="),
@@ -334,10 +353,11 @@ TONNAGE = TableSpec(
     ),
     display_noun="vessels",
     display_defaults={"commercial_status": "AVAILABLE"},
-    semantic_columns=(
-        "vessel_status",
-        "parent_zone",
-        "open_area",
+    semantic_columns=(),
+    matches=(
+        MatchSpec("parent_zone", "parent_zone", "exact"),
+        MatchSpec("vessel_status", "vessel_status", "exact"),
+        MatchSpec("open_area", "open_area", "contains"),
     ),
     ranges=(
         RangeSpec("open_start_from", "open_date_start", ">="),
@@ -361,6 +381,24 @@ TONNAGE = TableSpec(
     latest_key="vessel_id",
     latest_order="update_date DESC, first_date_received DESC",
 )
+
+
+class Search(BaseModel):
+    """One search request, over either table or both.
+
+    Both halves optional. Asking for both in one call runs them concurrently,
+    which is why they are here together rather than as two tools — a question
+    naming cargoes and vessels costs one round trip instead of two.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cargoes: OrderSearch | None = Field(
+        default=None, description="search cargo enquiries; omit to skip"
+    )
+    vessels: VesselSearch | None = Field(
+        default=None, description="search vessel positions; omit to skip"
+    )
 
 
 TABLES: dict[str, TableSpec] = {"orders": ORDERS, "tonnage": TONNAGE}

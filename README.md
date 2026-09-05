@@ -135,7 +135,10 @@ Teal is a Lambda doing real work, blue is a data read/write, amber is a routing 
 
 What survived the pipeline, mapped to `SMU_2025_Data_Glossary`. Seventeen real columns per
 table out of roughly 60 order and 110 tonnage fields in the glossary, plus two pipeline
-columns and one `vector(512)` per embedded text field.
+columns and one `vector(512)` per embedded text field. The agent reads only the
+`cargo_description` vector; zones, statuses, cargo types and ports are matched lexically
+per comma-separated element, against names the prompt lists from
+`backend/vocabulary.json` (regenerate with `python -m ai_platform.backend.vocabulary`).
 
 Glossary names differ from column names where the source header was awkward; the bold ones
 are worth knowing when reading the glossary alongside the database.
@@ -273,52 +276,39 @@ succeed while every read returns 403.
 
 ## 7. The chat agent
 
-A LangGraph agent over the gold tables `public.order_test` and `public.tonnage_test`, served by Chainlit at `/chat`. Metadata filtering and dense vector retrieval over the same tables.
-
-Every node is one function in `backend/nodes.py`, registered under the same name in
-`backend/graph.py`. Nothing else in the package is a node.
-
-| Node | Function | Calls | Prompt |
-|---|---|---|---|
-| `compact` | `compact()` | Groq | `COMPACTION_SYSTEM` |
-| `extract_filters` | `extract_filters()` | Groq, strict JSON schema | `EXTRACTION_SYSTEM` |
-| `embed` | `embed()` | Cohere via `embed_search_terms()` | — |
-| `build_query` | `build_query()` | nothing — calls `build_sql()` on the table module | — |
-| `narrow` | `narrow()` | Postgres via `fetch_rows()` | — |
-| `answer` | `answer()` | Groq, streamed | `ANSWER_SYSTEM`, or `DISCUSS_SYSTEM` when clarifying |
-
-The two dotted forks are plain Python, no model: `route_entry()` decides whether history needs
-compacting, `route_after_extract()` reads what extraction wrote and picks one of three exits.
-Helpers `_token_counts()` and `_oversized_result_message()` are not nodes.
-
-**Three model calls per question at most**, and usually two — `compact` is conditional and
-`embed` only runs when a semantic term was extracted.
+A LangChain `create_agent` loop over the gold tables `public.order_test` and
+`public.tonnage_test`, served by Chainlit at `/chat`. One model, two tools, three
+middleware. There is no fixed sequence of steps: the model reads the question, decides
+whether to search or ask, reads what came back, and decides again. `backend/agent.py`
+compiles it; the graph below is what `agent.get_graph()` reports.
 
 ```mermaid
 flowchart TB
     start(["__start__"]):::terminal
-    start -. "history over 80%" .-> compact
-    start -. "history small" .-> extract_filters
+    start --> summarise
 
-    compact["<b>compact</b><br/><small>old history → one summary</small>"]:::llm
-    compact --> extract_filters
+    summarise["<b>SummarizationMiddleware</b><br/><small>before_model · history past 80% of the window → one summary, last six messages kept</small>"]:::guard
+    summarise --> limit_in
 
-    extract_filters{{"<b>extract_filters</b><br/><small>question → filters + semantic terms</small>"}}:::llm
-    extract_filters -. "nothing usable" .-> answer
-    extract_filters -. "filters only" .-> build_query
-    extract_filters -. "has semantic terms" .-> embed
+    limit_in{{"<b>ModelCallLimitMiddleware</b><br/><small>before_model · six model calls per question</small>"}}:::guard
+    limit_in -. "limit hit" .-> finish
+    limit_in --> model
 
-    embed["<b>embed</b><br/><small>semantic terms → query vectors</small>"]:::llm
-    embed --> build_query
+    model["<b>model</b><br/><small>Groq gpt-oss-120b · system prompt + both tool schemas · streamed</small>"]:::llm
+    model --> limit_out
 
-    build_query["<b>build_query</b><br/><small>filters + vectors → one SQL statement</small>"]:::guard
-    build_query --> narrow
+    limit_out{{"<b>ModelCallLimitMiddleware</b><br/><small>after_model</small>"}}:::guard
+    limit_out -. "reply, no tool call" .-> finish
+    limit_out -. "tool call" .-> tools
 
-    narrow["<b>narrow</b><br/><small>run it → matching rows</small>"]:::tool
-    narrow --> answer
+    tools["<b>tools</b><br/><small>search_orders_and_tonnage → Postgres · ask_user → interrupt()</small>"]:::tool
+    tools -. "result appended to history" .-> summarise
+    tools -. "interrupt: state checkpointed, run stops" .-> paused
 
-    answer["<b>answer</b><br/><small>rows → reply, streamed</small>"]:::llm
-    answer --> finish(["__end__"]):::terminal
+    paused(["waiting on the form<br/><small>Command(resume=answers) re-enters here</small>"]):::terminal
+    paused -. "answers become the tool result" .-> summarise
+
+    finish(["__end__"]):::terminal
 
     classDef llm fill:#0f766e,stroke:#0b5d56,color:#fff
     classDef tool fill:#1e40af,stroke:#1a3a94,color:#fff
@@ -326,47 +316,39 @@ flowchart TB
     classDef terminal fill:#334155,stroke:#1e293b,color:#fff
 ```
 
-Teal is a model call, blue a database read, amber deterministic code. Dotted edges are conditional.
+Teal is the model call, blue is tool execution, amber is middleware. Dotted edges are
+conditional. The loop is `summarise → limit → model → limit → tools → summarise` until the
+model replies without calling a tool, or the call limit ends it.
 
-**The only branch is whether `embed` runs.** `build_query` and `narrow` always do — a vector search is still SQL, just without a `WHERE`. What changes is what gets emitted: `WHERE …` for filters alone, `ORDER BY … <=> $1 LIMIT k` for semantic terms alone, or the filter narrowing the set before the distance ordering when both are present.
-
-**Latest position only.** Tonnage is deduped to the newest report per vessel before any filter runs, through a `DISTINCT ON (vessel_id)` subquery ordered by `update_date DESC, first_date_received DESC`. So `dwt >= 185,000` answers 24 vessels, not 206 reports. `include_history` turns it off. Orders need none of this — one row per cargo already.
-
-**Filter before ranking.** An ANN index only accelerates a single-column `ORDER BY`, so two semantic fields fall back to a scan — cheap over 1,037 deduped vessels, slow over 11,105 raw rows.
-
-**`compact`** summarises everything but the last six messages so history stops growing. Conditional, because it costs a model call.
-
-**`extract_filters`** turns the question into a typed `Filters` object using strict structured outputs. The only place untrusted output enters the pipeline, so every failure mode is handled here and nothing downstream needs to.
-
-**`embed`** turns semantic terms into query vectors, one per field, using the same Cohere `embed-v4.0` model that produced the stored columns — with `input_type=search_query` against the `search_document` used at load time. Not built yet.
-
-**`build_query`** compiles that object into parameterised SQL. Our code, never the model — a bad extraction returns wrong rows, it cannot execute anything.
-
-**`narrow`** runs the statement. There is no `LIMIT` on the filter, so the row count is the true number of matches. Columns are listed explicitly rather than selected with `*`, which would drag every `vector(512)` column back for the caller to discard — 7.2M characters against 110k for a 200-row query.
-
-**`answer`** has three paths: summarise the rows, report an error, or — when nothing filterable was named — answer from the conversation instead of the database.
-
-Two routers, both plain functions that call no model:
-
-| Router | Sits on | Decides |
+| Node | What it does | Calls |
 |---|---|---|
-| `route_entry` | `START` | `compact` when history passes 80% of usable context, else `extract_filters` |
-| `route_after_extract` | `extract_filters` | `answer` on a clarification or an error, else `build_query` |
+| `SummarizationMiddleware.before_model` | When history passes 80% of the 131k window, condenses everything but the last six messages into one summary | Groq, only when it fires |
+| `ModelCallLimitMiddleware.before_model` / `after_model` | Counts model calls; ends the run at six so a loop cannot run away | — |
+| `model` | The LLM turn. Gets the system prompt from `agent_system.md`, both tool schemas, the conversation; returns a reply or a tool call | Groq `openai/gpt-oss-120b` |
+| `tools` | Runs the tool the model chose | Postgres via `fetch_rows`; Cohere only when `cargo_description` was set; `interrupt()` for `ask_user` |
 
-### 7.1 Limits
+`ToolErrorMiddleware` is not a node — it wraps the tool call and turns a failure into a
+message the model can act on, so a timeout becomes "narrow the search" rather than a crash.
 
-| Limit | Detail |
-|---|---|
-| Filterable fields | Tonnage: vessel ids, open/ETA/updated/received windows, dwt, ballast or laden, commercial status. Orders: order ids, laycan, received, updated, cargo weight |
-| Not filterable | Region, port, zone, open area, destination, cargo type, cargo description, ship type, vessel status. All are shown in the results panel, which filters per column. Ten of them are embedded and become reachable semantically once `embed` exists |
-| Combining conditions | AND only. No OR and no negation, so "fixed or on subs" and "everything except fixed" cannot be asked |
-| Enum arity | `ballast_laden` and `commercial_status` take one value; ids take a list |
-| Result size | Beyond roughly 950 rows the model's context is exceeded and the query fails with a message asking you to narrow. One month of tonnage is about 1,000 rows |
-| Aggregation | None. No `GROUP BY`, no averages, no top-N |
-| Joins | One table per question. `tonnage_test.order_id` does now join to `order_test` for all 11,105 rows, but those links are **synthetic** — see Data caveats — so they must not be presented as real fixtures |
-| Row meaning | A tonnage row is a reported position, not a vessel — 11,105 rows cover 1,037 vessels. The agent reads only the newest report per vessel, so a tonnage search returns at most 1,037 rows unless history is asked for |
-| Memory | Retrieved rows do not survive the turn. Follow-ups re-query rather than recall, so "show me the third one" has no list to index |
-| Relative dates | The extraction prompt carries no current date, so "next month" is guessed rather than computed |
+**Two tools.** `search_orders_and_tonnage` takes a flat `cargoes` model and a flat `vessels`
+model, runs whichever were set concurrently, and returns both row lists plus `capped` — the
+tables whose `cargo_description` search hit the fifty-row limit. Names (zones, statuses,
+cargo types, ports) are matched per comma-separated element in SQL; only `cargo_description`
+is embedded. `ask_user` takes one to four questions with two to four options each and calls
+`interrupt()`; the answers come back as the tool's return value when the run resumes.
+
+**Two model calls for a search, three or more when it asks.** Question → tool call → result →
+reply is two. A form adds a resume: the model reads the answers, searches, then replies.
+
+**The checkpointer is what makes `ask_user` possible.** `interrupt()` saves the graph's state
+under the thread id and stops; `cl_app.run_agent` shows the form, then calls the agent again
+with `Command(resume=answers)`, which reloads that state and continues from inside the tool
+call. `InMemorySaver` holds it in the process — a restart loses every thread and every open
+form. A Postgres checkpointer is the fix and is not installed yet.
+
+**What the model never does** is write SQL. Tool arguments are validated by Pydantic
+(`extra="forbid"`), column names come from `TableSpec`, values are bound parameters, and
+`fetch_rows` is read-only by construction.
 
 ## Dashboard Status Overview
 
@@ -422,7 +404,7 @@ flowchart TB
         reply["Reply<br/><small>streamed token by token</small>"]:::ui
         steps["Progress steps<br/><small>one per node</small>"]:::ui
         panel["Results.jsx<br/><small>side panel, filters + selection</small>"]:::jsx
-        gauge["ContextGauge.jsx<br/><small>fill %, bottom right</small>"]:::jsx
+        bar["ComposerBar.jsx<br/><small>examples + context fill %</small>"]:::jsx
     end
 
     subgraph server["cl_app.py"]
@@ -460,10 +442,14 @@ selected rows into the chat composer as a markdown table. It writes rather than 
 user presses enter themselves. Props come from `results_props()` in `cl_app.py` as `columns`,
 `rows` and `noun`.
 
-`ContextGauge.jsx` is the fill indicator, bottom right. It reads 0 on a new conversation
-because `SEED_OVERHEAD` — the extraction prompt plus its JSON schema, measured at import — is
-deducted from the window up front. Props are `percent`, `used`, `usable` and `spent`. It is
-sent unpersisted and re-anchored on resume.
+`ComposerBar.jsx` pins above the composer: starter prompts on the left, context gauge on the
+right. Chainlit renders its own starters only on the empty welcome screen, so from the first
+reply onward the *examples* menu is what keeps them reachable — picking one writes the text
+into the composer and leaves the user to press enter. The gauge reads 0 on a new conversation
+because `_SEED_OVERHEAD` — the system prompt plus every tool as it goes on the wire, counted
+with tiktoken at import — is deducted from the window up front. Props are
+`percent`, `used`, `usable`, `spent` and `starters`. It is sent unpersisted and re-anchored on
+resume.
 
 **Progress steps** wrap segments of the graph's event stream rather than the whole run, which
 is why `cl_app.py` pulls the stream by hand through `drain_until` instead of one `async for`.
