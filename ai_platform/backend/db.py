@@ -6,6 +6,7 @@ the Bronze-to-Silver pipeline lands orders and tonnage.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -39,12 +40,79 @@ def get_dsn() -> str:
 
 TIMEOUT_SECONDS = 30
 
+# Supabase's pooler caps concurrent connections project-wide (session mode,
+# a fixed pool_size -- confirmed live at 15, shared with Chainlit's own
+# connections against the same CHAINLIT_DATABASE_URL). Opening a fresh
+# connection per query (the old behaviour here) hit that cap directly: a
+# single dashboard page load fans out into a dozen-plus concurrent queries
+# on its own (change_feed and daily_counts each asyncio.gather six sub-
+# queries), which was enough on its own to exceed 15 and produced a live
+# "EMAXCONNSESSION ... max clients are limited to pool_size: 15" error.
+# A small shared pool bounds this module's own real connection count
+# instead -- concurrent callers queue for one of a few connections rather
+# than each opening a new one -- capped well under the project-wide limit
+# to leave room for Chainlit's own connections. Not explicitly closed on
+# process shutdown: there's no app-lifespan hook wired up for it, and an
+# abrupt process exit closing these sockets is unremarkable (Postgres
+# notices the disconnect and cleans up server-side either way).
+_POOL_MIN_SIZE = 1
+_POOL_MAX_SIZE = 6
+
+_pool: asyncpg.Pool | None = None
+_pool_lock: asyncio.Lock | None = None
+_pool_loop: asyncio.AbstractEventLoop | None = None
+
+
+async def _get_pool() -> asyncpg.Pool:
+    """Return the shared connection pool, creating it on first use.
+
+    Both the pool and its guarding lock are tied to whichever event loop
+    was running when they were created -- reusing either from a different
+    loop raises confusing asyncpg/asyncio errors (``Event loop is
+    closed``, ``another operation is in progress``, ``connection was
+    closed in the middle of operation``), confirmed live when this was
+    first exercised under a test harness that starts a fresh loop per
+    call rather than one loop for the process's whole lifetime (uvicorn
+    only ever runs one, so this doesn't come up in normal deployment, but
+    the module can't assume that). So both are discarded and recreated
+    whenever the running loop doesn't match the one they were built for.
+    The stale pool is never explicitly closed in that case -- doing so
+    would itself need the dead loop -- its reference is simply dropped;
+    same reasoning as not closing it on process shutdown, below.
+
+    A lock (not just a `_pool is None` check) guards the actual creation
+    so two concurrent first-callers on the same loop can't each start
+    creating a pool -- only one would win with asyncpg, but the other's
+    reference would leak.
+
+    Returns
+    -------
+    asyncpg.Pool
+        The shared pool for the current event loop.
+    """
+    global _pool, _pool_lock, _pool_loop
+    loop = asyncio.get_running_loop()
+    if _pool_loop is not loop:
+        _pool = None
+        _pool_lock = asyncio.Lock()
+        _pool_loop = loop
+    if _pool is None:
+        async with _pool_lock:
+            if _pool is None:  # re-check: another task may have created it while this one waited
+                _pool = await asyncpg.create_pool(
+                    get_dsn(),
+                    min_size=_POOL_MIN_SIZE,
+                    max_size=_POOL_MAX_SIZE,
+                    timeout=TIMEOUT_SECONDS,
+                )
+    return _pool
+
 
 async def fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     """Run a read-only query and return plain dictionaries.
 
-    Opens and closes a connection per call. Fine at this volume; a pool belongs
-    here once query rate justifies one.
+    Acquires a connection from the shared pool (see :func:`_get_pool`)
+    rather than opening a new one per call.
 
     Parameters
     ----------
@@ -58,9 +126,7 @@ async def fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     list of dict
         Result rows, JSON-friendly.
     """
-    connection = await asyncpg.connect(get_dsn(), timeout=TIMEOUT_SECONDS)
-    try:
+    pool = await _get_pool()
+    async with pool.acquire(timeout=TIMEOUT_SECONDS) as connection:
         records = await connection.fetch(sql, *params, timeout=TIMEOUT_SECONDS)
-    finally:
-        await connection.close()
     return [dict(record) for record in records]

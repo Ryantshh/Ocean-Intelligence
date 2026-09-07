@@ -127,7 +127,6 @@ async def list_vessels(
     region: str | None = None,
     sort: dq.SortKey = "update_date",
     stale: bool | None = None,
-    conflict: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Vessel tracker: current status per vessel, filterable by status/region.
 
@@ -144,30 +143,27 @@ async def list_vessels(
     stale : bool or None
         Restricts to (or excludes) ``is_stale`` rows. Backs the summary
         panel's Stale KPI tile.
-    conflict : bool or None
-        Same shape as ``stale`` but against ``has_conflicting_reports``.
-        Backs the summary panel's Conflicts KPI tile.
 
     Returns
     -------
     list of dict
         One row per vessel.
     """
-    sql, params = dq.vessels_sql(status, region, sort, stale=stale, conflict=conflict)
+    sql, params = dq.vessels_sql(status, region, sort, stale=stale)
     return await _run(sql, params)
 
 
 @router.get("/dashboard/vessels/flag-counts")
 async def vessel_flag_counts() -> dict[str, int]:
-    """Fleet-wide stale / conflicting-reports counts, for the summary panel's KPI tiles.
+    """Fleet-wide stale-vessel count, for the summary panel's Stale KPI tile.
 
     Returns
     -------
     dict
-        ``{"stale": n, "conflicts": n}``.
+        ``{"stale": n}``.
     """
     row = (await _run(*dq.vessel_flag_counts_sql()))[0]
-    return {"stale": row["stale"], "conflicts": row["conflicts"]}
+    return {"stale": row["stale"]}
 
 
 @router.get("/dashboard/vessels/status-counts")
@@ -211,8 +207,13 @@ async def daily_counts(days: int = 14) -> dict[str, Any]:
     -------
     dict
         ``days`` echoed back, plus ``new_vessels``, ``status_changes``, and
-        ``new_orders`` -- each a list of ``{"day": date, "count": int}``
-        rows, one per calendar day in the range (zero-filled, never sparse).
+        ``new_orders`` -- each a list of one row per calendar day in the
+        range (zero-filled, never sparse):
+        ``{"day": date, "count": int, "regions": [{"region": str, "count": int}, ...]}``.
+        ``regions`` is sorted by descending count and backs the chart's
+        hover breakdown; a vessel/order spanning multiple regions is
+        counted once per region there, so its total can exceed ``count``
+        -- see :func:`ai_platform.backend.dashboard_queries.daily_new_vessels_by_region_sql`.
     """
     reference = (await _run(*dq.reference_times_sql()))[0]
     tonnage_now = reference["tonnage_now"]
@@ -223,17 +224,52 @@ async def daily_counts(days: int = 14) -> dict[str, Any]:
     tonnage_until = tonnage_now.replace(tzinfo=None)
     orders_until = orders_now.replace(tzinfo=None)
 
-    new_vessels, status_changes, new_orders = await asyncio.gather(
+    (
+        new_vessels,
+        status_changes,
+        new_orders,
+        new_vessels_by_region,
+        status_changes_by_region,
+        new_orders_by_region,
+    ) = await asyncio.gather(
         _run(*dq.daily_new_vessels_sql(tonnage_since, tonnage_until)),
         _run(*dq.daily_status_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.daily_new_orders_sql(orders_since, orders_until)),
+        _run(*dq.daily_new_vessels_by_region_sql(tonnage_since, tonnage_until)),
+        _run(*dq.daily_status_changes_by_region_sql(tonnage_since, tonnage_until)),
+        _run(*dq.daily_new_orders_by_region_sql(orders_since, orders_until)),
     )
     return {
         "days": days,
-        "new_vessels": new_vessels,
-        "status_changes": status_changes,
-        "new_orders": new_orders,
+        "new_vessels": _with_region_breakdown(new_vessels, new_vessels_by_region),
+        "status_changes": _with_region_breakdown(status_changes, status_changes_by_region),
+        "new_orders": _with_region_breakdown(new_orders, new_orders_by_region),
     }
+
+
+def _with_region_breakdown(
+    totals: list[dict[str, Any]], breakdown: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge a day-bucketed total series with its per-(day, region) breakdown.
+
+    Parameters
+    ----------
+    totals : list of dict
+        One row per day, from e.g. :func:`ai_platform.backend.dashboard_queries.daily_new_vessels_sql`.
+    breakdown : list of dict
+        One row per (day, region), from that function's ``_by_region`` companion.
+
+    Returns
+    -------
+    list of dict
+        ``totals``, each row with a ``regions`` key added.
+    """
+    by_day: dict[Any, list[dict[str, Any]]] = {}
+    for row in breakdown:
+        by_day.setdefault(row["day"], []).append(
+            {"region": row["region"], "count": row["count"]}
+        )
+    return [{**row, "regions": by_day.get(row["day"], [])} for row in totals]
 
 
 @router.get("/dashboard/regions")
