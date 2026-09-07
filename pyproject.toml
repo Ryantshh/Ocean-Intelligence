@@ -31,11 +31,13 @@ dependencies = [
     "fastapi>=0.141.1",
     "greenlet>=3.5.4",
     "langchain>=1.0.0",
+    "langchain-openai>=1.6.0",
     "langfuse>=3.0.0",
     "langgraph>=1.2.11",
     "openai>=2.53.0",
     "python-dotenv>=1.2.2",
     "sqlalchemy[asyncio]>=2.0.51",
+    "tiktoken>=0.14.0",
     "uvicorn[standard]>=0.52.1",
 ]
 

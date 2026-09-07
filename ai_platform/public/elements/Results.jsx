@@ -66,10 +66,7 @@ function writeToComposer(text) {
   return true;
 }
 
-export default function Results() {
-  const columns = props.columns ?? [];
-  const rows = props.rows ?? [];
-  const noun = props.noun ?? "rows";
+function Table({ columns, rows, noun }) {
 
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState(null);
@@ -418,6 +415,27 @@ export default function Results() {
         }
         .oi-t-notice { color: hsl(var(--muted-foreground)); font-size: 0.72rem; }
         .oi-t-empty { padding: 1.5rem; text-align: center; color: hsl(var(--muted-foreground)); }
+        .oi-t-tabwrap { display: flex; flex-direction: column; gap: 0.6rem; }
+        .oi-t-tabs {
+          display: flex;
+          gap: 0.2rem;
+          border-bottom: 1px solid hsl(var(--border));
+        }
+        .oi-t-tab {
+          padding: 0.35rem 0.7rem;
+          font-size: 0.76rem;
+          text-transform: capitalize;
+          color: hsl(var(--muted-foreground));
+          background: transparent;
+          border: none;
+          border-bottom: 2px solid transparent;
+          cursor: pointer;
+        }
+        .oi-t-tab:hover { color: hsl(var(--foreground)); }
+        .oi-t-tab-on {
+          color: hsl(var(--foreground));
+          border-bottom-color: hsl(var(--primary));
+        }
       `}</style>
 
       <div className="oi-t-scroll">
@@ -584,6 +602,34 @@ export default function Results() {
       )}
 
       {notice && <div className="oi-t-notice">{notice}</div>}
+    </div>
+  );
+}
+
+
+export default function Results() {
+  const sets = (props.sets ?? []).filter((set) => (set.rows ?? []).length);
+  const [tab, setTab] = useState(0);
+
+  if (!sets.length) return null;
+
+  const active = sets[Math.min(tab, sets.length - 1)];
+  return (
+    <div className="oi-t-tabwrap">
+      {sets.length > 1 && (
+        <div className="oi-t-tabs">
+          {sets.map((set, at) => (
+            <button
+              key={set.noun}
+              className={at === tab ? "oi-t-tab oi-t-tab-on" : "oi-t-tab"}
+              onClick={() => setTab(at)}
+            >
+              {set.noun} ({set.rows.length})
+            </button>
+          ))}
+        </div>
+      )}
+      <Table key={active.noun} {...active} />
     </div>
   );
 }

@@ -8,12 +8,46 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any
 
 import asyncpg
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def json_safe(value: Any) -> Any:
+    """Convert a driver value into something ``json.dumps`` accepts.
+
+    ``CustomElement.__post_init__`` serialises props with a bare ``json.dumps``
+    and no ``default``, so an unconverted date raises before the element is ever
+    sent. Dates become ISO strings, which also sort chronologically as strings
+    and so need no special handling in the table.
+
+    Decimals become native numbers. Left alone they serialise as strings and the
+    table sorts them lexicographically — 90,000 tonnes would rank above 187,000.
+    Integral values become ``int`` rather than ``float`` because ``order_id`` on
+    tonnage is numeric and runs to eighteen digits, which a float corrupts.
+
+    Parameters
+    ----------
+    value : Any
+        Cell value straight from the driver.
+
+    Returns
+    -------
+    Any
+        A JSON-serialisable equivalent, or the value untouched.
+    """
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    if isinstance(value, datetime):
+        return value.date().isoformat() if value.time() == time.min else value.isoformat(" ")
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
 
 def get_dsn() -> str:
@@ -124,7 +158,7 @@ async def fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     Returns
     -------
     list of dict
-        Result rows, JSON-friendly.
+        Result rows, with driver types coerced so ``json.dumps`` accepts them.
     """
     pool = await _get_pool()
     async with pool.acquire(timeout=TIMEOUT_SECONDS) as connection:

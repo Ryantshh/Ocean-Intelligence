@@ -1218,6 +1218,104 @@
           if (isRefresh) throw error;
           countEl.innerHTML = `<span class="error">Could not load ECSA vessels: ${escapeHtml(error.message)}</span>`;
         }
+        const W = 260, H = 104, PAD_L = 2, PAD_R = 2, PAD_T = 16, PAD_B = 2;
+        const plotW = W - PAD_L - PAD_R;
+        const plotH = H - PAD_T - PAD_B;
+        const maxVal = Math.max(1, ...series.map((d) => d.count));
+        const slot = plotW / series.length;
+        const barW = Math.max(2, slot - 2);
+        const dayLabel = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const parts = series.map((d, i) => {
+          const h = Math.max(1, (d.count / maxVal) * plotH);
+          const x = PAD_L + i * slot + (slot - barW) / 2;
+          const y = PAD_T + (plotH - h);
+          const labelY = Math.max(9, y - 3);
+          return `
+            <text x="${(x + barW / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="mini-chart-label">${formatNumber(d.count)}</text>
+            <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}"><title>${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}</title></rect>
+          `;
+        }).join("");
+        container.innerHTML = `
+          <svg viewBox="0 0 ${W} ${H}" class="mini-chart" role="img" aria-label="Daily trend chart with value labels">${parts}</svg>
+          <div class="mini-chart-axis"><span>${escapeHtml(dayLabel(series[0].day))}</span><span>${escapeHtml(dayLabel(series[series.length - 1].day))}</span></div>
+        `;
+      }
+
+      async function loadDailyTrends(isRefresh = false) {
+        const ids = ["chartNewVessels", "chartStatusChanges", "chartNewOrders"];
+        try {
+          const data = await getJson("/api/dashboard/daily-counts?days=14");
+          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)");
+          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)");
+          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)");
+        } catch (error) {
+          if (isRefresh) throw error;
+          ids.forEach((id) => {
+            document.getElementById(id).innerHTML = `<p class="error" style="font-size:0.8rem;">Could not load: ${escapeHtml(error.message)}</p>`;
+          });
+        }
+      }
+
+      // ---- vessel tracker ---------------------------------------------------
+      const VESSELS_PAGE_SIZE = 25;
+      let vesselsFetched = [];
+      let vesselsPage = 0;
+
+      function vesselRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${statusBadge(row.dashboard_status)}${flags(row)}</td>
+            <td>${escapeHtml(row.parent_zone || "—")}</td>
+            <td>${formatNumber(row.dwt)}</td>
+            <td>${formatDate(row.open_date_start)} &ndash; ${formatDate(row.open_date_end)}</td>
+            <td>${formatDate(row.eta)}</td>
+            <td>${formatDate(row.update_date)}</td>
+          </tr>
+        `;
+      }
+
+      // Vessel ID search runs client-side over the already-fetched,
+      // status/region-filtered set (fetched once per server-side filter
+      // change) -- instant as-you-type filtering with no per-keystroke
+      // request, then sliced to one page so a 1000+-row result never all
+      // lands in the DOM at once.
+      function renderVesselsTable() {
+        const tbody = document.querySelector("#vesselsTable tbody");
+        const pager = document.getElementById("vesselsPager");
+        const search = document.getElementById("vesselSearch").value.trim().toLowerCase();
+        const filtered = search
+          ? vesselsFetched.filter((r) => r.vessel_id.toLowerCase().includes(search))
+          : vesselsFetched;
+
+        const pageCount = Math.max(1, Math.ceil(filtered.length / VESSELS_PAGE_SIZE));
+        vesselsPage = Math.min(vesselsPage, pageCount - 1);
+        const start = vesselsPage * VESSELS_PAGE_SIZE;
+        const pageRows = filtered.slice(start, start + VESSELS_PAGE_SIZE);
+
+        tbody.innerHTML = pageRows.length
+          ? pageRows.map(vesselRow).join("")
+          : '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>';
+
+        const rangeLabel = filtered.length
+          ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+          : "0 of 0";
+        pager.innerHTML = `
+          <span>${rangeLabel}</span>
+          <div class="pager-controls">
+            <button type="button" id="vesselsPrev" ${vesselsPage === 0 ? "disabled" : ""}>Previous</button>
+            <span>Page ${vesselsPage + 1} of ${pageCount}</span>
+            <button type="button" id="vesselsNext" ${vesselsPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
+          </div>
+        `;
+        document.getElementById("vesselsPrev").addEventListener("click", () => {
+          vesselsPage -= 1;
+          renderVesselsTable();
+        });
+        document.getElementById("vesselsNext").addEventListener("click", () => {
+          vesselsPage += 1;
+          renderVesselsTable();
+        });
       }
 
       document.getElementById("ecsaShowBtn").addEventListener("click", () => {

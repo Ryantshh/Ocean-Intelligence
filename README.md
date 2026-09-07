@@ -135,7 +135,10 @@ Teal is a Lambda doing real work, blue is a data read/write, amber is a routing 
 
 What survived the pipeline, mapped to `SMU_2025_Data_Glossary`. Seventeen real columns per
 table out of roughly 60 order and 110 tonnage fields in the glossary, plus two pipeline
-columns and one `vector(512)` per embedded text field.
+columns and one `vector(512)` per embedded text field. The agent reads only the
+`cargo_description` vector; zones, statuses, cargo types and ports are matched lexically
+per comma-separated element, against names the prompt lists from
+`backend/vocabulary.json` (regenerate with `python -m ai_platform.backend.vocabulary`).
 
 Glossary names differ from column names where the source header was awkward; the bold ones
 are worth knowing when reading the glossary alongside the database.
@@ -273,52 +276,39 @@ succeed while every read returns 403.
 
 ## 7. The chat agent
 
-A LangGraph agent over the gold tables `public.order_test` and `public.tonnage_test`, served by Chainlit at `/chat`. Metadata filtering and dense vector retrieval over the same tables.
-
-Every node is one function in `backend/nodes.py`, registered under the same name in
-`backend/graph.py`. Nothing else in the package is a node.
-
-| Node | Function | Calls | Prompt |
-|---|---|---|---|
-| `compact` | `compact()` | Groq | `COMPACTION_SYSTEM` |
-| `extract_filters` | `extract_filters()` | Groq, strict JSON schema | `EXTRACTION_SYSTEM` |
-| `embed` | `embed()` | Cohere via `embed_search_terms()` | — |
-| `build_query` | `build_query()` | nothing — calls `build_sql()` on the table module | — |
-| `narrow` | `narrow()` | Postgres via `fetch_rows()` | — |
-| `answer` | `answer()` | Groq, streamed | `ANSWER_SYSTEM`, or `DISCUSS_SYSTEM` when clarifying |
-
-The two dotted forks are plain Python, no model: `route_entry()` decides whether history needs
-compacting, `route_after_extract()` reads what extraction wrote and picks one of three exits.
-Helpers `_token_counts()` and `_oversized_result_message()` are not nodes.
-
-**Three model calls per question at most**, and usually two — `compact` is conditional and
-`embed` only runs when a semantic term was extracted.
+A LangChain `create_agent` loop over the gold tables `public.order_test` and
+`public.tonnage_test`, served by Chainlit at `/chat`. One model, two tools, three
+middleware. There is no fixed sequence of steps: the model reads the question, decides
+whether to search or ask, reads what came back, and decides again. `backend/agent.py`
+compiles it; the graph below is what `agent.get_graph()` reports.
 
 ```mermaid
 flowchart TB
     start(["__start__"]):::terminal
-    start -. "history over 80%" .-> compact
-    start -. "history small" .-> extract_filters
+    start --> summarise
 
-    compact["<b>compact</b><br/><small>old history → one summary</small>"]:::llm
-    compact --> extract_filters
+    summarise["<b>SummarizationMiddleware</b><br/><small>before_model · history past 80% of the window → one summary, last six messages kept</small>"]:::guard
+    summarise --> limit_in
 
-    extract_filters{{"<b>extract_filters</b><br/><small>question → filters + semantic terms</small>"}}:::llm
-    extract_filters -. "nothing usable" .-> answer
-    extract_filters -. "filters only" .-> build_query
-    extract_filters -. "has semantic terms" .-> embed
+    limit_in{{"<b>ModelCallLimitMiddleware</b><br/><small>before_model · six model calls per question</small>"}}:::guard
+    limit_in -. "limit hit" .-> finish
+    limit_in --> model
 
-    embed["<b>embed</b><br/><small>semantic terms → query vectors</small>"]:::llm
-    embed --> build_query
+    model["<b>model</b><br/><small>Groq gpt-oss-120b · system prompt + both tool schemas · streamed</small>"]:::llm
+    model --> limit_out
 
-    build_query["<b>build_query</b><br/><small>filters + vectors → one SQL statement</small>"]:::guard
-    build_query --> narrow
+    limit_out{{"<b>ModelCallLimitMiddleware</b><br/><small>after_model</small>"}}:::guard
+    limit_out -. "reply, no tool call" .-> finish
+    limit_out -. "tool call" .-> tools
 
-    narrow["<b>narrow</b><br/><small>run it → matching rows</small>"]:::tool
-    narrow --> answer
+    tools["<b>tools</b><br/><small>search_orders_and_tonnage → Postgres · ask_user → interrupt()</small>"]:::tool
+    tools -. "result appended to history" .-> summarise
+    tools -. "interrupt: state checkpointed, run stops" .-> paused
 
-    answer["<b>answer</b><br/><small>rows → reply, streamed</small>"]:::llm
-    answer --> finish(["__end__"]):::terminal
+    paused(["waiting on the form<br/><small>Command(resume=answers) re-enters here</small>"]):::terminal
+    paused -. "answers become the tool result" .-> summarise
+
+    finish(["__end__"]):::terminal
 
     classDef llm fill:#0f766e,stroke:#0b5d56,color:#fff
     classDef tool fill:#1e40af,stroke:#1a3a94,color:#fff
@@ -326,36 +316,51 @@ flowchart TB
     classDef terminal fill:#334155,stroke:#1e293b,color:#fff
 ```
 
-Teal is a model call, blue a database read, amber deterministic code. Dotted edges are conditional.
+Teal is the model call, blue is tool execution, amber is middleware. Dotted edges are
+conditional. The loop is `summarise → limit → model → limit → tools → summarise` until the
+model replies without calling a tool, or the call limit ends it.
 
-**The only branch is whether `embed` runs.** `build_query` and `narrow` always do — a vector search is still SQL, just without a `WHERE`. What changes is what gets emitted: `WHERE …` for filters alone, `ORDER BY … <=> $1 LIMIT k` for semantic terms alone, or the filter narrowing the set before the distance ordering when both are present.
-
-**Latest position only.** Tonnage is deduped to the newest report per vessel before any filter runs, through a `DISTINCT ON (vessel_id)` subquery ordered by `update_date DESC, first_date_received DESC`. So `dwt >= 185,000` answers 24 vessels, not 206 reports. `include_history` turns it off. Orders need none of this — one row per cargo already.
-
-**Filter before ranking.** An ANN index only accelerates a single-column `ORDER BY`, so two semantic fields fall back to a scan — cheap over 1,037 deduped vessels, slow over 11,105 raw rows.
-
-**`compact`** summarises everything but the last six messages so history stops growing. Conditional, because it costs a model call.
-
-**`extract_filters`** turns the question into a typed `Filters` object using strict structured outputs. The only place untrusted output enters the pipeline, so every failure mode is handled here and nothing downstream needs to.
-
-**`embed`** turns semantic terms into query vectors, one per field, using the same Cohere `embed-v4.0` model that produced the stored columns — with `input_type=search_query` against the `search_document` used at load time. Not built yet.
-
-**`build_query`** compiles that object into parameterised SQL. Our code, never the model — a bad extraction returns wrong rows, it cannot execute anything.
-
-**`narrow`** runs the statement. There is no `LIMIT` on the filter, so the row count is the true number of matches. Columns are listed explicitly rather than selected with `*`, which would drag every `vector(512)` column back for the caller to discard — 7.2M characters against 110k for a 200-row query.
-
-**`answer`** has three paths: summarise the rows, report an error, or — when nothing filterable was named — answer from the conversation instead of the database.
-
-Two routers, both plain functions that call no model:
-
-| Router | Sits on | Decides |
+| Node | What it does | Calls |
 |---|---|---|
-| `route_entry` | `START` | `compact` when history passes 80% of usable context, else `extract_filters` |
-| `route_after_extract` | `extract_filters` | `answer` on a clarification or an error, else `build_query` |
+| `SummarizationMiddleware.before_model` | When history passes 80% of the 131k window, condenses everything but the last six messages into one summary | Groq, only when it fires |
+| `ModelCallLimitMiddleware.before_model` / `after_model` | Counts model calls; ends the run at six so a loop cannot run away | — |
+| `model` | The LLM turn. Gets the system prompt from `agent_system.md`, both tool schemas, the conversation; returns a reply or a tool call | Groq `openai/gpt-oss-120b` |
+| `tools` | Runs the tool the model chose | Postgres via `fetch_rows`; Cohere only when `cargo_description` was set; `interrupt()` for `ask_user` |
 
-### 7.1 Limits
+`ToolErrorMiddleware` is not a node — it wraps the tool call and turns a failure into a
+message the model can act on, so a timeout becomes "narrow the search" rather than a crash.
 
-| Limit | Detail |
+**Two tools.** `search_orders_and_tonnage` takes a flat `cargoes` model and a flat `vessels`
+model, runs whichever were set concurrently, and returns both row lists plus `capped` — the
+tables whose `cargo_description` search hit the fifty-row limit. Names (zones, statuses,
+cargo types, ports) are matched per comma-separated element in SQL; only `cargo_description`
+is embedded. `ask_user` takes one to four questions with two to four options each and calls
+`interrupt()`; the answers come back as the tool's return value when the run resumes.
+
+**Two model calls for a search, three or more when it asks.** Question → tool call → result →
+reply is two. A form adds a resume: the model reads the answers, searches, then replies.
+
+**The checkpointer is what makes `ask_user` possible.** `interrupt()` saves the graph's state
+under the thread id and stops; `cl_app.run_agent` shows the form, then calls the agent again
+with `Command(resume=answers)`, which reloads that state and continues from inside the tool
+call. `InMemorySaver` holds it in the process — a restart loses every thread and every open
+form. A Postgres checkpointer is the fix and is not installed yet.
+
+**What the model never does** is write SQL. Tool arguments are validated by Pydantic
+(`extra="forbid"`), column names come from `TableSpec`, values are bound parameters, and
+`fetch_rows` is read-only by construction.
+
+## Dashboard Status Overview
+
+Served by the same FastAPI app as the chat, at `/` (`ai_platform/dashboard/index.html`), reading `public.tonnage_test` / `public.order_test` through `ai_platform/backend/dashboard_queries.py` and the views in `infra/sql/dashboard_gold_views.sql`.
+
+**Before first use**, apply the views once: `psql "$SUPABASE_DB_URL" -f infra/sql/dashboard_gold_views.sql` (or paste into the Supabase SQL editor). Idempotent, like `gold_layer_test_setup.sql`, and not applied automatically by anything in this repo. (Applied and verified live as of this writing.)
+
+**Data source is `tonnage_test`/`order_test`, not the plain `tonnage`/`order`.** This dashboard originally read `public.tonnage`/`public."order"`, but neither has a loader anywhere in this repository, and they turned out to be a stale, smaller snapshot with a real defect: `tonnage.order_id` (`numeric`) is precision-corrupted for effectively every row, confirmed live (e.g. stored as `1.52324E+17` instead of its full 18-digit value — a lossy float round-trip somewhere upstream). `tonnage_test`/`order_test` — the vector-embedded tables the deployed gold-loader Lambda (`scripts/gold_loader`) actually keeps current, per its `EventBridge -> GoldLoaderLambda` trigger on every Glue success — don't have that defect (`order_id` is clean `bigint` on both, confirmed live), are a strict superset of the old source (1,122 vessels vs. 1,037; 1,949 orders vs. 1,864), and their vessel↔order join actually resolves: 100% of `tonnage_test` rows join to `order_test` on `order_id`, tested directly, versus effectively 0% on the old source (consistent with `filterable_fields.md`'s note that the old `tonnage.order_id` "matches zero rows in orders" — it couldn't, the values no longer round-tripped).
+
+Endpoints, all under `/api/dashboard/`:
+
+| Endpoint | Backs |
 |---|---|
 | Filterable fields | Tonnage: vessel ids, open/ETA/updated/received windows, dwt, ballast or laden, commercial status. Orders: order ids, laycan, received, updated, cargo weight |
 | Not filterable | Region, port, zone, open area, destination, cargo type, cargo description, ship type, vessel status. All are shown in the results panel, which filters per column. Ten of them are embedded and become reachable semantically once `embed` exists |
@@ -413,6 +418,35 @@ Every `order_id` is cast to text end to end, in SQL and in the query builder ali
 
 **A note on how this was built:** this feature went through several iterations of live verification and correction — initial schema assumptions came from static analysis (`filterable_fields.md`, `ai_platform/backend/tables/{orders,tonnage}.py`) because the sandbox couldn't reach the database at first (`SUPABASE_DB_URL` failed to resolve; `.env`'s `CHAINLIT_DATABASE_URL` pointed at a stale, different Supabase project). Once that was corrected, live introspection surfaced — in order — the `orders`/`order` table-name bug, the `tonnage.order_id` corruption, the frozen-dataset/wall-clock staleness problem, an ECSA filter that was too permissive, a genuine gap in the FIXED-status logic (using the latest row instead of date-range containment), and finally that `tonnage`/`order` themselves were the wrong source entirely. `.env` is gitignored, so those credential fixes are local-only and never touched git history.
 
+| `GET vessels?status=&region=&sort=` | Vessel tracker, filterable by Fixed/Open/On Subs and region, sortable by ETA, last update, or open-window end. In the UI: searchable by vessel ID and paginated client-side (25/page) rather than rendering everything at once. |
+| `GET vessels/status-counts` | Fleet-wide FIXED/OPEN/ON SUBS counts, independent of whatever filter the vessel table itself has applied — backs the tracker's summary tiles (clicking a tile also sets the table's status filter) |
+| `GET regions` | Regional supply (open vessels) vs. demand (orders received in the last 90 days) — rendered in the UI as a bubble map (size = supply, color = a tight/balanced/oversupplied/no-data status), with a plain table view as the accessible fallback |
+| `GET changes?window=dod\|wow` | New vessels, vessel status transitions, field-level changes (open area/DWT/destination/ETA/region/ballast-laden, per vessel report vs. its immediately preceding one), vessels that stopped reporting recently (labelled "Removed" in the UI, struck through), new orders, amended orders — each category grouped by calendar day in the UI |
+| `GET ecsa?sort=` | Vessels currently ballasting (empty, repositioning — `ballast_laden = 'BALLAST'`) toward East Coast South America, strict single-region match on `parent_zone`. Gated behind a "Show all vessels" toggle in the UI rather than rendering on load, and searchable by vessel ID (typing a match reveals the table automatically). |
+| `GET ecsa/{vessel_id}/history` | That vessel's status trail (e.g. On Subs → Open → Fixed), derived from `tonnage_test`'s own row history — no separate events table |
+
+The whole dashboard auto-refreshes hourly (matching the product spec's stated real-world preference over a daily cadence — brokers send updates throughout the day), plus a manual "Refresh now" button, both restoring the last-refreshed timestamp shown at the top of the page. A failed background refresh never wipes what's already on screen — every load function takes an `isRefresh` flag that, when true, throws on failure instead of overwriting good content, and `refreshAll()` in `ai_platform/dashboard/index.html` turns any failures into a visible "data may be stale" banner naming which section(s) failed and how old the data being shown is, rather than either failing silently or blanking the page. Fixed one related pre-existing bug while building this: `loadRegions()` used to cache its first successful fetch and never re-fetch on any subsequent call — auto-refresh would have silently kept showing the initial snapshot for the regional map/table forever.
+
+Every `order_id` is cast to text end to end, in SQL and in the query builder alike: `scripts/glue_transform.py`'s `with_stable_order_id()` caps generated order IDs at 18 digits so they fit Postgres `int8`, but 18 digits still exceeds JavaScript's safe integer range, so a raw numeric `order_id` would silently corrupt in any browser's `JSON.parse`.
+
+**Built against a real product spec (5 user stories with acceptance criteria)**, which resolved one placeholder and surfaced two real bugs directly:
+- The demand window's `[CONFIRM WITH SPONSOR]` placeholder is now confirmed as 90 days, not the earlier 7-day guess ("Date Received — windows demand to trailing 90 days").
+- `ecsa_ballasters` had no `ballast_laden` filter at all before this — a laden vessel already carrying cargo toward ECSA was shown identically to an empty vessel repositioning there, even though the story is specifically about vessels *ballasting* toward ECSA. Fixed to require `ballast_laden = 'BALLAST'`.
+- "Removed" records (`vessels_no_longer_fresh`) are now presented in the UI as struck-through "Removed" entries per the spec's explicit acceptance criterion, with a tooltip preserving the underlying caveat: this is still only an inferred "stopped reporting" signal, not a real deletion — nothing in this data model records a withdrawal.
+- Two fields the spec names — "Last Known Cargoes" and "Build Year" — don't exist in `tonnage`/`tonnage_test` at all. The ECSA table's "Last cargo / destination" column was actually only ever showing `destination` (the vessel's next AIS-reported destination) mislabelled as last cargo; relabelled to just "Destination" rather than continuing to imply data that isn't there. No age/build-year filter was added, for the same reason — the data to filter on doesn't exist in this source.
+
+**"Now" is simulated as real time minus one year** — an explicit design choice, not a bug fix. This dataset's real activity (tonnage to 2026-04-21, orders to 2025-12-30) sits months behind the database's true clock, so any date-relative logic keyed to real `now()` would read as permanently stale/empty. `tonnage_reference_now()` / `orders_reference_now()` in the SQL file compute "real now minus one year" instead; any row dated on or after that simulated instant is excluded outright everywhere a view or query reads the source tables directly, not merely treated as "not yet fresh."
+
+**FIXED/OPEN/ON SUBS is a date-range containment check, not "whatever the latest report says."** A vessel is FIXED today only if *some* row (not necessarily its most recently updated one) has `commercial_status = 'FIXED'` and that row's own `[open_date_start, open_date_end]` window actually contains the simulated "today" — see `vessel_current_status`'s `active_bookings` CTE. A FIXED report whose window has already elapsed no longer makes the vessel FIXED, even if it's the newest thing on file for that vessel. `ON SUBS` gets the same window-containment treatment and reports under its own raw label — the dashboard used to relabel it WATCHLIST, but the raw data only ever contains `FIXED`/`ON SUBS`/`NULL` (confirmed live: 2,312 / 19 / 8,859 rows), so the invented label was dropped in favor of the terminology actually used in the source data. Under the current simulated date this makes FIXED/ON SUBS rare — 3 FIXED, 0 ON SUBS out of 1,009 vessels, verified live — because this dataset's fixture windows are mostly short and rarely happen to land on the one simulated date.
+
+**One mapping still needs sponsor sign-off**, marked `[CONFIRM WITH SPONSOR]` in the SQL file: the staleness threshold (48h placeholder). Whether `ON SUBS` should occupy a vessel for date-range-containment purposes the same way `FIXED` does is also still unconfirmed policy, though the display label itself is now settled — it stays `ON SUBS`, matching the raw data.
+
+**Known gaps.** `order_test` still has no commercial-status column (`scripts/glue_transform.py`'s `transform_orders` never selects one), so the orders side of the change feed can only report new/amended orders, not status changes. Staleness (`is_stale`/`open_window_lapsed`) is still computed from a vessel's single latest-updated row, not the same "search every row for one covering today" logic `dashboard_status` now uses — the two signals can legitimately disagree about which row matters, and that hasn't been reconciled.
+
+**The plain `public."order"` table is still named `order` (singular, not `orders`), and still has the same pre-existing bug.** `ai_platform/backend/tables/orders.py`'s `TABLE = "orders"` constant still doesn't match it — a bug in the chat agent's orders path, independent of and untouched by this feature (which no longer reads that table at all, having moved to `order_test`).
+
+**A note on how this was built:** this feature went through several iterations of live verification and correction — initial schema assumptions came from static analysis (`filterable_fields.md`, `ai_platform/backend/tables/{orders,tonnage}.py`) because the sandbox couldn't reach the database at first (`SUPABASE_DB_URL` failed to resolve; `.env`'s `CHAINLIT_DATABASE_URL` pointed at a stale, different Supabase project). Once that was corrected, live introspection surfaced — in order — the `orders`/`order` table-name bug, the `tonnage.order_id` corruption, the frozen-dataset/wall-clock staleness problem, an ECSA filter that was too permissive, a genuine gap in the FIXED-status logic (using the latest row instead of date-range containment), and finally that `tonnage`/`order` themselves were the wrong source entirely. `.env` is gitignored, so those credential fixes are local-only and never touched git history.
+
 ## Full pipeline: bronze to gold
 ## 8. The UI layer
 
@@ -426,7 +460,7 @@ flowchart TB
         reply["Reply<br/><small>streamed token by token</small>"]:::ui
         steps["Progress steps<br/><small>one per node</small>"]:::ui
         panel["Results.jsx<br/><small>side panel, filters + selection</small>"]:::jsx
-        gauge["ContextGauge.jsx<br/><small>fill %, bottom right</small>"]:::jsx
+        bar["ComposerBar.jsx<br/><small>examples + context fill %</small>"]:::jsx
     end
 
     subgraph server["cl_app.py"]
@@ -464,10 +498,14 @@ selected rows into the chat composer as a markdown table. It writes rather than 
 user presses enter themselves. Props come from `results_props()` in `cl_app.py` as `columns`,
 `rows` and `noun`.
 
-`ContextGauge.jsx` is the fill indicator, bottom right. It reads 0 on a new conversation
-because `SEED_OVERHEAD` — the extraction prompt plus its JSON schema, measured at import — is
-deducted from the window up front. Props are `percent`, `used`, `usable` and `spent`. It is
-sent unpersisted and re-anchored on resume.
+`ComposerBar.jsx` pins above the composer: starter prompts on the left, context gauge on the
+right. Chainlit renders its own starters only on the empty welcome screen, so from the first
+reply onward the *examples* menu is what keeps them reachable — picking one writes the text
+into the composer and leaves the user to press enter. The gauge reads 0 on a new conversation
+because `_SEED_OVERHEAD` — the system prompt plus every tool as it goes on the wire, counted
+with tiktoken at import — is deducted from the window up front. Props are
+`percent`, `used`, `usable`, `spent` and `starters`. It is sent unpersisted and re-anchored on
+resume.
 
 **Progress steps** wrap segments of the graph's event stream rather than the whole run, which
 is why `cl_app.py` pulls the stream by hand through `drain_until` instead of one `async for`.

@@ -127,6 +127,7 @@ async def list_vessels(
     region: str | None = None,
     sort: dq.SortKey = "update_date",
     stale: bool | None = None,
+    conflict: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Vessel tracker: current status per vessel, filterable by status/region.
 
@@ -143,19 +144,22 @@ async def list_vessels(
     stale : bool or None
         Restricts to (or excludes) ``is_stale`` rows. Backs the summary
         panel's Stale KPI tile.
+    conflict : bool or None
+        Same shape as ``stale`` but against ``has_conflicting_reports``.
+        Backs the summary panel's Conflicts KPI tile.
 
     Returns
     -------
     list of dict
         One row per vessel.
     """
-    sql, params = dq.vessels_sql(status, region, sort, stale=stale)
+    sql, params = dq.vessels_sql(status, region, sort, stale=stale, conflict=conflict)
     return await _run(sql, params)
 
 
 @router.get("/dashboard/vessels/flag-counts")
 async def vessel_flag_counts() -> dict[str, int]:
-    """Fleet-wide stale-vessel count, for the summary panel's Stale KPI tile.
+    """Fleet-wide stale / conflicting-reports counts, for the summary panel's KPI tiles.
 
     Returns
     -------
