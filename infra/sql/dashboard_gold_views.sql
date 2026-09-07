@@ -48,9 +48,10 @@
 -- 11,105/1,037 and 1,864. commercial_status, parent_zone's comma-space
 -- delimiter, and "East Coast South America" as the exact live ECSA zone
 -- label all carried over unchanged (same underlying broker data). The two
--- remaining [CONFIRM WITH SPONSOR] items (staleness threshold, whether ON
--- SUBS should occupy the vessel the same way FIXED does) are policy calls,
--- not data questions, and still need sponsor sign-off.
+-- previously-open policy questions are now confirmed by the sponsor:
+-- staleness is a 5-day-past-open_date_end rule (not a 48h/update_date
+-- rule), and ON SUBS does occupy the vessel for its window the same way a
+-- firm fixture does -- see vessel_current_status below for both.
 --
 -- "Now" is simulated, not real: every staleness/freshness computation below
 -- is measured against tonnage_reference_now() / orders_reference_now()
@@ -92,6 +93,20 @@ $$ LANGUAGE sql STABLE;
 CREATE OR REPLACE FUNCTION orders_reference_now() RETURNS timestamptz AS $$
   SELECT now() - interval '1 year'
 $$ LANGUAGE sql STABLE;
+
+-- vessel_current_status and vessel_status_history both get rebuilt with a
+-- DROP ... CASCADE below rather than CREATE OR REPLACE, every time this
+-- file runs. CREATE OR REPLACE VIEW can only append new columns at the
+-- end of an existing view's output -- it cannot remove, reorder, or
+-- retype one -- which this file has hit more than once already as these
+-- two views evolved. Dropping and recreating unconditionally sidesteps
+-- that restriction permanently, for every future edit, not just this
+-- one; it's cheap (these are plain views, no stored data to rebuild) and
+-- CASCADE takes ecsa_ballasters / regional_supply_demand /
+-- vessel_status_counts down with vessel_current_status, but all three are
+-- recreated later in this same file, so nothing is lost.
+DROP VIEW IF EXISTS vessel_current_status CASCADE;
+DROP VIEW IF EXISTS vessel_status_history CASCADE;
 
 -- ---------------------------------------------------------------------
 -- 1. vessel_current_status
@@ -136,49 +151,53 @@ WITH ranked AS (
   -- automatically stale.
   WHERE t.update_date IS NULL OR t.update_date < tonnage_reference_now()
 ),
--- Flag vessels whose latest update_date has more than one disagreeing
--- report (same vessel_id + update_date, different open_area/
--- commercial_status/open_date_start). Surfaced to the trader rather than
--- silently resolved -- a genuine reporting conflict, not duplicate noise,
--- should not be hidden behind whichever row ROW_NUMBER() happened to keep.
-conflicts AS (
-  SELECT vessel_id, update_date
+-- A vessel is "new" the day its very first row was ever added, not the day
+-- its most-recently-touched row happens to have been received -- confirmed
+-- by the sponsor: a re-report of an already-known vessel doesn't make it
+-- "new" again. `ranked.first_date_received` (the latest row's own value)
+-- is the wrong source for this: confirmed live that first_date_received
+-- drifts on ~99% of a re-reported vessel's rows, so the latest row's value
+-- reflects that row's own receipt, not the vessel's debut. This takes the
+-- true per-vessel minimum across every non-future row instead.
+first_seen AS (
+  SELECT vessel_id, MIN(first_date_received) AS first_seen_date
   FROM public.tonnage_test
-  WHERE update_date IS NOT NULL AND update_date < tonnage_reference_now()
-  GROUP BY vessel_id, update_date
-  HAVING COUNT(DISTINCT open_area) > 1
-      OR COUNT(DISTINCT COALESCE(commercial_status, '~')) > 1
-      OR COUNT(DISTINCT open_date_start) > 1
+  WHERE first_date_received IS NOT NULL
+    AND (update_date IS NULL OR update_date < tonnage_reference_now())
+  GROUP BY vessel_id
 ),
--- Whether a vessel is FIXED/ON SUBS *today* is a date-range containment
--- question, not "whatever the most-recently-touched row says": a FIXED (or
--- ON SUBS) row means the vessel is booked for that row's own
--- [open_date_start, open_date_end] window specifically, and stops meaning
--- that the moment "today" (tonnage_reference_now()) passes open_date_end --
--- even if that row happens to be the newest one on file. Conversely, a
--- vessel whose latest report predates today can still be FIXED today if
--- some *other* row's window covers today. So this searches every
--- (non-future) row per vessel, not just rn = 1, for one whose window
--- contains today. ON SUBS is treated the same way for containment (a
--- discussion in progress still occupies the vessel for that window) and is
--- reported under its own raw label, ON SUBS, rather than merged into
--- FIXED -- the two are kept visibly distinct so a trader can tell "still
--- being discussed" apart from "firmly booked". If a vessel somehow has
--- both a FIXED- and an ON-SUBS-covering row for today, FIXED wins
--- (DISTINCT ON's ORDER BY below). A vessel with no row covering today at
--- all is OPEN -- handled by the LEFT JOIN below defaulting to OPEN when no
--- match exists, not by matching an explicit "open" row.
+-- Whether a vessel is FIXED/ON SUBS/OPEN *today* is a date-range
+-- containment question, and where two rows' windows overlap and disagree,
+-- the more recently updated row overrides the older one -- but only for
+-- the dates that newer row itself covers, not the older row's whole
+-- window. Confirmed by the sponsor with a worked example: an older row
+-- reporting OPEN 17/8-19/8 and a newer row reporting FIXED 18/8-20/8
+-- should read OPEN on the 17th (only the older row covers that date) and
+-- FIXED from the 18th onward (the newer row now covers it, and it's the
+-- more recent report). Evaluated at a single date -- today -- that rule is
+-- exactly "among every non-future row whose window contains today, take
+-- the status of whichever one has the latest update_date", which is what
+-- this CTE computes; the sponsor's multi-day walkthrough is that same
+-- per-date rule applied to several different "todays" in a row, not a
+-- different algorithm needed for the single-date case below. Every row
+-- competes on recency, not just FIXED/ON-SUBS ones -- a plain "open" row
+-- (no fixture, i.e. commercial_status NULL) with the latest update_date
+-- must be able to override an older FIXED/ON-SUBS row the same way a
+-- newer fixture overrides an older open report, per the same worked
+-- example -- this used to be restricted to commercial_status IN ('FIXED',
+-- 'ON SUBS') and is not anymore. Ties on update_date (an identical
+-- timestamp) fall back to preferring FIXED, then ON SUBS, purely for a
+-- deterministic result -- not expected to matter in practice.
 active_bookings AS (
   SELECT DISTINCT ON (vessel_id)
     vessel_id,
     commercial_status
   FROM public.tonnage_test
-  WHERE commercial_status IN ('FIXED', 'ON SUBS')
-    AND open_date_start IS NOT NULL
+  WHERE open_date_start IS NOT NULL
     AND open_date_end IS NOT NULL
     AND (update_date IS NULL OR update_date < tonnage_reference_now())
     AND tonnage_reference_now() BETWEEN open_date_start AND open_date_end
-  ORDER BY vessel_id, (commercial_status = 'FIXED') DESC
+  ORDER BY vessel_id, update_date DESC NULLS LAST, (commercial_status = 'FIXED') DESC, (commercial_status = 'ON SUBS') DESC
 )
 SELECT
   r.vessel_id,
@@ -199,58 +218,153 @@ SELECT
   r.destination,
   r.update_date,
   r.vessel_status                            AS ais_status,     -- navigational (Under way/Anchored/Moored) -- NOT trading status, do not wire into the Fixed/Open/On Subs badge
-  r.commercial_status                        AS raw_commercial_status,   -- what the LATEST report says, for reference/debugging only -- can legitimately disagree with dashboard_status below (e.g. latest report says FIXED but that fixture's window has since elapsed and no later window covers today, so dashboard_status reads OPEN)
+  r.commercial_status                        AS raw_commercial_status,   -- what the LATEST report says, for reference/debugging only -- can legitimately disagree with dashboard_status below (e.g. latest report says FIXED but a still-more-recent row's window has since overridden it for today, so dashboard_status reads something else)
   CASE
     WHEN ab.commercial_status = 'FIXED'   THEN 'FIXED'
-    WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'        -- [CONFIRM WITH SPONSOR] on-subs treated as occupying the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED -- the occupancy question is still a discussion in progress, not yet confirmed
-    ELSE 'OPEN'                                                 -- no row's window covers today -- see active_bookings above; this is NOT the latest row's raw status, see raw_commercial_status
+    WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'        -- confirmed by sponsor: on-subs occupies the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED
+    ELSE 'OPEN'                                                 -- no row's window covers today, or the most recent covering row has no fixture -- see active_bookings above; this is NOT the latest row's raw status, see raw_commercial_status
   END                                        AS dashboard_status,
   tonnage_reference_now() - r.update_date     AS age_since_update,
   (r.open_date_end IS NOT NULL AND r.open_date_end < tonnage_reference_now())  AS open_window_lapsed,
-  (
-    r.update_date IS NULL
-    OR (tonnage_reference_now() - r.update_date) > interval '48 hours'  -- [CONFIRM WITH SPONSOR] placeholder threshold, proposal doesn't fix a number; measured against tonnage_reference_now(), see function 0 above
-    OR (r.open_date_end IS NOT NULL AND r.open_date_end < tonnage_reference_now())
-  )                                          AS is_stale,
-  (c.vessel_id IS NOT NULL)                  AS has_conflicting_reports,
-  r.first_date_received                      -- appended last: CREATE OR REPLACE VIEW can only add columns at the end, not reorder existing ones
+  -- Confirmed by sponsor: staleness is specifically about the vessel's
+  -- latest row's own open_date_end being more than 5 days behind today --
+  -- not update_date recency, and not "any lapse at all" the way
+  -- open_window_lapsed above is. Deliberately still anchored to the same
+  -- single latest row (`r`) as every other column here, not the
+  -- containment-selected row dashboard_status uses above -- these two are
+  -- allowed to disagree by design, not an unreconciled inconsistency.
+  (r.open_date_end IS NOT NULL AND r.open_date_end < (tonnage_reference_now() - interval '5 days'))  AS is_stale,
+  fs.first_seen_date                         AS first_date_received  -- the vessel's true earliest-ever report, see first_seen above, not the latest row's own value
 FROM ranked r
-LEFT JOIN conflicts c
-  ON c.vessel_id = r.vessel_id AND c.update_date = r.update_date
+LEFT JOIN first_seen fs
+  ON fs.vessel_id = r.vessel_id
 LEFT JOIN active_bookings ab
   ON ab.vessel_id = r.vessel_id
 WHERE r.rn = 1;
 
 -- ---------------------------------------------------------------------
 -- 2. vessel_status_history
--- The ECSA tracker's "daily status history trail" is derived directly
--- from public.tonnage_test's own row history (it already IS an event
--- log) -- no new events table needed. Collapses consecutive
--- identical-status rows per vessel into transition points.
+-- The vessel's resolved status TIMELINE -- not a log of raw reports, but
+-- the sequence of (date range, status) segments that results once
+-- overlapping reports are reconciled the same way vessel_current_status's
+-- active_bookings CTE resolves "what is this vessel right now": where two
+-- rows' open-date windows overlap, the more recently updated row
+-- overrides the older one, but only for the dates it itself covers -- the
+-- older row's status still stands for any of its own dates the newer row
+-- doesn't reach. Confirmed by the sponsor with a worked example: an older
+-- row reporting FIXED 17/8-20/8 and a newer row reporting OPEN 19/8-21/8
+-- resolves to FIXED 17/8-18/8, then OPEN 19/8-21/8 -- not a flat
+-- "whichever row is newest wins outright" and not a "conflict" to flag;
+-- there is no more unresolved ambiguity once this rule is applied, so
+-- there is nothing left to surface as a conflict (has_conflicting_reports
+-- on vessel_current_status was removed for the same reason).
+--
+-- Computed via a breakpoint sweep, not a day-by-day grid, for cost: every
+-- row's open_date_start and (open_date_end + 1 day) is a candidate
+-- boundary, since the winning row for a date can only ever change at one
+-- of those points. Between two adjacent boundaries lies one atomic
+-- interval that every row's coverage is constant across (a row's window
+-- can't start or end strictly inside it, by construction); the winner for
+-- that interval is whichever covering row has the latest update_date --
+-- identical tie-break to active_bookings, including the FIXED-then-ON
+-- SUBS fallback for the near-impossible case of two rows sharing the
+-- exact same update_date. Adjacent atomic intervals that resolve to the
+-- same status are merged back into one output segment, same spirit as the
+-- old row-by-row version collapsing consecutive identical statuses. An
+-- atomic interval no row covers at all is left out of the output
+-- entirely (not shown as an inferred "OPEN" segment) -- this is a record
+-- of what was actually reported, not a synthetic calendar; "no covering
+-- row" is already the documented default elsewhere (dashboard_status).
+--
+-- is_first_segment marks each vessel's earliest segment (by
+-- open_date_start) -- the baseline nothing "changed" from, since there's
+-- no earlier segment to compare against. Callers building a change feed
+-- (vessel_status_changes_sql, daily_status_changes_sql) exclude it the
+-- same way the old view's `prev_status IS NULL` used to.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE VIEW vessel_status_history AS
-WITH labeled AS (
+WITH eligible AS (
   SELECT
     vessel_id,
     update_date,
-    open_area,
+    open_date_start,
+    open_date_end,
+    parent_zone,
     CASE
       WHEN commercial_status = 'FIXED'   THEN 'FIXED'
       WHEN commercial_status = 'ON SUBS' THEN 'ON SUBS'
       ELSE 'OPEN'
-    END AS status,
-    LAG(CASE
-      WHEN commercial_status = 'FIXED'   THEN 'FIXED'
-      WHEN commercial_status = 'ON SUBS' THEN 'ON SUBS'
-      ELSE 'OPEN'
-    END) OVER (PARTITION BY vessel_id ORDER BY update_date) AS prev_status
+    END AS status
   FROM public.tonnage_test
-  WHERE update_date IS NOT NULL AND update_date < tonnage_reference_now()
+  WHERE open_date_start IS NOT NULL
+    AND open_date_end IS NOT NULL
+    AND (update_date IS NULL OR update_date < tonnage_reference_now())
+),
+breakpoints AS (
+  SELECT vessel_id, open_date_start AS bp FROM eligible
+  UNION
+  SELECT vessel_id, open_date_end + interval '1 day' AS bp FROM eligible
+),
+ordered_bp AS (
+  SELECT vessel_id, bp,
+    LEAD(bp) OVER (PARTITION BY vessel_id ORDER BY bp) AS next_bp
+  FROM breakpoints
+),
+atomic AS (
+  SELECT vessel_id, bp AS seg_start, next_bp - interval '1 day' AS seg_end
+  FROM ordered_bp
+  WHERE next_bp IS NOT NULL AND next_bp > bp
+),
+resolved AS (
+  -- A plain JOIN + DISTINCT ON, not a LATERAL subquery correlated per
+  -- atomic row: the LATERAL version re-scanned the entire (materialised)
+  -- `eligible` CTE for every atomic interval -- ~15,000 atomic intervals
+  -- across all vessels times ~8,000 eligible rows, confirmed live to take
+  -- ~18 seconds per query. A join lets Postgres group `eligible` by
+  -- vessel_id once (a hash join) instead of re-scanning it per row; an
+  -- atomic interval with no covering row is simply absent from an INNER
+  -- join's result, same effect the old LEFT JOIN + `WHERE status IS NOT
+  -- NULL` had.
+  SELECT DISTINCT ON (a.vessel_id, a.seg_start)
+    a.vessel_id, a.seg_start, a.seg_end, e.status, e.update_date, e.parent_zone
+  FROM atomic a
+  JOIN eligible e
+    ON e.vessel_id = a.vessel_id
+    AND e.open_date_start <= a.seg_start
+    AND e.open_date_end >= a.seg_end
+  ORDER BY a.vessel_id, a.seg_start, e.update_date DESC NULLS LAST, (e.status = 'FIXED') DESC, (e.status = 'ON SUBS') DESC
+),
+with_lag AS (
+  -- Postgres won't let a window function's argument contain another
+  -- window function call directly (LAG inside SUM below), so the LAG
+  -- lookups are materialised here first and the running total in
+  -- `grouped` reads them as plain columns instead.
+  SELECT *,
+    LAG(status) OVER w AS prev_status,
+    LAG(seg_end) OVER w AS prev_seg_end
+  FROM resolved
+  WINDOW w AS (PARTITION BY vessel_id ORDER BY seg_start)
+),
+grouped AS (
+  SELECT *,
+    SUM(
+      CASE WHEN status IS DISTINCT FROM prev_status
+             OR seg_start IS DISTINCT FROM (prev_seg_end + interval '1 day')
+           THEN 1 ELSE 0 END
+    ) OVER (PARTITION BY vessel_id ORDER BY seg_start) AS grp
+  FROM with_lag
 )
-SELECT vessel_id, update_date, open_area, prev_status, status
-FROM labeled
-WHERE prev_status IS NULL OR prev_status != status
-ORDER BY vessel_id, update_date;
+SELECT
+  vessel_id,
+  MIN(seg_start)                                  AS open_date_start,
+  MAX(seg_end)                                    AS open_date_end,
+  (ARRAY_AGG(status ORDER BY seg_start))[1]        AS status,
+  (ARRAY_AGG(parent_zone ORDER BY seg_start))[1]   AS parent_zone,
+  MAX(update_date)                                AS update_date,
+  ROW_NUMBER() OVER (PARTITION BY vessel_id ORDER BY MIN(seg_start)) = 1  AS is_first_segment
+FROM grouped
+GROUP BY vessel_id, grp
+ORDER BY vessel_id, open_date_start;
 
 -- ---------------------------------------------------------------------
 -- 3. ecsa_ballasters
