@@ -196,6 +196,17 @@
 
       .toolbar label.toolbar-checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--fg); }
 
+      .day-filter-banner {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+        padding: 0.6rem 0.9rem; margin-bottom: 0.75rem; font-size: 0.85rem;
+        background: var(--card); border: 1px solid var(--accent); border-radius: 0.6rem;
+      }
+      .day-filter-banner.hidden { display: none; }
+      .day-filter-banner button {
+        font: inherit; padding: 0.3rem 0.7rem; border-radius: 0.4rem; border: 1px solid var(--border);
+        background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+
       .removed-item { text-decoration: line-through; opacity: 0.75; }
       .field-diff { font-size: 0.8rem; }
       .field-diff .field-name { color: var(--muted); }
@@ -263,11 +274,47 @@
       .map-view-wrap.hidden { display: none; }
 
       .change-groups { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
-      .change-group { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
-      .change-group h3 { margin: 0 0 0.5rem; font-size: 0.85rem; }
+      .change-group { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
+      .change-group h3 { margin: 0 0 0.5rem; padding-right: 1.7rem; font-size: 0.85rem; }
       .change-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; font-size: 0.82rem; max-height: 12rem; overflow-y: auto; }
       .change-group li { border-bottom: 1px dashed var(--border); padding-bottom: 0.35rem; }
       .change-count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+      .change-group-expand {
+        position: absolute; top: 0.7rem; right: 0.7rem; width: 1.5rem; height: 1.5rem; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: 0.4rem;
+        background: var(--bg); color: var(--muted); cursor: pointer;
+      }
+      .change-group-expand:hover { color: var(--fg); border-color: var(--accent); }
+
+      /* A blurred, dimmed backdrop with a large centered card -- used to
+         show one Change Feed box's full, larger-type content without the
+         12rem scroll clamp its inline card is limited to. */
+      .modal-overlay {
+        position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+        background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+        padding: 2rem;
+      }
+      .modal-overlay.hidden { display: none; }
+      .modal-box {
+        display: flex; flex-direction: column; width: 100%; max-width: 40rem; max-height: 85vh;
+        background: var(--card); border: 1px solid var(--border); border-radius: 1rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+      .modal-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        padding: 1.1rem 1.4rem; border-bottom: 1px solid var(--border);
+      }
+      .modal-head h3 { margin: 0; font-size: 1.05rem; }
+      .modal-close {
+        width: 2rem; height: 2rem; padding: 0; flex-shrink: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: 0.5rem; background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+      .modal-close:hover { border-color: var(--accent); }
+      .modal-body { padding: 1.25rem 1.4rem; overflow-y: auto; font-size: 1rem; }
+      .modal-body ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+      .modal-body li { border-bottom: 1px dashed var(--border); padding-bottom: 0.6rem; }
 
       .history-btn { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
       .history-trail { display: none; padding: 0.5rem 0.6rem 0.75rem; font-size: 0.82rem; }
@@ -538,9 +585,24 @@
         <p class="sub" style="margin:0.15rem 0 0;">Filter, search, and inspect the underlying vessel, order, and change records behind the summary above.</p>
       </div>
 
+      <section id="changes-section">
+        <div class="section-head">
+          <h2>Change Feed</h2>
+          <div class="toolbar">
+            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
+            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+          </div>
+        </div>
+        <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
+      </section>
+
       <section id="vessels-section">
         <div class="section-head">
           <h2>Vessel Tracker</h2>
+        </div>
+        <div id="vesselDayFilterBanner" class="day-filter-banner hidden">
+          <span id="vesselDayFilterLabel"></span>
+          <button type="button" id="vesselDayFilterClear">Clear filter</button>
         </div>
         <div class="section-head">
           <div class="toolbar">
@@ -580,15 +642,38 @@
         <div class="pager" id="vesselsPager"></div>
       </section>
 
-      <section id="changes-section">
+      <section id="orders-section">
         <div class="section-head">
-          <h2>Change Feed</h2>
+          <h2>Order Tracker</h2>
+        </div>
+        <div id="orderDayFilterBanner" class="day-filter-banner hidden">
+          <span id="orderDayFilterLabel"></span>
+          <button type="button" id="orderDayFilterClear">Clear filter</button>
+        </div>
+        <div class="section-head">
           <div class="toolbar">
-            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
-            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+            <label>Order ID
+              <input id="orderSearch" type="text" placeholder="e.g. 728280593490835944" />
+            </label>
+            <label>Region
+              <input id="orderRegion" type="text" placeholder="e.g. Asia" />
+            </label>
+            <label>Sort
+              <select id="orderSort">
+                <option value="date_received">Recently received</option>
+                <option value="laycan_start">Laycan starting</option>
+              </select>
+            </label>
           </div>
         </div>
-        <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
+        <div class="table-wrap"><table id="ordersTable">
+          <thead><tr>
+            <th>Order</th><th>Cargo</th><th>Load zone</th><th>Discharge zone</th>
+            <th>Laycan</th><th>Weight</th><th>Received</th>
+          </tr></thead>
+          <tbody><tr><td colspan="7" class="muted">Loading&hellip;</td></tr></tbody>
+        </table></div>
+        <div class="pager" id="ordersPager"></div>
       </section>
 
       <section id="ecsa-section">
@@ -737,6 +822,20 @@
       </section>
       </div>
     </main>
+
+    <div id="changeGroupModal" class="modal-overlay hidden">
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="changeGroupModalTitle">
+        <div class="modal-head">
+          <h3 id="changeGroupModalTitle"></h3>
+          <button type="button" class="modal-close" id="changeGroupModalClose" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body" id="changeGroupModalBody"></div>
+      </div>
+    </div>
 
     <script>
       // ---- theme toggle -----------------------------------------------
@@ -1156,7 +1255,13 @@
         ).join("");
       }
 
-      function renderMiniBarChart(container, series, color) {
+      // `metric` names which Daily Trends bar this is ("new_vessels",
+      // "status_changes", or "new_orders"), enabling the click-a-bar-to-
+      // filter interaction below -- "new_orders" routes to the order
+      // tracker (filterOrdersByDay), the other two to the vessel tracker
+      // (filterVesselsByDay). Omit `metric` for a chart whose bars
+      // shouldn't be clickable at all.
+      function renderMiniBarChart(container, series, color, metric) {
         if (!series.length) {
           container.innerHTML = '<p class="muted" style="font-size:0.8rem;">No data.</p>';
           return;
@@ -1173,9 +1278,12 @@
           const x = PAD_L + i * slot + (slot - barW) / 2;
           const y = PAD_T + (plotH - h);
           const labelY = Math.max(9, y - 3);
+          const label = metric
+            ? `${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}, click to filter the vessel tracker`
+            : `${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}`;
           return `
             <text x="${(x + barW / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="mini-chart-label">${formatNumber(d.count)}</text>
-            <rect data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}" tabindex="0" role="img" aria-label="${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}"></rect>
+            <rect data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}" tabindex="0" role="${metric ? "button" : "img"}" style="${metric ? "cursor:pointer;" : ""}" aria-label="${label}"></rect>
           `;
         }).join("");
         container.innerHTML = `
@@ -1200,16 +1308,38 @@
           rect.addEventListener("focus", show);
           rect.addEventListener("pointerleave", hide);
           rect.addEventListener("blur", hide);
+          if (metric) {
+            const activate = () => {
+              hideTooltip(tooltip);
+              if (metric === "new_orders") {
+                filterOrdersByDay(d.day);
+              } else {
+                filterVesselsByDay(metric, d.day);
+              }
+            };
+            rect.addEventListener("click", activate);
+            rect.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activate();
+              }
+            });
+          }
         });
       }
+
+      let dailyTrendsRange = null;
+      let dailyOrdersRange = null;
 
       async function loadDailyTrends(isRefresh = false) {
         const ids = ["chartNewVessels", "chartStatusChanges", "chartNewOrders"];
         try {
           const data = await getJson("/api/dashboard/daily-counts?days=14");
-          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)");
-          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)");
-          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)");
+          dailyTrendsRange = data.range;
+          dailyOrdersRange = data.orders_range;
+          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)", "new_vessels");
+          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)", "status_changes");
+          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)", "new_orders");
         } catch (error) {
           if (isRefresh) throw error;
           ids.forEach((id) => {
@@ -1219,7 +1349,7 @@
       }
 
       // ---- vessel tracker ---------------------------------------------------
-      const VESSELS_PAGE_SIZE = 25;
+      const VESSELS_PAGE_SIZE = 15;
       let vesselsFetched = [];
       let vesselsPage = 0;
 
@@ -1257,7 +1387,9 @@
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(vesselRow).join("")
-          : '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>';
+          : hasActiveVesselFilter()
+            ? '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>'
+            : '<tr><td colspan="7" class="muted">Choose a status, region, or stale filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
 
         const rangeLabel = filtered.length
           ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
@@ -1306,8 +1438,55 @@
         document.getElementById("vessels-section").scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
+      // Clicking a Daily Trends bar drills into the vessel tracker: rather
+      // than layering onto the status/region/sort/stale filters above (a
+      // day filter and e.g. a status filter both narrowing the same table
+      // would be confusing to reason about together), it replaces them
+      // outright -- those four controls are disabled while active, and
+      // "Clear filter" is the only way back to them. The Vessel ID search
+      // box stays enabled throughout and keeps narrowing whatever's
+      // currently loaded, day-filtered or not.
+      let activeDayFilter = null;
+      const DAY_FILTER_LABELS = { new_vessels: "first reported", status_changes: "with a status change" };
+      const DAY_FILTER_CONTROLS = ["vesselStatus", "vesselRegion", "vesselSort", "vesselStaleOnly"];
+
+      // The vessel tracker only ever shows something once the trader has
+      // deliberately narrowed it -- a day-filter, a status/region/stale
+      // filter, or a vessel ID search -- never the whole ~1000-vessel fleet
+      // unfiltered by default. Sort doesn't count: it reorders whatever's
+      // already shown, it doesn't narrow anything.
+      function hasActiveVesselFilter() {
+        return Boolean(
+          activeDayFilter ||
+          document.getElementById("vesselStatus").value ||
+          document.getElementById("vesselRegion").value.trim() ||
+          document.getElementById("vesselStaleOnly").checked ||
+          document.getElementById("vesselSearch").value.trim()
+        );
+      }
+
+      async function filterVesselsByDay(metric, day) {
+        activeDayFilter = { metric, day };
+        DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
+        await loadVessels();
+        scrollToVessels();
+      }
+
+      function resetDayFilterState() {
+        activeDayFilter = null;
+        DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = false; });
+      }
+      document.getElementById("vesselDayFilterClear").addEventListener("click", () => {
+        resetDayFilterState();
+        loadVessels();
+      });
+
+      // Any of these explicit filter shortcuts supersedes a day filter --
+      // clicking one is a clear signal to filter by status/staleness
+      // instead, not to combine with whatever day was last clicked.
       document.querySelectorAll(".status-tile[data-status]").forEach((tile) => {
         tile.addEventListener("click", () => {
+          resetDayFilterState();
           document.querySelectorAll(".status-tile[data-status]").forEach((t) => t.classList.remove("active"));
           tile.classList.add("active");
           document.getElementById("vesselStatus").value = tile.dataset.status;
@@ -1318,6 +1497,7 @@
       document.querySelector('.status-tile[data-status=""]').classList.add("active");
 
       document.getElementById("flagTileStale").addEventListener("click", () => {
+        resetDayFilterState();
         document.getElementById("vesselStaleOnly").checked = true;
         loadVessels();
         scrollToVessels();
@@ -1325,21 +1505,47 @@
 
       async function loadVessels(isRefresh = false) {
         const tbody = document.querySelector("#vesselsTable tbody");
+        const banner = document.getElementById("vesselDayFilterBanner");
+        // Nothing to fetch, and nothing should show, until the trader
+        // applies some filter -- see hasActiveVesselFilter().
+        if (!hasActiveVesselFilter()) {
+          banner.classList.add("hidden");
+          vesselsFetched = [];
+          vesselsPage = 0;
+          renderVesselsTable();
+          return;
+        }
         // A filter change (isRefresh=false) is a genuinely new query with
         // nothing worth preserving, so it still shows "Loading...". A
         // background refresh of the same filter keeps the current table
         // on screen until new data actually arrives.
         if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
-        const status = document.getElementById("vesselStatus").value;
-        const region = document.getElementById("vesselRegion").value.trim();
-        const sort = document.getElementById("vesselSort").value;
-        const staleOnly = document.getElementById("vesselStaleOnly").checked;
-        const params = new URLSearchParams({ sort });
-        if (status) params.set("status", status);
-        if (region) params.set("region", region);
-        if (staleOnly) params.set("stale", "true");
+        let url;
+        if (activeDayFilter) {
+          const { metric, day } = activeDayFilter;
+          const params = new URLSearchParams({ metric, day });
+          if (dailyTrendsRange) {
+            params.set("range_since", dailyTrendsRange.since);
+            params.set("range_until", dailyTrendsRange.until);
+          }
+          url = `/api/dashboard/vessels/by-day?${params}`;
+          document.getElementById("vesselDayFilterLabel").textContent =
+            `Showing vessels ${DAY_FILTER_LABELS[metric]} on ${formatDate(day)}`;
+          banner.classList.remove("hidden");
+        } else {
+          const status = document.getElementById("vesselStatus").value;
+          const region = document.getElementById("vesselRegion").value.trim();
+          const sort = document.getElementById("vesselSort").value;
+          const staleOnly = document.getElementById("vesselStaleOnly").checked;
+          const params = new URLSearchParams({ sort });
+          if (status) params.set("status", status);
+          if (region) params.set("region", region);
+          if (staleOnly) params.set("stale", "true");
+          url = `/api/dashboard/vessels?${params}`;
+          banner.classList.add("hidden");
+        }
         try {
-          vesselsFetched = await getJson(`/api/dashboard/vessels?${params}`);
+          vesselsFetched = await getJson(url);
           vesselsPage = 0;
           renderVesselsTable();
         } catch (error) {
@@ -1348,6 +1554,167 @@
           document.getElementById("vesselsPager").innerHTML = "";
         }
       }
+
+      // ---- order tracker ------------------------------------------------
+      // Mirrors the vessel tracker above (own state, own render/load pair,
+      // own day-filter banner) rather than sharing code with it -- orders
+      // and vessels have different columns and no shared identity, so
+      // there's nothing real to factor out beyond a naming convention.
+      const ORDERS_PAGE_SIZE = 15;
+      let ordersFetched = [];
+      let ordersPage = 0;
+      let activeOrderDayFilter = null;
+      const ORDER_DAY_FILTER_CONTROLS = ["orderRegion", "orderSort"];
+
+      function hasActiveOrderFilter() {
+        return Boolean(
+          activeOrderDayFilter ||
+          document.getElementById("orderRegion").value.trim() ||
+          document.getElementById("orderSearch").value.trim()
+        );
+      }
+
+      function scrollToOrders() {
+        document.getElementById("orders-section").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      async function filterOrdersByDay(day) {
+        activeOrderDayFilter = { day };
+        ORDER_DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
+        await loadOrders();
+        scrollToOrders();
+      }
+
+      function resetOrderDayFilterState() {
+        activeOrderDayFilter = null;
+        ORDER_DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = false; });
+      }
+      document.getElementById("orderDayFilterClear").addEventListener("click", () => {
+        resetOrderDayFilterState();
+        loadOrders();
+      });
+
+      // A weight range collapses to one number when min == max (a firm
+      // cargo size) rather than repeating it, and falls back to whichever
+      // bound is present if the other is null.
+      function formatWeightRange(min, max) {
+        if (min == null && max == null) return "—";
+        if (min == null) return formatNumber(max);
+        if (max == null) return formatNumber(min);
+        if (Number(min) === Number(max)) return formatNumber(min);
+        return `${formatNumber(min)}–${formatNumber(max)}`;
+      }
+
+      function orderRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.order_id)}</td>
+            <td>${escapeHtml(row.cargo_type || "—")}</td>
+            <td>${escapeHtml(row.load_zone || "—")}</td>
+            <td>${escapeHtml(row.discharge_parent_zone || "—")}</td>
+            <td>${formatDate(row.laycan_start)} &ndash; ${formatDate(row.laycan_end)}</td>
+            <td>${formatWeightRange(row.cargo_weight_min, row.cargo_weight_max)}</td>
+            <td>${formatDate(row.date_received)}</td>
+          </tr>
+        `;
+      }
+
+      function renderOrdersTable() {
+        const tbody = document.querySelector("#ordersTable tbody");
+        const pager = document.getElementById("ordersPager");
+        const search = document.getElementById("orderSearch").value.trim().toLowerCase();
+        const filtered = search
+          ? ordersFetched.filter((r) => r.order_id.toLowerCase().includes(search))
+          : ordersFetched;
+
+        const pageCount = Math.max(1, Math.ceil(filtered.length / ORDERS_PAGE_SIZE));
+        ordersPage = Math.min(ordersPage, pageCount - 1);
+        const start = ordersPage * ORDERS_PAGE_SIZE;
+        const pageRows = filtered.slice(start, start + ORDERS_PAGE_SIZE);
+
+        tbody.innerHTML = pageRows.length
+          ? pageRows.map(orderRow).join("")
+          : hasActiveOrderFilter()
+            ? '<tr><td colspan="7" class="muted">No orders match these filters.</td></tr>'
+            : '<tr><td colspan="7" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
+
+        const rangeLabel = filtered.length
+          ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+          : "0 of 0";
+        pager.innerHTML = `
+          <span>${rangeLabel}</span>
+          <div class="pager-controls">
+            <button type="button" id="ordersPrev" ${ordersPage === 0 ? "disabled" : ""}>Previous</button>
+            <span>Page ${ordersPage + 1} of ${pageCount}</span>
+            <button type="button" id="ordersNext" ${ordersPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
+          </div>
+        `;
+        document.getElementById("ordersPrev").addEventListener("click", () => {
+          ordersPage -= 1;
+          renderOrdersTable();
+        });
+        document.getElementById("ordersNext").addEventListener("click", () => {
+          ordersPage += 1;
+          renderOrdersTable();
+        });
+      }
+
+      async function loadOrders(isRefresh = false) {
+        const tbody = document.querySelector("#ordersTable tbody");
+        const banner = document.getElementById("orderDayFilterBanner");
+        // Nothing to fetch, and nothing should show, until the trader
+        // applies some filter -- see hasActiveOrderFilter().
+        if (!hasActiveOrderFilter()) {
+          banner.classList.add("hidden");
+          ordersFetched = [];
+          ordersPage = 0;
+          renderOrdersTable();
+          return;
+        }
+        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
+        let url;
+        if (activeOrderDayFilter) {
+          const { day } = activeOrderDayFilter;
+          const params = new URLSearchParams({ day });
+          if (dailyOrdersRange) {
+            params.set("range_since", dailyOrdersRange.since);
+            params.set("range_until", dailyOrdersRange.until);
+          }
+          url = `/api/dashboard/orders/by-day?${params}`;
+          document.getElementById("orderDayFilterLabel").textContent =
+            `Showing orders received on ${formatDate(day)}`;
+          banner.classList.remove("hidden");
+        } else {
+          const region = document.getElementById("orderRegion").value.trim();
+          const sort = document.getElementById("orderSort").value;
+          const params = new URLSearchParams({ sort });
+          if (region) params.set("region", region);
+          url = `/api/dashboard/orders?${params}`;
+          banner.classList.add("hidden");
+        }
+        try {
+          ordersFetched = await getJson(url);
+          ordersPage = 0;
+          renderOrdersTable();
+        } catch (error) {
+          if (isRefresh) throw error;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load orders: ${escapeHtml(error.message)}</td></tr>`;
+          document.getElementById("ordersPager").innerHTML = "";
+        }
+      }
+
+      document.getElementById("orderSort").addEventListener("change", loadOrders);
+      let orderRegionDebounce;
+      document.getElementById("orderRegion").addEventListener("input", () => {
+        clearTimeout(orderRegionDebounce);
+        orderRegionDebounce = setTimeout(loadOrders, 350);
+      });
+      let orderSearchDebounce;
+      document.getElementById("orderSearch").addEventListener("input", () => {
+        ordersPage = 0;
+        clearTimeout(orderSearchDebounce);
+        orderSearchDebounce = setTimeout(loadOrders, 350);
+      });
 
       // ---- change feed --------------------------------------------------
       // Groups rows by calendar day (of dateField) so a trader gets a
@@ -1367,15 +1734,19 @@
         return groups;
       }
 
-      function changeList(rows, renderItem, dateField) {
+      // `limit` caps how many rows render inline in a box's own small
+      // scrolling card; the expand button's modal (see openChangeGroupModal)
+      // passes 0 to show every row instead, now that there's somewhere with
+      // room for the full list at a readable size.
+      function changeList(rows, renderItem, dateField, limit = 60) {
         if (!rows.length) return '<p class="muted" style="font-size:0.8rem;">None in this window.</p>';
-        const shown = rows.slice(0, 60);
+        const shown = limit ? rows.slice(0, limit) : rows;
         let html = "";
         for (const [day, dayRows] of groupByDay(shown, dateField)) {
           html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
           html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
         }
-        if (rows.length > shown.length) {
+        if (limit && rows.length > shown.length) {
           html += `<p class="muted" style="font-size:0.75rem;">+${formatNumber(rows.length - shown.length)} more not shown</p>`;
         }
         return html;
@@ -1401,13 +1772,44 @@
         return `<li>${escapeHtml(row.vessel_id)}${diffs}</li>`;
       }
 
+      const EXPAND_ICON_SVG = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+          <path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+      `;
+
+      // Keyed by the same index the expand button carries in its
+      // data-group-index, so the modal (opened well after loadChanges'
+      // own closures have gone out of scope) can still reach each box's
+      // title/rows/renderer/dateField to redraw them at full length.
+      let currentChangeGroups = [];
+
+      function openChangeGroupModal(groupIndex) {
+        const [title, rows, render, dateField] = currentChangeGroups[groupIndex];
+        document.getElementById("changeGroupModalTitle").textContent = `${title} (${formatNumber(rows.length)})`;
+        document.getElementById("changeGroupModalBody").innerHTML = changeList(rows, render, dateField, 0);
+        document.getElementById("changeGroupModal").classList.remove("hidden");
+      }
+
+      function closeChangeGroupModal() {
+        document.getElementById("changeGroupModal").classList.add("hidden");
+      }
+      document.getElementById("changeGroupModalClose").addEventListener("click", closeChangeGroupModal);
+      document.getElementById("changeGroupModal").addEventListener("click", (event) => {
+        if (event.target.id === "changeGroupModal") closeChangeGroupModal();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeChangeGroupModal();
+      });
+
       async function loadChanges(window_, isRefresh = false) {
         const el = document.getElementById("changeFeed");
         if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
         try {
           const data = await getJson(`/api/dashboard/changes?window=${window_}`);
           const groups = [
-            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "first_date_received"],
+            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "new_as_of"],
             ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, "update_date"],
             ["Field changes", data.field_changes, fieldChangeRow, "update_date"],
             [
@@ -1417,21 +1819,25 @@
               "update_date",
             ],
             ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, "date_received"],
-            ["Amended orders", data.amended_orders, (r) => `<li>Order ${escapeHtml(r.order_id)} &mdash; updated ${formatDate(r.update_date)}</li>`, "update_date"],
           ];
+          currentChangeGroups = groups;
           el.innerHTML = `
             <p class="muted" style="margin-top:0;">
               Simulated as of ${formatDate(data.tonnage_reference_now)} &mdash; today's real date minus one year, not today's actual date.
             </p>
             <div class="change-groups">
-              ${groups.map(([title, rows, render, dateField]) => `
+              ${groups.map(([title, rows, render, dateField], i) => `
                 <div class="change-group">
+                  <button type="button" class="change-group-expand" data-group-index="${i}" aria-label="Expand ${escapeHtml(title)}">${EXPAND_ICON_SVG}</button>
                   <h3>${title} <span class="change-count">${rows.length}</span></h3>
                   ${changeList(rows, render, dateField)}
                 </div>
               `).join("")}
             </div>
           `;
+          el.querySelectorAll(".change-group-expand").forEach((btn) => {
+            btn.addEventListener("click", () => openChangeGroupModal(Number(btn.dataset.groupIndex)));
+          });
         } catch (error) {
           if (isRefresh) throw error;
           el.innerHTML = `<p class="error">Could not load the change feed: ${escapeHtml(error.message)}</p>`;
@@ -1590,9 +1996,16 @@
         clearTimeout(regionDebounce);
         regionDebounce = setTimeout(loadVessels, 350);
       });
+      // A search box going from empty to non-empty (or back) can flip
+      // hasActiveVesselFilter() -- e.g. it's the only filter set -- so this
+      // has to go through loadVessels() (debounced, same as region above)
+      // rather than a plain client-side re-render, even though the search
+      // itself is never sent as a server-side param.
+      let searchDebounce;
       document.getElementById("vesselSearch").addEventListener("input", () => {
         vesselsPage = 0;
-        renderVesselsTable();
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(loadVessels, 350);
       });
       document.getElementById("vesselStaleOnly").addEventListener("change", loadVessels);
 
@@ -2189,7 +2602,7 @@
       // yet for a stale banner to reference.
       async function refreshAll() {
         const sections = document.querySelectorAll(
-          "#summary-section, #vessels-section, #changes-section, #ecsa-section, #overrides-section"
+          "#summary-section, #changes-section, #vessels-section, #orders-section, #ecsa-section, #overrides-section"
         );
         sections.forEach((el) => el.classList.add("section-refreshing"));
 
@@ -2198,8 +2611,9 @@
           ["Status counts", loadStatusCounts(true)],
           ["Flag counts", loadFlagCounts(true)],
           ["Daily trends", loadDailyTrends(true)],
-          ["Vessel tracker", loadVessels(true)],
           ["Change feed", loadChanges(currentChangeWindow, true)],
+          ["Vessel tracker", loadVessels(true)],
+          ["Order tracker", loadOrders(true)],
           ["ECSA tracker", loadEcsa(true)],
           ["Override audit trail", loadAudit(true)],
         ];
@@ -2229,8 +2643,9 @@
         loadStatusCounts(),
         loadFlagCounts(),
         loadDailyTrends(),
-        loadVessels(),
         loadChanges(currentChangeWindow),
+        loadVessels(),
+        loadOrders(),
         loadEcsa(),
       ]).then(() => {
         lastSuccessfulRefresh = new Date();
