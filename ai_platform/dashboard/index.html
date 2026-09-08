@@ -183,6 +183,17 @@
 
       .toolbar label.toolbar-checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--fg); }
 
+      .day-filter-banner {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+        padding: 0.6rem 0.9rem; margin-bottom: 0.75rem; font-size: 0.85rem;
+        background: var(--card); border: 1px solid var(--accent); border-radius: 0.6rem;
+      }
+      .day-filter-banner.hidden { display: none; }
+      .day-filter-banner button {
+        font: inherit; padding: 0.3rem 0.7rem; border-radius: 0.4rem; border: 1px solid var(--border);
+        background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+
       .removed-item { text-decoration: line-through; opacity: 0.75; }
       .field-diff { font-size: 0.8rem; }
       .field-diff .field-name { color: var(--muted); }
@@ -353,9 +364,24 @@
         <p class="sub" style="margin:0.15rem 0 0;">Filter, search, and inspect the underlying vessel, order, and change records behind the summary above.</p>
       </div>
 
+      <section id="changes-section">
+        <div class="section-head">
+          <h2>Change Feed</h2>
+          <div class="toolbar">
+            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
+            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+          </div>
+        </div>
+        <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
+      </section>
+
       <section id="vessels-section">
         <div class="section-head">
           <h2>Vessel Tracker</h2>
+        </div>
+        <div id="vesselDayFilterBanner" class="day-filter-banner hidden">
+          <span id="vesselDayFilterLabel"></span>
+          <button type="button" id="vesselDayFilterClear">Clear filter</button>
         </div>
         <div class="section-head">
           <div class="toolbar">
@@ -395,15 +421,38 @@
         <div class="pager" id="vesselsPager"></div>
       </section>
 
-      <section id="changes-section">
+      <section id="orders-section">
         <div class="section-head">
-          <h2>Change Feed</h2>
+          <h2>Order Tracker</h2>
+        </div>
+        <div id="orderDayFilterBanner" class="day-filter-banner hidden">
+          <span id="orderDayFilterLabel"></span>
+          <button type="button" id="orderDayFilterClear">Clear filter</button>
+        </div>
+        <div class="section-head">
           <div class="toolbar">
-            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
-            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+            <label>Order ID
+              <input id="orderSearch" type="text" placeholder="e.g. 728280593490835944" />
+            </label>
+            <label>Region
+              <input id="orderRegion" type="text" placeholder="e.g. Asia" />
+            </label>
+            <label>Sort
+              <select id="orderSort">
+                <option value="date_received">Recently received</option>
+                <option value="laycan_start">Laycan starting</option>
+              </select>
+            </label>
           </div>
         </div>
-        <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
+        <div class="table-wrap"><table id="ordersTable">
+          <thead><tr>
+            <th>Order</th><th>Cargo</th><th>Load zone</th><th>Discharge zone</th>
+            <th>Laycan</th><th>Weight</th><th>Received</th>
+          </tr></thead>
+          <tbody><tr><td colspan="7" class="muted">Loading&hellip;</td></tr></tbody>
+        </table></div>
+        <div class="pager" id="ordersPager"></div>
       </section>
 
       <section id="ecsa-section">
@@ -820,7 +869,13 @@
         ).join("");
       }
 
-      function renderMiniBarChart(container, series, color) {
+      // `metric` names which Daily Trends bar this is ("new_vessels",
+      // "status_changes", or "new_orders"), enabling the click-a-bar-to-
+      // filter interaction below -- "new_orders" routes to the order
+      // tracker (filterOrdersByDay), the other two to the vessel tracker
+      // (filterVesselsByDay). Omit `metric` for a chart whose bars
+      // shouldn't be clickable at all.
+      function renderMiniBarChart(container, series, color, metric) {
         if (!series.length) {
           container.innerHTML = '<p class="muted" style="font-size:0.8rem;">No data.</p>';
           return;
@@ -837,9 +892,12 @@
           const x = PAD_L + i * slot + (slot - barW) / 2;
           const y = PAD_T + (plotH - h);
           const labelY = Math.max(9, y - 3);
+          const label = metric
+            ? `${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}, click to filter the vessel tracker`
+            : `${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}`;
           return `
             <text x="${(x + barW / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="mini-chart-label">${formatNumber(d.count)}</text>
-            <rect data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}" tabindex="0" role="img" aria-label="${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}"></rect>
+            <rect data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}" tabindex="0" role="${metric ? "button" : "img"}" style="${metric ? "cursor:pointer;" : ""}" aria-label="${label}"></rect>
           `;
         }).join("");
         container.innerHTML = `
@@ -864,16 +922,38 @@
           rect.addEventListener("focus", show);
           rect.addEventListener("pointerleave", hide);
           rect.addEventListener("blur", hide);
+          if (metric) {
+            const activate = () => {
+              hideTooltip(tooltip);
+              if (metric === "new_orders") {
+                filterOrdersByDay(d.day);
+              } else {
+                filterVesselsByDay(metric, d.day);
+              }
+            };
+            rect.addEventListener("click", activate);
+            rect.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activate();
+              }
+            });
+          }
         });
       }
+
+      let dailyTrendsRange = null;
+      let dailyOrdersRange = null;
 
       async function loadDailyTrends(isRefresh = false) {
         const ids = ["chartNewVessels", "chartStatusChanges", "chartNewOrders"];
         try {
           const data = await getJson("/api/dashboard/daily-counts?days=14");
-          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)");
-          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)");
-          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)");
+          dailyTrendsRange = data.range;
+          dailyOrdersRange = data.orders_range;
+          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)", "new_vessels");
+          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)", "status_changes");
+          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)", "new_orders");
         } catch (error) {
           if (isRefresh) throw error;
           ids.forEach((id) => {
@@ -921,7 +1001,9 @@
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(vesselRow).join("")
-          : '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>';
+          : hasActiveVesselFilter()
+            ? '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>'
+            : '<tr><td colspan="7" class="muted">Choose a status, region, or stale filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
 
         const rangeLabel = filtered.length
           ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
@@ -970,8 +1052,55 @@
         document.getElementById("vessels-section").scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
+      // Clicking a Daily Trends bar drills into the vessel tracker: rather
+      // than layering onto the status/region/sort/stale filters above (a
+      // day filter and e.g. a status filter both narrowing the same table
+      // would be confusing to reason about together), it replaces them
+      // outright -- those four controls are disabled while active, and
+      // "Clear filter" is the only way back to them. The Vessel ID search
+      // box stays enabled throughout and keeps narrowing whatever's
+      // currently loaded, day-filtered or not.
+      let activeDayFilter = null;
+      const DAY_FILTER_LABELS = { new_vessels: "first reported", status_changes: "with a status change" };
+      const DAY_FILTER_CONTROLS = ["vesselStatus", "vesselRegion", "vesselSort", "vesselStaleOnly"];
+
+      // The vessel tracker only ever shows something once the trader has
+      // deliberately narrowed it -- a day-filter, a status/region/stale
+      // filter, or a vessel ID search -- never the whole ~1000-vessel fleet
+      // unfiltered by default. Sort doesn't count: it reorders whatever's
+      // already shown, it doesn't narrow anything.
+      function hasActiveVesselFilter() {
+        return Boolean(
+          activeDayFilter ||
+          document.getElementById("vesselStatus").value ||
+          document.getElementById("vesselRegion").value.trim() ||
+          document.getElementById("vesselStaleOnly").checked ||
+          document.getElementById("vesselSearch").value.trim()
+        );
+      }
+
+      async function filterVesselsByDay(metric, day) {
+        activeDayFilter = { metric, day };
+        DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
+        await loadVessels();
+        scrollToVessels();
+      }
+
+      function resetDayFilterState() {
+        activeDayFilter = null;
+        DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = false; });
+      }
+      document.getElementById("vesselDayFilterClear").addEventListener("click", () => {
+        resetDayFilterState();
+        loadVessels();
+      });
+
+      // Any of these explicit filter shortcuts supersedes a day filter --
+      // clicking one is a clear signal to filter by status/staleness
+      // instead, not to combine with whatever day was last clicked.
       document.querySelectorAll(".status-tile[data-status]").forEach((tile) => {
         tile.addEventListener("click", () => {
+          resetDayFilterState();
           document.querySelectorAll(".status-tile[data-status]").forEach((t) => t.classList.remove("active"));
           tile.classList.add("active");
           document.getElementById("vesselStatus").value = tile.dataset.status;
@@ -982,6 +1111,7 @@
       document.querySelector('.status-tile[data-status=""]').classList.add("active");
 
       document.getElementById("flagTileStale").addEventListener("click", () => {
+        resetDayFilterState();
         document.getElementById("vesselStaleOnly").checked = true;
         loadVessels();
         scrollToVessels();
@@ -989,21 +1119,47 @@
 
       async function loadVessels(isRefresh = false) {
         const tbody = document.querySelector("#vesselsTable tbody");
+        const banner = document.getElementById("vesselDayFilterBanner");
+        // Nothing to fetch, and nothing should show, until the trader
+        // applies some filter -- see hasActiveVesselFilter().
+        if (!hasActiveVesselFilter()) {
+          banner.classList.add("hidden");
+          vesselsFetched = [];
+          vesselsPage = 0;
+          renderVesselsTable();
+          return;
+        }
         // A filter change (isRefresh=false) is a genuinely new query with
         // nothing worth preserving, so it still shows "Loading...". A
         // background refresh of the same filter keeps the current table
         // on screen until new data actually arrives.
         if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
-        const status = document.getElementById("vesselStatus").value;
-        const region = document.getElementById("vesselRegion").value.trim();
-        const sort = document.getElementById("vesselSort").value;
-        const staleOnly = document.getElementById("vesselStaleOnly").checked;
-        const params = new URLSearchParams({ sort });
-        if (status) params.set("status", status);
-        if (region) params.set("region", region);
-        if (staleOnly) params.set("stale", "true");
+        let url;
+        if (activeDayFilter) {
+          const { metric, day } = activeDayFilter;
+          const params = new URLSearchParams({ metric, day });
+          if (dailyTrendsRange) {
+            params.set("range_since", dailyTrendsRange.since);
+            params.set("range_until", dailyTrendsRange.until);
+          }
+          url = `/api/dashboard/vessels/by-day?${params}`;
+          document.getElementById("vesselDayFilterLabel").textContent =
+            `Showing vessels ${DAY_FILTER_LABELS[metric]} on ${formatDate(day)}`;
+          banner.classList.remove("hidden");
+        } else {
+          const status = document.getElementById("vesselStatus").value;
+          const region = document.getElementById("vesselRegion").value.trim();
+          const sort = document.getElementById("vesselSort").value;
+          const staleOnly = document.getElementById("vesselStaleOnly").checked;
+          const params = new URLSearchParams({ sort });
+          if (status) params.set("status", status);
+          if (region) params.set("region", region);
+          if (staleOnly) params.set("stale", "true");
+          url = `/api/dashboard/vessels?${params}`;
+          banner.classList.add("hidden");
+        }
         try {
-          vesselsFetched = await getJson(`/api/dashboard/vessels?${params}`);
+          vesselsFetched = await getJson(url);
           vesselsPage = 0;
           renderVesselsTable();
         } catch (error) {
@@ -1012,6 +1168,167 @@
           document.getElementById("vesselsPager").innerHTML = "";
         }
       }
+
+      // ---- order tracker ------------------------------------------------
+      // Mirrors the vessel tracker above (own state, own render/load pair,
+      // own day-filter banner) rather than sharing code with it -- orders
+      // and vessels have different columns and no shared identity, so
+      // there's nothing real to factor out beyond a naming convention.
+      const ORDERS_PAGE_SIZE = 25;
+      let ordersFetched = [];
+      let ordersPage = 0;
+      let activeOrderDayFilter = null;
+      const ORDER_DAY_FILTER_CONTROLS = ["orderRegion", "orderSort"];
+
+      function hasActiveOrderFilter() {
+        return Boolean(
+          activeOrderDayFilter ||
+          document.getElementById("orderRegion").value.trim() ||
+          document.getElementById("orderSearch").value.trim()
+        );
+      }
+
+      function scrollToOrders() {
+        document.getElementById("orders-section").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      async function filterOrdersByDay(day) {
+        activeOrderDayFilter = { day };
+        ORDER_DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
+        await loadOrders();
+        scrollToOrders();
+      }
+
+      function resetOrderDayFilterState() {
+        activeOrderDayFilter = null;
+        ORDER_DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = false; });
+      }
+      document.getElementById("orderDayFilterClear").addEventListener("click", () => {
+        resetOrderDayFilterState();
+        loadOrders();
+      });
+
+      // A weight range collapses to one number when min == max (a firm
+      // cargo size) rather than repeating it, and falls back to whichever
+      // bound is present if the other is null.
+      function formatWeightRange(min, max) {
+        if (min == null && max == null) return "—";
+        if (min == null) return formatNumber(max);
+        if (max == null) return formatNumber(min);
+        if (Number(min) === Number(max)) return formatNumber(min);
+        return `${formatNumber(min)}–${formatNumber(max)}`;
+      }
+
+      function orderRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.order_id)}</td>
+            <td>${escapeHtml(row.cargo_type || "—")}</td>
+            <td>${escapeHtml(row.load_zone || "—")}</td>
+            <td>${escapeHtml(row.discharge_parent_zone || "—")}</td>
+            <td>${formatDate(row.laycan_start)} &ndash; ${formatDate(row.laycan_end)}</td>
+            <td>${formatWeightRange(row.cargo_weight_min, row.cargo_weight_max)}</td>
+            <td>${formatDate(row.date_received)}</td>
+          </tr>
+        `;
+      }
+
+      function renderOrdersTable() {
+        const tbody = document.querySelector("#ordersTable tbody");
+        const pager = document.getElementById("ordersPager");
+        const search = document.getElementById("orderSearch").value.trim().toLowerCase();
+        const filtered = search
+          ? ordersFetched.filter((r) => r.order_id.toLowerCase().includes(search))
+          : ordersFetched;
+
+        const pageCount = Math.max(1, Math.ceil(filtered.length / ORDERS_PAGE_SIZE));
+        ordersPage = Math.min(ordersPage, pageCount - 1);
+        const start = ordersPage * ORDERS_PAGE_SIZE;
+        const pageRows = filtered.slice(start, start + ORDERS_PAGE_SIZE);
+
+        tbody.innerHTML = pageRows.length
+          ? pageRows.map(orderRow).join("")
+          : hasActiveOrderFilter()
+            ? '<tr><td colspan="7" class="muted">No orders match these filters.</td></tr>'
+            : '<tr><td colspan="7" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
+
+        const rangeLabel = filtered.length
+          ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+          : "0 of 0";
+        pager.innerHTML = `
+          <span>${rangeLabel}</span>
+          <div class="pager-controls">
+            <button type="button" id="ordersPrev" ${ordersPage === 0 ? "disabled" : ""}>Previous</button>
+            <span>Page ${ordersPage + 1} of ${pageCount}</span>
+            <button type="button" id="ordersNext" ${ordersPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
+          </div>
+        `;
+        document.getElementById("ordersPrev").addEventListener("click", () => {
+          ordersPage -= 1;
+          renderOrdersTable();
+        });
+        document.getElementById("ordersNext").addEventListener("click", () => {
+          ordersPage += 1;
+          renderOrdersTable();
+        });
+      }
+
+      async function loadOrders(isRefresh = false) {
+        const tbody = document.querySelector("#ordersTable tbody");
+        const banner = document.getElementById("orderDayFilterBanner");
+        // Nothing to fetch, and nothing should show, until the trader
+        // applies some filter -- see hasActiveOrderFilter().
+        if (!hasActiveOrderFilter()) {
+          banner.classList.add("hidden");
+          ordersFetched = [];
+          ordersPage = 0;
+          renderOrdersTable();
+          return;
+        }
+        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
+        let url;
+        if (activeOrderDayFilter) {
+          const { day } = activeOrderDayFilter;
+          const params = new URLSearchParams({ day });
+          if (dailyOrdersRange) {
+            params.set("range_since", dailyOrdersRange.since);
+            params.set("range_until", dailyOrdersRange.until);
+          }
+          url = `/api/dashboard/orders/by-day?${params}`;
+          document.getElementById("orderDayFilterLabel").textContent =
+            `Showing orders received on ${formatDate(day)}`;
+          banner.classList.remove("hidden");
+        } else {
+          const region = document.getElementById("orderRegion").value.trim();
+          const sort = document.getElementById("orderSort").value;
+          const params = new URLSearchParams({ sort });
+          if (region) params.set("region", region);
+          url = `/api/dashboard/orders?${params}`;
+          banner.classList.add("hidden");
+        }
+        try {
+          ordersFetched = await getJson(url);
+          ordersPage = 0;
+          renderOrdersTable();
+        } catch (error) {
+          if (isRefresh) throw error;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load orders: ${escapeHtml(error.message)}</td></tr>`;
+          document.getElementById("ordersPager").innerHTML = "";
+        }
+      }
+
+      document.getElementById("orderSort").addEventListener("change", loadOrders);
+      let orderRegionDebounce;
+      document.getElementById("orderRegion").addEventListener("input", () => {
+        clearTimeout(orderRegionDebounce);
+        orderRegionDebounce = setTimeout(loadOrders, 350);
+      });
+      let orderSearchDebounce;
+      document.getElementById("orderSearch").addEventListener("input", () => {
+        ordersPage = 0;
+        clearTimeout(orderSearchDebounce);
+        orderSearchDebounce = setTimeout(loadOrders, 350);
+      });
 
       // ---- change feed --------------------------------------------------
       // Groups rows by calendar day (of dateField) so a trader gets a
@@ -1254,9 +1571,16 @@
         clearTimeout(regionDebounce);
         regionDebounce = setTimeout(loadVessels, 350);
       });
+      // A search box going from empty to non-empty (or back) can flip
+      // hasActiveVesselFilter() -- e.g. it's the only filter set -- so this
+      // has to go through loadVessels() (debounced, same as region above)
+      // rather than a plain client-side re-render, even though the search
+      // itself is never sent as a server-side param.
+      let searchDebounce;
       document.getElementById("vesselSearch").addEventListener("input", () => {
         vesselsPage = 0;
-        renderVesselsTable();
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(loadVessels, 350);
       });
       document.getElementById("vesselStaleOnly").addEventListener("change", loadVessels);
 
@@ -1301,7 +1625,7 @@
       // yet for a stale banner to reference.
       async function refreshAll() {
         const sections = document.querySelectorAll(
-          "#summary-section, #vessels-section, #changes-section, #ecsa-section"
+          "#summary-section, #changes-section, #vessels-section, #orders-section, #ecsa-section"
         );
         sections.forEach((el) => el.classList.add("section-refreshing"));
 
@@ -1310,8 +1634,9 @@
           ["Status counts", loadStatusCounts(true)],
           ["Flag counts", loadFlagCounts(true)],
           ["Daily trends", loadDailyTrends(true)],
-          ["Vessel tracker", loadVessels(true)],
           ["Change feed", loadChanges(currentChangeWindow, true)],
+          ["Vessel tracker", loadVessels(true)],
+          ["Order tracker", loadOrders(true)],
           ["ECSA tracker", loadEcsa(true)],
         ];
         const results = await Promise.allSettled(named.map(([, promise]) => promise));
@@ -1340,8 +1665,9 @@
         loadStatusCounts(),
         loadFlagCounts(),
         loadDailyTrends(),
-        loadVessels(),
         loadChanges(currentChangeWindow),
+        loadVessels(),
+        loadOrders(),
         loadEcsa(),
       ]).then(() => {
         lastSuccessfulRefresh = new Date();
