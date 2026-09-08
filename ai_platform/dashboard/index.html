@@ -40,6 +40,15 @@
         --status-critical: #d03b3b;
         --map-water: #e4ecf1;
         --map-land: #cbd8c9;
+        /* Trader-override diff highlight -- one fixed hue per overridable
+           field, used identically in the Current Record and New Record
+           tables (and the matching form control) so a field is recognizable
+           by color across all three, e.g. Commercial status always green. */
+        --diff-commercial-status: #22c55e;
+        --diff-open-area: #eab308;
+        --diff-order-id: #3b82f6;
+        --diff-open-date-start: #a855f7;
+        --diff-open-date-end: #ec4899;
       }
       /* OS-level dark preference applies unless the toggle button below has
          stamped an explicit choice onto <html data-theme="...">; :not([data-theme="light"])
@@ -83,6 +92,10 @@
         font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       main { max-width: 72rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+      /* Trader Overrides tab has wide record tables (16 columns), so it gets
+         a wider page container -- toggled only while that tab is active, so
+         the Dashboard tab's own layout/width is never touched. */
+      main.wide { max-width: 100rem; }
       header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
       h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
       h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
@@ -183,6 +196,17 @@
 
       .toolbar label.toolbar-checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--fg); }
 
+      .day-filter-banner {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+        padding: 0.6rem 0.9rem; margin-bottom: 0.75rem; font-size: 0.85rem;
+        background: var(--card); border: 1px solid var(--accent); border-radius: 0.6rem;
+      }
+      .day-filter-banner.hidden { display: none; }
+      .day-filter-banner button {
+        font: inherit; padding: 0.3rem 0.7rem; border-radius: 0.4rem; border: 1px solid var(--border);
+        background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+
       .removed-item { text-decoration: line-through; opacity: 0.75; }
       .field-diff { font-size: 0.8rem; }
       .field-diff .field-name { color: var(--muted); }
@@ -250,11 +274,47 @@
       .map-view-wrap.hidden { display: none; }
 
       .change-groups { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
-      .change-group { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
-      .change-group h3 { margin: 0 0 0.5rem; font-size: 0.85rem; }
+      .change-group { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
+      .change-group h3 { margin: 0 0 0.5rem; padding-right: 1.7rem; font-size: 0.85rem; }
       .change-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; font-size: 0.82rem; max-height: 12rem; overflow-y: auto; }
       .change-group li { border-bottom: 1px dashed var(--border); padding-bottom: 0.35rem; }
       .change-count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+      .change-group-expand {
+        position: absolute; top: 0.7rem; right: 0.7rem; width: 1.5rem; height: 1.5rem; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: 0.4rem;
+        background: var(--bg); color: var(--muted); cursor: pointer;
+      }
+      .change-group-expand:hover { color: var(--fg); border-color: var(--accent); }
+
+      /* A blurred, dimmed backdrop with a large centered card -- used to
+         show one Change Feed box's full, larger-type content without the
+         12rem scroll clamp its inline card is limited to. */
+      .modal-overlay {
+        position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+        background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+        padding: 2rem;
+      }
+      .modal-overlay.hidden { display: none; }
+      .modal-box {
+        display: flex; flex-direction: column; width: 100%; max-width: 40rem; max-height: 85vh;
+        background: var(--card); border: 1px solid var(--border); border-radius: 1rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+      .modal-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        padding: 1.1rem 1.4rem; border-bottom: 1px solid var(--border);
+      }
+      .modal-head h3 { margin: 0; font-size: 1.05rem; }
+      .modal-close {
+        width: 2rem; height: 2rem; padding: 0; flex-shrink: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: 0.5rem; background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+      .modal-close:hover { border-color: var(--accent); }
+      .modal-body { padding: 1.25rem 1.4rem; overflow-y: auto; font-size: 1rem; }
+      .modal-body ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+      .modal-body li { border-bottom: 1px dashed var(--border); padding-bottom: 0.6rem; }
 
       .history-btn { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
       .history-trail { display: none; padding: 0.5rem 0.6rem 0.75rem; font-size: 0.82rem; }
@@ -262,6 +322,172 @@
       .history-trail ol { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
       .history-trail li { display: flex; align-items: center; gap: 0.4rem; }
       .history-trail li:not(:last-child)::after { content: "\2192"; color: var(--muted); margin-left: 0.4rem; }
+
+      /* ---- top-level tabs --------------------------------------------------
+         Underline style, distinct from the pill toggles used for in-section
+         filters (.view-toggle, .window-btn) so page-level navigation doesn't
+         read as just another filter control. */
+      .tabs { display: flex; gap: 0.25rem; margin: 1.5rem 0 0; border-bottom: 1px solid var(--border); }
+      .tab-btn {
+        font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.65rem 1rem;
+        border: none; border-bottom: 2px solid transparent; background: transparent;
+        color: var(--muted); cursor: pointer; margin-bottom: -1px;
+      }
+      .tab-btn:hover { color: var(--fg); }
+      .tab-btn.active { color: var(--fg); border-bottom-color: var(--accent); }
+      .tab-panel.hidden { display: none; }
+
+      /* ---- trader override form ------------------------------------------
+         Own component classes, scoped to #overrides-section where they'd
+         otherwise collide with the page's existing table/badge rules
+         (e.g. a plain, unscoped .badge here would repaint every status
+         badge above). Each overridable field gets its own fixed hue
+         (the --diff-* tokens above), applied identically to its Current
+         Record cell, New Record cell, and form control -- distinct from
+         the page's existing categorical/status palettes, which are
+         reserved for the Dashboard tab. */
+      .override-layout {
+        display: grid; gap: 1.5rem; grid-template-columns: minmax(22rem, 28rem) 1fr; align-items: stretch;
+        background: var(--card); border: 1px solid var(--border); border-radius: 1rem; padding: 1.5rem;
+      }
+      @media (max-width: 64rem) { .override-layout { grid-template-columns: 1fr; } }
+      .override-layout > div { min-width: 0; }
+      /* Current Record's table is hard-capped to ~10 rows (below) so its
+         height is deterministic regardless of how many reports a vessel
+         has on file. With both columns' natural heights now bounded, plain
+         grid `align-items: stretch` (above) equalizes the form column and
+         the record-panel column to the same fixed height -- whichever is
+         naturally shorter gets stretched to match, no flex/JS needed. */
+      .record-panel { display: flex; flex-direction: column; min-height: 0; }
+      .form-panel { overflow-y: auto; }
+      .record-search {
+        width: 100%; font: inherit; font-size: 0.85rem; padding: 0.45rem 0.6rem;
+        border-radius: 0.5rem; border: 1px solid var(--border); background: var(--bg);
+        color: var(--fg); margin-bottom: 0.6rem;
+      }
+      .record-search:focus {
+        outline: none; border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+      }
+      form.override-form {
+        display: grid; gap: 0.9rem; background: var(--card); border: 1px solid var(--border);
+        border-radius: 0.75rem; padding: 1.25rem;
+      }
+      form.override-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 500; }
+      form.override-form select, form.override-form input, form.override-form textarea {
+        font: inherit; font-size: 0.9rem; padding: 0.5rem 0.6rem; border-radius: 0.5rem;
+        border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+        transition: border-color 0.12s ease, box-shadow 0.12s ease;
+      }
+      form.override-form select:focus, form.override-form input:focus, form.override-form textarea:focus {
+        outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+      }
+      form.override-form textarea { resize: vertical; min-height: 4rem; }
+      form.override-form button {
+        font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.65rem 1rem; border-radius: 0.6rem;
+        border: none; background: var(--accent); color: #fff; cursor: pointer; transition: filter 0.12s ease;
+      }
+      form.override-form button:hover:not(:disabled) { filter: brightness(1.08); }
+      form.override-form button:disabled { opacity: 0.6; cursor: default; }
+      .form-hint { font-size: 0.78rem; color: var(--muted); margin: -0.4rem 0 0; }
+      .form-message { font-size: 0.85rem; padding: 0.5rem 0.7rem; border-radius: 0.5rem; display: none; }
+      .form-message.visible { display: block; }
+      .form-message.success { color: var(--open); background: color-mix(in srgb, var(--open) 14%, transparent); }
+      .form-message.error { color: var(--stale); background: color-mix(in srgb, var(--stale) 14%, transparent); }
+      .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+      .field-required::after { content: " *"; color: var(--stale); }
+      .form-section-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0.4rem 0 -0.2rem; }
+
+      .record-empty { color: var(--muted); font-size: 0.85rem; padding: 1rem; }
+      #overrides-section td.value-unavailable { color: var(--muted); font-style: italic; }
+      #overrides-section td.diff-cell { background: color-mix(in srgb, var(--accent) 20%, transparent); font-weight: 600; }
+      form.override-form .field-changed {
+        border-color: var(--field-diff-color, var(--accent)) !important;
+        /* Same 24%-over-transparent mix displayValue() uses on the matching
+           Current/New Record cell, so the highlighted input's fill visually
+           matches those two cells exactly, not just its color hue. */
+        background: color-mix(in srgb, var(--field-diff-color, var(--accent)) 24%, transparent) !important;
+      }
+      /* Latest (newest-reported) row in Current Record -- always the first
+         row, since vessel_history_sql sorts newest-first. Diff cells keep
+         their own per-field color; everything else in that row gets a
+         neutral accent tint so the row itself is unmistakable at a glance. */
+      /* Any row can be the override baseline -- not just the newest -- so
+         the highlight follows whichever row is selected (.selected-row),
+         not always the first row. */
+      #currentRecordTable tbody tr { cursor: pointer; }
+      #currentRecordTable tbody tr.selected-row td { font-weight: 600; }
+      #currentRecordTable tbody tr.selected-row td:not(.diff-cell) {
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
+      }
+      #currentRecordTable tbody tr:not(.selected-row):hover td:not(.diff-cell) {
+        background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+      }
+      .record-section-gap { margin-top: 1.5rem; }
+      /* Sized for 10 data rows (measured: thead ~2.1rem + 10 * ~2.4rem tbody
+         rows) before it scrolls -- see the .record-panel comment above. */
+      .table-wrap.scroll-capped { max-height: 26rem; overflow-y: auto; }
+      .table-wrap.scroll-capped thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
+      #overrides-section .table-wrap table { min-width: max-content; }
+      /* Audit Trail status coloring -- distinct from the Dashboard tab's
+         OPEN/ON SUBS/FIXED badges (.badge-open/-watchlist/-fixed above),
+         since this covers all 12 raw override_status values a trader can
+         submit (OVERRIDE_STATUSES in trader_override_queries.py), not the
+         3-way derived dashboard_status. Default (no modifier) stays the
+         neutral card/border look for statuses that are neither good nor
+         bad news for the vessel's tonnage. */
+      #auditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
+      #auditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+      #auditTable .badge-good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); border-color: transparent; }
+      #auditTable .badge-bad { background: color-mix(in srgb, var(--status-critical) 18%, transparent); color: var(--status-critical); border-color: transparent; }
+      #auditTable .badge-caution { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: color-mix(in srgb, var(--status-warning) 70%, var(--fg) 30%); border-color: transparent; }
+      #auditTable .audit-diff-muted { color: var(--muted); }
+      #auditTable .audit-diff-arrow { color: var(--muted); margin: 0 0.35em; }
+      #auditTable .audit-diff-new { color: #16a34a; font-weight: 600; }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) #auditTable .audit-diff-new { color: #4ade80; }
+      }
+      :root[data-theme="dark"] #auditTable .audit-diff-new { color: #4ade80; }
+
+      /* Circle loading spinner, used in place of a bare "Loading..." string
+         while the record panel / audit trail fetch. */
+      .spinner {
+        display: inline-block; width: 1rem; height: 1rem; flex: none;
+        border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+        border-top-color: var(--accent); border-radius: 50%;
+        animation: spinner-spin 0.7s linear infinite;
+      }
+      @keyframes spinner-spin { to { transform: rotate(360deg); } }
+      .loading-inline {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        color: var(--muted); font-size: 0.85rem;
+      }
+
+      /* ---- intro banner ----------------------------------------------- */
+      .overrides-intro {
+        background: linear-gradient(135deg, #00543c, #00814f);
+        color: #fff; border-radius: 0.9rem; padding: 1.5rem 1.75rem;
+        margin: 1.5rem 0 1.75rem;
+      }
+      .overrides-intro h2 { color: #fff; margin: 0 0 0.5rem; }
+      .overrides-intro p.sub { color: rgba(255, 255, 255, 0.88); margin: 0; }
+
+      /* ---- vessel combobox (type-to-filter, no framework) ---------------- */
+      .combobox { position: relative; }
+      .combobox-list {
+        list-style: none; margin: 0.25rem 0 0; padding: 0.25rem; position: absolute; z-index: 10;
+        top: 100%; left: 0; right: 0; max-height: 14rem; overflow-y: auto;
+        background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+      }
+      .combobox-list.hidden { display: none; }
+      .combobox-option {
+        padding: 0.4rem 0.55rem; border-radius: 0.4rem; cursor: pointer; font-size: 0.88rem;
+        display: flex; justify-content: space-between; gap: 0.5rem;
+      }
+      .combobox-option .status { color: var(--muted); font-size: 0.78rem; }
+      .combobox-option:hover, .combobox-option.active { background: var(--card); }
+      .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
   </head>
   <body>
@@ -283,6 +509,12 @@
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
+      <nav class="tabs">
+        <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button type="button" class="tab-btn" data-tab="overrides">Trader Overrides</button>
+      </nav>
+
+      <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
         <div class="section-head"><h2>Market Summary</h2></div>
         <div class="status-tiles" id="statusTiles">
@@ -353,9 +585,24 @@
         <p class="sub" style="margin:0.15rem 0 0;">Filter, search, and inspect the underlying vessel, order, and change records behind the summary above.</p>
       </div>
 
+      <section id="changes-section">
+        <div class="section-head">
+          <h2>Change Feed</h2>
+          <div class="toolbar">
+            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
+            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+          </div>
+        </div>
+        <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
+      </section>
+
       <section id="vessels-section">
         <div class="section-head">
           <h2>Vessel Tracker</h2>
+        </div>
+        <div id="vesselDayFilterBanner" class="day-filter-banner hidden">
+          <span id="vesselDayFilterLabel"></span>
+          <button type="button" id="vesselDayFilterClear">Clear filter</button>
         </div>
         <div class="section-head">
           <div class="toolbar">
@@ -395,15 +642,38 @@
         <div class="pager" id="vesselsPager"></div>
       </section>
 
-      <section id="changes-section">
+      <section id="orders-section">
         <div class="section-head">
-          <h2>Change Feed</h2>
+          <h2>Order Tracker</h2>
+        </div>
+        <div id="orderDayFilterBanner" class="day-filter-banner hidden">
+          <span id="orderDayFilterLabel"></span>
+          <button type="button" id="orderDayFilterClear">Clear filter</button>
+        </div>
+        <div class="section-head">
           <div class="toolbar">
-            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
-            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+            <label>Order ID
+              <input id="orderSearch" type="text" placeholder="e.g. 728280593490835944" />
+            </label>
+            <label>Region
+              <input id="orderRegion" type="text" placeholder="e.g. Asia" />
+            </label>
+            <label>Sort
+              <select id="orderSort">
+                <option value="date_received">Recently received</option>
+                <option value="laycan_start">Laycan starting</option>
+              </select>
+            </label>
           </div>
         </div>
-        <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
+        <div class="table-wrap"><table id="ordersTable">
+          <thead><tr>
+            <th>Order</th><th>Cargo</th><th>Load zone</th><th>Discharge zone</th>
+            <th>Laycan</th><th>Weight</th><th>Received</th>
+          </tr></thead>
+          <tbody><tr><td colspan="7" class="muted">Loading&hellip;</td></tr></tbody>
+        </table></div>
+        <div class="pager" id="ordersPager"></div>
       </section>
 
       <section id="ecsa-section">
@@ -429,7 +699,136 @@
           <div class="pager" id="ecsaPager"></div>
         </div>
       </section>
+      </div>
+
+      <div id="tab-overrides" class="tab-panel hidden">
+      <section id="overrides-section">
+        <div class="overrides-intro">
+          <h2>Trader Overrides</h2>
+          <p class="sub">
+            Record what you've heard privately (broker, chat) on a vessel before it
+            reaches Shipfix. Replaces the selected record with a copy carrying your
+            edits, so it takes precedence immediately -- the Dashboard tab always
+            shows a vessel's newest report. Every submission is also logged in the
+            Audit Trail below.
+          </p>
+        </div>
+        <div class="override-layout">
+          <div class="form-panel">
+            <h3>Enter a Status Update</h3>
+            <p class="sub" style="margin-bottom:1rem;">
+              Only Vessel, Status, and Entered by are required -- fill in
+              whatever else you actually have fresh word on.
+            </p>
+            <form class="override-form" id="overrideForm">
+              <label class="field-required">Vessel
+                <div class="combobox" id="ovVesselCombobox">
+                  <input
+                    type="text" id="ovVesselInput" placeholder="Type to search a vessel&hellip;"
+                    autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                    aria-controls="ovVesselList" required
+                  />
+                  <input type="hidden" id="ovVessel" />
+                  <ul class="combobox-list hidden" id="ovVesselList" role="listbox"></ul>
+                </div>
+              </label>
+              <label class="field-required">Status
+                <select id="ovStatus" required>
+                  <option value="" disabled selected>Select a status</option>
+                </select>
+              </label>
+              <div class="field-row">
+                <label>Open area
+                  <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
+                </label>
+                <label>Order assignment
+                  <input id="ovOrderAssignment" type="text" maxlength="64" placeholder="e.g. order id" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Open date start
+                  <input id="ovOpenDateStart" type="date" />
+                </label>
+                <label>Open date end
+                  <input id="ovOpenDateEnd" type="date" />
+                </label>
+              </div>
+              <p class="form-hint">
+                Enter real calendar dates &mdash; they're saved one year earlier to
+                line up with the Dashboard's simulated clock.
+              </p>
+
+              <p class="form-section-label">Attribution</p>
+              <label class="field-required">Entered by
+                <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
+              </label>
+              <button type="submit" id="ovSubmit">Submit Update</button>
+              <div class="form-message" id="ovMessage"></div>
+            </form>
+          </div>
+
+          <div class="record-panel">
+            <h3>Current Record</h3>
+            <p class="sub" style="margin-bottom:0.5rem;">
+              Every reported position on file for the selected vessel, newest first.
+              Click a row to compare your update against that trip instead of the newest one --
+              submitting always adds a new report rather than editing the row you clicked.
+            </p>
+            <input
+              type="text" id="currentRecordSearch" class="record-search"
+              placeholder="Search this vessel's records&hellip;" autocomplete="off"
+            />
+            <div class="table-wrap scroll-capped"><table id="currentRecordTable">
+              <thead><tr></tr></thead>
+              <tbody><tr><td class="record-empty">Select a vessel to see its current record.</td></tr></tbody>
+            </table></div>
+            <p class="sub" style="margin:0.4rem 0 0; font-size:0.78rem;" id="currentRecordCount"></p>
+
+            <div class="record-section-gap">
+              <h3>New Record</h3>
+              <p class="sub" style="margin-bottom:0.75rem;">
+                What the latest row will look like once this update is saved &mdash;
+                updates live as you fill in the form.
+              </p>
+              <div class="table-wrap"><table id="newRecordTable">
+                <thead><tr></tr></thead>
+                <tbody><tr><td class="record-empty">Select a vessel first.</td></tr></tbody>
+              </table></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="drilldown-head" style="margin-top:2.5rem;">
+          <h2>Audit Trail</h2>
+          <p class="sub" style="margin:0.15rem 0 0;">
+            Every status update submitted through this form, newest first --
+            scoped to trader submissions only, not every position report.
+          </p>
+        </div>
+        <div class="table-wrap"><table id="auditTable">
+          <thead><tr>
+            <th>Vessel</th><th>Commercial Status</th><th>Open area</th><th>Open window</th>
+            <th>Order assignment</th><th>Entered by</th><th>When</th>
+          </tr></thead>
+          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+        </table></div>
+      </section>
+      </div>
     </main>
+
+    <div id="changeGroupModal" class="modal-overlay hidden">
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="changeGroupModalTitle">
+        <div class="modal-head">
+          <h3 id="changeGroupModalTitle"></h3>
+          <button type="button" class="modal-close" id="changeGroupModalClose" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body" id="changeGroupModalBody"></div>
+      </div>
+    </div>
 
     <script>
       // ---- theme toggle -----------------------------------------------
@@ -478,6 +877,17 @@
       });
       updateThemeButton();
 
+      // ---- top-level tabs ---------------------------------------------
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+          document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+          btn.classList.add("active");
+          document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
+          document.querySelector("main").classList.toggle("wide", btn.dataset.tab === "overrides");
+        });
+      });
+
       function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>"']/g, (ch) => (
           { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
@@ -515,6 +925,24 @@
           throw new Error(body.detail || `HTTP ${response.status}`);
         }
         return response.json();
+      }
+
+      async function postJson(path, payload) {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          let detail = body.detail || `HTTP ${response.status}`;
+          // FastAPI/Pydantic validation errors arrive as a list of {msg, loc}.
+          if (Array.isArray(detail)) {
+            detail = detail.map((e) => e.msg || JSON.stringify(e)).join("; ");
+          }
+          throw new Error(detail);
+        }
+        return body;
       }
 
       // Shared `.hover-tooltip` positioner -- used by both the regions map
@@ -820,7 +1248,13 @@
         ).join("");
       }
 
-      function renderMiniBarChart(container, series, color) {
+      // `metric` names which Daily Trends bar this is ("new_vessels",
+      // "status_changes", or "new_orders"), enabling the click-a-bar-to-
+      // filter interaction below -- "new_orders" routes to the order
+      // tracker (filterOrdersByDay), the other two to the vessel tracker
+      // (filterVesselsByDay). Omit `metric` for a chart whose bars
+      // shouldn't be clickable at all.
+      function renderMiniBarChart(container, series, color, metric) {
         if (!series.length) {
           container.innerHTML = '<p class="muted" style="font-size:0.8rem;">No data.</p>';
           return;
@@ -837,9 +1271,12 @@
           const x = PAD_L + i * slot + (slot - barW) / 2;
           const y = PAD_T + (plotH - h);
           const labelY = Math.max(9, y - 3);
+          const label = metric
+            ? `${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}, click to filter the vessel tracker`
+            : `${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}`;
           return `
             <text x="${(x + barW / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="mini-chart-label">${formatNumber(d.count)}</text>
-            <rect data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}" tabindex="0" role="img" aria-label="${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}"></rect>
+            <rect data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}" tabindex="0" role="${metric ? "button" : "img"}" style="${metric ? "cursor:pointer;" : ""}" aria-label="${label}"></rect>
           `;
         }).join("");
         container.innerHTML = `
@@ -864,16 +1301,38 @@
           rect.addEventListener("focus", show);
           rect.addEventListener("pointerleave", hide);
           rect.addEventListener("blur", hide);
+          if (metric) {
+            const activate = () => {
+              hideTooltip(tooltip);
+              if (metric === "new_orders") {
+                filterOrdersByDay(d.day);
+              } else {
+                filterVesselsByDay(metric, d.day);
+              }
+            };
+            rect.addEventListener("click", activate);
+            rect.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activate();
+              }
+            });
+          }
         });
       }
+
+      let dailyTrendsRange = null;
+      let dailyOrdersRange = null;
 
       async function loadDailyTrends(isRefresh = false) {
         const ids = ["chartNewVessels", "chartStatusChanges", "chartNewOrders"];
         try {
           const data = await getJson("/api/dashboard/daily-counts?days=14");
-          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)");
-          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)");
-          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)");
+          dailyTrendsRange = data.range;
+          dailyOrdersRange = data.orders_range;
+          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)", "new_vessels");
+          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)", "status_changes");
+          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)", "new_orders");
         } catch (error) {
           if (isRefresh) throw error;
           ids.forEach((id) => {
@@ -883,7 +1342,7 @@
       }
 
       // ---- vessel tracker ---------------------------------------------------
-      const VESSELS_PAGE_SIZE = 25;
+      const VESSELS_PAGE_SIZE = 15;
       let vesselsFetched = [];
       let vesselsPage = 0;
 
@@ -921,7 +1380,9 @@
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(vesselRow).join("")
-          : '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>';
+          : hasActiveVesselFilter()
+            ? '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>'
+            : '<tr><td colspan="7" class="muted">Choose a status, region, or stale filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
 
         const rangeLabel = filtered.length
           ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
@@ -970,8 +1431,55 @@
         document.getElementById("vessels-section").scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
+      // Clicking a Daily Trends bar drills into the vessel tracker: rather
+      // than layering onto the status/region/sort/stale filters above (a
+      // day filter and e.g. a status filter both narrowing the same table
+      // would be confusing to reason about together), it replaces them
+      // outright -- those four controls are disabled while active, and
+      // "Clear filter" is the only way back to them. The Vessel ID search
+      // box stays enabled throughout and keeps narrowing whatever's
+      // currently loaded, day-filtered or not.
+      let activeDayFilter = null;
+      const DAY_FILTER_LABELS = { new_vessels: "first reported", status_changes: "with a status change" };
+      const DAY_FILTER_CONTROLS = ["vesselStatus", "vesselRegion", "vesselSort", "vesselStaleOnly"];
+
+      // The vessel tracker only ever shows something once the trader has
+      // deliberately narrowed it -- a day-filter, a status/region/stale
+      // filter, or a vessel ID search -- never the whole ~1000-vessel fleet
+      // unfiltered by default. Sort doesn't count: it reorders whatever's
+      // already shown, it doesn't narrow anything.
+      function hasActiveVesselFilter() {
+        return Boolean(
+          activeDayFilter ||
+          document.getElementById("vesselStatus").value ||
+          document.getElementById("vesselRegion").value.trim() ||
+          document.getElementById("vesselStaleOnly").checked ||
+          document.getElementById("vesselSearch").value.trim()
+        );
+      }
+
+      async function filterVesselsByDay(metric, day) {
+        activeDayFilter = { metric, day };
+        DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
+        await loadVessels();
+        scrollToVessels();
+      }
+
+      function resetDayFilterState() {
+        activeDayFilter = null;
+        DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = false; });
+      }
+      document.getElementById("vesselDayFilterClear").addEventListener("click", () => {
+        resetDayFilterState();
+        loadVessels();
+      });
+
+      // Any of these explicit filter shortcuts supersedes a day filter --
+      // clicking one is a clear signal to filter by status/staleness
+      // instead, not to combine with whatever day was last clicked.
       document.querySelectorAll(".status-tile[data-status]").forEach((tile) => {
         tile.addEventListener("click", () => {
+          resetDayFilterState();
           document.querySelectorAll(".status-tile[data-status]").forEach((t) => t.classList.remove("active"));
           tile.classList.add("active");
           document.getElementById("vesselStatus").value = tile.dataset.status;
@@ -982,6 +1490,7 @@
       document.querySelector('.status-tile[data-status=""]').classList.add("active");
 
       document.getElementById("flagTileStale").addEventListener("click", () => {
+        resetDayFilterState();
         document.getElementById("vesselStaleOnly").checked = true;
         loadVessels();
         scrollToVessels();
@@ -989,21 +1498,47 @@
 
       async function loadVessels(isRefresh = false) {
         const tbody = document.querySelector("#vesselsTable tbody");
+        const banner = document.getElementById("vesselDayFilterBanner");
+        // Nothing to fetch, and nothing should show, until the trader
+        // applies some filter -- see hasActiveVesselFilter().
+        if (!hasActiveVesselFilter()) {
+          banner.classList.add("hidden");
+          vesselsFetched = [];
+          vesselsPage = 0;
+          renderVesselsTable();
+          return;
+        }
         // A filter change (isRefresh=false) is a genuinely new query with
         // nothing worth preserving, so it still shows "Loading...". A
         // background refresh of the same filter keeps the current table
         // on screen until new data actually arrives.
         if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
-        const status = document.getElementById("vesselStatus").value;
-        const region = document.getElementById("vesselRegion").value.trim();
-        const sort = document.getElementById("vesselSort").value;
-        const staleOnly = document.getElementById("vesselStaleOnly").checked;
-        const params = new URLSearchParams({ sort });
-        if (status) params.set("status", status);
-        if (region) params.set("region", region);
-        if (staleOnly) params.set("stale", "true");
+        let url;
+        if (activeDayFilter) {
+          const { metric, day } = activeDayFilter;
+          const params = new URLSearchParams({ metric, day });
+          if (dailyTrendsRange) {
+            params.set("range_since", dailyTrendsRange.since);
+            params.set("range_until", dailyTrendsRange.until);
+          }
+          url = `/api/dashboard/vessels/by-day?${params}`;
+          document.getElementById("vesselDayFilterLabel").textContent =
+            `Showing vessels ${DAY_FILTER_LABELS[metric]} on ${formatDate(day)}`;
+          banner.classList.remove("hidden");
+        } else {
+          const status = document.getElementById("vesselStatus").value;
+          const region = document.getElementById("vesselRegion").value.trim();
+          const sort = document.getElementById("vesselSort").value;
+          const staleOnly = document.getElementById("vesselStaleOnly").checked;
+          const params = new URLSearchParams({ sort });
+          if (status) params.set("status", status);
+          if (region) params.set("region", region);
+          if (staleOnly) params.set("stale", "true");
+          url = `/api/dashboard/vessels?${params}`;
+          banner.classList.add("hidden");
+        }
         try {
-          vesselsFetched = await getJson(`/api/dashboard/vessels?${params}`);
+          vesselsFetched = await getJson(url);
           vesselsPage = 0;
           renderVesselsTable();
         } catch (error) {
@@ -1012,6 +1547,167 @@
           document.getElementById("vesselsPager").innerHTML = "";
         }
       }
+
+      // ---- order tracker ------------------------------------------------
+      // Mirrors the vessel tracker above (own state, own render/load pair,
+      // own day-filter banner) rather than sharing code with it -- orders
+      // and vessels have different columns and no shared identity, so
+      // there's nothing real to factor out beyond a naming convention.
+      const ORDERS_PAGE_SIZE = 15;
+      let ordersFetched = [];
+      let ordersPage = 0;
+      let activeOrderDayFilter = null;
+      const ORDER_DAY_FILTER_CONTROLS = ["orderRegion", "orderSort"];
+
+      function hasActiveOrderFilter() {
+        return Boolean(
+          activeOrderDayFilter ||
+          document.getElementById("orderRegion").value.trim() ||
+          document.getElementById("orderSearch").value.trim()
+        );
+      }
+
+      function scrollToOrders() {
+        document.getElementById("orders-section").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      async function filterOrdersByDay(day) {
+        activeOrderDayFilter = { day };
+        ORDER_DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
+        await loadOrders();
+        scrollToOrders();
+      }
+
+      function resetOrderDayFilterState() {
+        activeOrderDayFilter = null;
+        ORDER_DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = false; });
+      }
+      document.getElementById("orderDayFilterClear").addEventListener("click", () => {
+        resetOrderDayFilterState();
+        loadOrders();
+      });
+
+      // A weight range collapses to one number when min == max (a firm
+      // cargo size) rather than repeating it, and falls back to whichever
+      // bound is present if the other is null.
+      function formatWeightRange(min, max) {
+        if (min == null && max == null) return "—";
+        if (min == null) return formatNumber(max);
+        if (max == null) return formatNumber(min);
+        if (Number(min) === Number(max)) return formatNumber(min);
+        return `${formatNumber(min)}–${formatNumber(max)}`;
+      }
+
+      function orderRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.order_id)}</td>
+            <td>${escapeHtml(row.cargo_type || "—")}</td>
+            <td>${escapeHtml(row.load_zone || "—")}</td>
+            <td>${escapeHtml(row.discharge_parent_zone || "—")}</td>
+            <td>${formatDate(row.laycan_start)} &ndash; ${formatDate(row.laycan_end)}</td>
+            <td>${formatWeightRange(row.cargo_weight_min, row.cargo_weight_max)}</td>
+            <td>${formatDate(row.date_received)}</td>
+          </tr>
+        `;
+      }
+
+      function renderOrdersTable() {
+        const tbody = document.querySelector("#ordersTable tbody");
+        const pager = document.getElementById("ordersPager");
+        const search = document.getElementById("orderSearch").value.trim().toLowerCase();
+        const filtered = search
+          ? ordersFetched.filter((r) => r.order_id.toLowerCase().includes(search))
+          : ordersFetched;
+
+        const pageCount = Math.max(1, Math.ceil(filtered.length / ORDERS_PAGE_SIZE));
+        ordersPage = Math.min(ordersPage, pageCount - 1);
+        const start = ordersPage * ORDERS_PAGE_SIZE;
+        const pageRows = filtered.slice(start, start + ORDERS_PAGE_SIZE);
+
+        tbody.innerHTML = pageRows.length
+          ? pageRows.map(orderRow).join("")
+          : hasActiveOrderFilter()
+            ? '<tr><td colspan="7" class="muted">No orders match these filters.</td></tr>'
+            : '<tr><td colspan="7" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
+
+        const rangeLabel = filtered.length
+          ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+          : "0 of 0";
+        pager.innerHTML = `
+          <span>${rangeLabel}</span>
+          <div class="pager-controls">
+            <button type="button" id="ordersPrev" ${ordersPage === 0 ? "disabled" : ""}>Previous</button>
+            <span>Page ${ordersPage + 1} of ${pageCount}</span>
+            <button type="button" id="ordersNext" ${ordersPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
+          </div>
+        `;
+        document.getElementById("ordersPrev").addEventListener("click", () => {
+          ordersPage -= 1;
+          renderOrdersTable();
+        });
+        document.getElementById("ordersNext").addEventListener("click", () => {
+          ordersPage += 1;
+          renderOrdersTable();
+        });
+      }
+
+      async function loadOrders(isRefresh = false) {
+        const tbody = document.querySelector("#ordersTable tbody");
+        const banner = document.getElementById("orderDayFilterBanner");
+        // Nothing to fetch, and nothing should show, until the trader
+        // applies some filter -- see hasActiveOrderFilter().
+        if (!hasActiveOrderFilter()) {
+          banner.classList.add("hidden");
+          ordersFetched = [];
+          ordersPage = 0;
+          renderOrdersTable();
+          return;
+        }
+        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
+        let url;
+        if (activeOrderDayFilter) {
+          const { day } = activeOrderDayFilter;
+          const params = new URLSearchParams({ day });
+          if (dailyOrdersRange) {
+            params.set("range_since", dailyOrdersRange.since);
+            params.set("range_until", dailyOrdersRange.until);
+          }
+          url = `/api/dashboard/orders/by-day?${params}`;
+          document.getElementById("orderDayFilterLabel").textContent =
+            `Showing orders received on ${formatDate(day)}`;
+          banner.classList.remove("hidden");
+        } else {
+          const region = document.getElementById("orderRegion").value.trim();
+          const sort = document.getElementById("orderSort").value;
+          const params = new URLSearchParams({ sort });
+          if (region) params.set("region", region);
+          url = `/api/dashboard/orders?${params}`;
+          banner.classList.add("hidden");
+        }
+        try {
+          ordersFetched = await getJson(url);
+          ordersPage = 0;
+          renderOrdersTable();
+        } catch (error) {
+          if (isRefresh) throw error;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load orders: ${escapeHtml(error.message)}</td></tr>`;
+          document.getElementById("ordersPager").innerHTML = "";
+        }
+      }
+
+      document.getElementById("orderSort").addEventListener("change", loadOrders);
+      let orderRegionDebounce;
+      document.getElementById("orderRegion").addEventListener("input", () => {
+        clearTimeout(orderRegionDebounce);
+        orderRegionDebounce = setTimeout(loadOrders, 350);
+      });
+      let orderSearchDebounce;
+      document.getElementById("orderSearch").addEventListener("input", () => {
+        ordersPage = 0;
+        clearTimeout(orderSearchDebounce);
+        orderSearchDebounce = setTimeout(loadOrders, 350);
+      });
 
       // ---- change feed --------------------------------------------------
       // Groups rows by calendar day (of dateField) so a trader gets a
@@ -1031,15 +1727,19 @@
         return groups;
       }
 
-      function changeList(rows, renderItem, dateField) {
+      // `limit` caps how many rows render inline in a box's own small
+      // scrolling card; the expand button's modal (see openChangeGroupModal)
+      // passes 0 to show every row instead, now that there's somewhere with
+      // room for the full list at a readable size.
+      function changeList(rows, renderItem, dateField, limit = 60) {
         if (!rows.length) return '<p class="muted" style="font-size:0.8rem;">None in this window.</p>';
-        const shown = rows.slice(0, 60);
+        const shown = limit ? rows.slice(0, limit) : rows;
         let html = "";
         for (const [day, dayRows] of groupByDay(shown, dateField)) {
           html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
           html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
         }
-        if (rows.length > shown.length) {
+        if (limit && rows.length > shown.length) {
           html += `<p class="muted" style="font-size:0.75rem;">+${formatNumber(rows.length - shown.length)} more not shown</p>`;
         }
         return html;
@@ -1065,13 +1765,44 @@
         return `<li>${escapeHtml(row.vessel_id)}${diffs}</li>`;
       }
 
+      const EXPAND_ICON_SVG = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+          <path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+      `;
+
+      // Keyed by the same index the expand button carries in its
+      // data-group-index, so the modal (opened well after loadChanges'
+      // own closures have gone out of scope) can still reach each box's
+      // title/rows/renderer/dateField to redraw them at full length.
+      let currentChangeGroups = [];
+
+      function openChangeGroupModal(groupIndex) {
+        const [title, rows, render, dateField] = currentChangeGroups[groupIndex];
+        document.getElementById("changeGroupModalTitle").textContent = `${title} (${formatNumber(rows.length)})`;
+        document.getElementById("changeGroupModalBody").innerHTML = changeList(rows, render, dateField, 0);
+        document.getElementById("changeGroupModal").classList.remove("hidden");
+      }
+
+      function closeChangeGroupModal() {
+        document.getElementById("changeGroupModal").classList.add("hidden");
+      }
+      document.getElementById("changeGroupModalClose").addEventListener("click", closeChangeGroupModal);
+      document.getElementById("changeGroupModal").addEventListener("click", (event) => {
+        if (event.target.id === "changeGroupModal") closeChangeGroupModal();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeChangeGroupModal();
+      });
+
       async function loadChanges(window_, isRefresh = false) {
         const el = document.getElementById("changeFeed");
         if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
         try {
           const data = await getJson(`/api/dashboard/changes?window=${window_}`);
           const groups = [
-            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "first_date_received"],
+            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "new_as_of"],
             ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, "update_date"],
             ["Field changes", data.field_changes, fieldChangeRow, "update_date"],
             [
@@ -1081,21 +1812,25 @@
               "update_date",
             ],
             ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, "date_received"],
-            ["Amended orders", data.amended_orders, (r) => `<li>Order ${escapeHtml(r.order_id)} &mdash; updated ${formatDate(r.update_date)}</li>`, "update_date"],
           ];
+          currentChangeGroups = groups;
           el.innerHTML = `
             <p class="muted" style="margin-top:0;">
               Simulated as of ${formatDate(data.tonnage_reference_now)} &mdash; today's real date minus one year, not today's actual date.
             </p>
             <div class="change-groups">
-              ${groups.map(([title, rows, render, dateField]) => `
+              ${groups.map(([title, rows, render, dateField], i) => `
                 <div class="change-group">
+                  <button type="button" class="change-group-expand" data-group-index="${i}" aria-label="Expand ${escapeHtml(title)}">${EXPAND_ICON_SVG}</button>
                   <h3>${title} <span class="change-count">${rows.length}</span></h3>
                   ${changeList(rows, render, dateField)}
                 </div>
               `).join("")}
             </div>
           `;
+          el.querySelectorAll(".change-group-expand").forEach((btn) => {
+            btn.addEventListener("click", () => openChangeGroupModal(Number(btn.dataset.groupIndex)));
+          });
         } catch (error) {
           if (isRefresh) throw error;
           el.innerHTML = `<p class="error">Could not load the change feed: ${escapeHtml(error.message)}</p>`;
@@ -1254,9 +1989,16 @@
         clearTimeout(regionDebounce);
         regionDebounce = setTimeout(loadVessels, 350);
       });
+      // A search box going from empty to non-empty (or back) can flip
+      // hasActiveVesselFilter() -- e.g. it's the only filter set -- so this
+      // has to go through loadVessels() (debounced, same as region above)
+      // rather than a plain client-side re-render, even though the search
+      // itself is never sent as a server-side param.
+      let searchDebounce;
       document.getElementById("vesselSearch").addEventListener("input", () => {
         vesselsPage = 0;
-        renderVesselsTable();
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(loadVessels, 350);
       });
       document.getElementById("vesselStaleOnly").addEventListener("change", loadVessels);
 
@@ -1269,6 +2011,559 @@
           loadChanges(currentChangeWindow);
         });
       });
+
+      // ---- trader status override ------------------------------------------
+      const OVERRIDE_STATUSES = ["AVAILABLE", "ON SUBS", "FIXED"];
+
+      function populateStatusOptions() {
+        const select = document.getElementById("ovStatus");
+        select.innerHTML =
+          '<option value="" disabled selected>Select a status</option>' +
+          OVERRIDE_STATUSES.map((s) => `<option value="${s}">${escapeHtml(s)}</option>`).join("");
+      }
+
+      // ---- vessel combobox: type-to-filter over a client-side cache -------
+      // Populated once from /api/trader-override/vessels (a few hundred to a
+      // few thousand rows, well within what a client-side substring filter
+      // can handle instantly) rather than a <select> the trader would have
+      // to scroll through, or a per-keystroke server request.
+      const VESSEL_SUGGESTION_LIMIT = 30;
+      let vesselsCache = [];
+      let vesselActiveIndex = -1;
+
+      const vesselInput = () => document.getElementById("ovVesselInput");
+      const vesselHidden = () => document.getElementById("ovVessel");
+      const vesselList = () => document.getElementById("ovVesselList");
+
+      function vesselLabel(v) {
+        return v.commercial_status ? `${v.vessel_id} — ${v.commercial_status}` : v.vessel_id;
+      }
+
+      function closeVesselList() {
+        vesselList().classList.add("hidden");
+        vesselInput().setAttribute("aria-expanded", "false");
+        vesselActiveIndex = -1;
+      }
+
+      function selectVessel(v) {
+        vesselHidden().value = v.vessel_id;
+        vesselInput().value = vesselLabel(v);
+        closeVesselList();
+        loadRecordPanel(v.vessel_id);
+      }
+
+      // ---- current record / new record: real tables (columns = fields,
+      // rows = reported positions), live-diffed against the form as the
+      // trader types. vessel_id is NOT unique in tonnage_test -- it's a
+      // position-report log -- so Current Record shows every row on file
+      // for the vessel, newest first, not just one. Only the newest (first)
+      // row is compared against the form -- older rows are history/context
+      // only. Only columns with overridable:true ever get diff-highlighted
+      // or take a form value in New Record -- context-only columns (AIS
+      // status, DWT, ship type/size, order id) pass through unchanged.
+      const dateOnly = (value) => (value ? String(value).slice(0, 10) : "");
+
+      // The open date fields are calendar-picked in real time, but every
+      // Dashboard view (vessel_current_status's active_bookings) checks
+      // booking-window containment against tonnage_reference_now() -- real
+      // wall-clock now() minus one year, not today's actual date (see
+      // dashboard_gold_views.sql, function 0). A window entered on today's
+      // real calendar would never contain that simulated "now" and the
+      // vessel would show OPEN regardless of the status just recorded, so
+      // shift the trader's real-world date back a year here before it's
+      // sent or previewed -- transparent to the trader, who keeps typing
+      // real dates.
+      function toSimulatedDate(value) {
+        if (!value) return null;
+        const [year, month, day] = value.split("-").map(Number);
+        return `${String(year - 1).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+
+      // Every tonnage_test column vessel_history_sql selects is shown --
+      // nothing the backend fetches is dropped, so the frontend column set
+      // always tallies with what's actually queried. Order is NOT Supabase's
+      // ordinal position: the 5 columns a trader override actually writes
+      // (overridable: true) are pulled to the front, right after the
+      // vessel_id identifier, so what this form submits is visible without
+      // scrolling; the remaining read-only/context columns follow in their
+      // real Supabase order. "Order assignment" writes into order_id itself
+      // (there's no separate tonnage_test column for it), so that's one
+      // column here, not two -- ovOrderAssignment overrides order_id
+      // directly, same shape every other overridable field here already has.
+      const RECORD_COLUMNS = [
+        { key: "vessel_id", label: "vessel id" },
+        { key: "commercial_status", label: "commercial status", overridable: true, inputId: "ovStatus",
+          formValue: () => document.getElementById("ovStatus").value || null,
+          diffColor: "var(--diff-commercial-status)" },
+        { key: "open_area", label: "open area", overridable: true, inputId: "ovOpenArea",
+          formValue: () => document.getElementById("ovOpenArea").value.trim() || null,
+          diffColor: "var(--diff-open-area)" },
+        { key: "order_id", label: "order id", overridable: true, inputId: "ovOrderAssignment",
+          formValue: () => document.getElementById("ovOrderAssignment").value.trim() || null,
+          diffColor: "var(--diff-order-id)" },
+        { key: "open_date_start", label: "open date start", overridable: true, fmt: formatDate, inputId: "ovOpenDateStart",
+          formValue: () => toSimulatedDate(document.getElementById("ovOpenDateStart").value) || null,
+          normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-open-date-start)" },
+        { key: "open_date_end", label: "open date end", overridable: true, fmt: formatDate, inputId: "ovOpenDateEnd",
+          formValue: () => toSimulatedDate(document.getElementById("ovOpenDateEnd").value) || null,
+          normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-open-date-end)" },
+        { key: "update_date", label: "update date", fmt: formatDate },
+        { key: "parent_zone", label: "parent zone" },
+        { key: "vessel_status", label: "vessel status" },
+        { key: "dwt", label: "dwt" },
+        { key: "ship_type", label: "ship type" },
+        { key: "ship_size", label: "ship size" },
+        { key: "ballast_laden", label: "ballast laden" },
+        { key: "destination", label: "destination" },
+        { key: "eta", label: "eta", fmt: formatDate },
+        { key: "first_date_received", label: "first date received", fmt: formatDate },
+      ];
+
+      let currentRecords = null; // array, newest first; null = nothing loaded
+      // Index into currentRecords the form is being diffed against -- a
+      // trader can override any past trip's record, not only the newest,
+      // by clicking its row in Current Record. Reset to 0 (newest) whenever
+      // a different vessel is loaded.
+      let selectedRecordIndex = 0;
+      // Free-text filter over Current Record's rows -- the table itself is
+      // capped to ~10 visible rows (scroll-capped, above) so a vessel with
+      // a long reporting history needs a way to jump straight to a row
+      // instead of scrolling through all of it.
+      let currentRecordQuery = "";
+
+      function matchesRecordQuery(record, query) {
+        if (!query) return true;
+        const needle = query.toLowerCase();
+        return RECORD_COLUMNS.some((column) => {
+          const raw = record[column.key];
+          if (raw === null || raw === undefined || raw === "") return false;
+          const text = column.fmt ? column.fmt(raw) : String(raw);
+          return String(text).toLowerCase().includes(needle);
+        });
+      }
+
+      // Pairs each matching record with its index in the unfiltered
+      // currentRecords array, since selectedRecordIndex/data-index and the
+      // New Record diff both key off that original index, not a position
+      // within the filtered subset.
+      function getFilteredRecords() {
+        if (!currentRecords) return [];
+        return currentRecords
+          .map((record, index) => ({ record, index }))
+          .filter(({ record }) => matchesRecordQuery(record, currentRecordQuery));
+      }
+
+      function renderTableHeaders() {
+        const headerHtml = RECORD_COLUMNS.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+        document.querySelector("#currentRecordTable thead tr").innerHTML = headerHtml;
+        document.querySelector("#newRecordTable thead tr").innerHTML = headerHtml;
+      }
+
+      function displayValue(raw, fmt, changed, diffColor) {
+        const classes = [raw === null || raw === undefined || raw === "" ? "value-unavailable" : "", changed ? "diff-cell" : ""]
+          .filter(Boolean).join(" ");
+        const classAttr = classes ? ` class="${classes}"` : "";
+        // Inline per-field color (so Commercial status is always green, Open
+        // area always light yellow, etc.) overrides the generic accent tint
+        // .diff-cell falls back to in CSS.
+        const styleAttr = changed && diffColor
+          ? ` style="background: color-mix(in srgb, ${diffColor} 24%, transparent);"`
+          : "";
+        const content = raw === null || raw === undefined || raw === "" ? "NULL" : escapeHtml(fmt ? fmt(raw) : raw);
+        return `<td${classAttr}${styleAttr}>${content}</td>`;
+      }
+
+      function isFieldChanged(column, raw) {
+        const formValue = column.formValue();
+        if (formValue === null) return false; // trader hasn't touched this field
+        const normalize = column.normalize || ((v) => v || "");
+        return normalize(formValue) !== normalize(raw);
+      }
+
+      function renderRecordTables() {
+        const currentBody = document.querySelector("#currentRecordTable tbody");
+        const newBody = document.querySelector("#newRecordTable tbody");
+        const colCount = RECORD_COLUMNS.length;
+
+        const countLabel = document.getElementById("currentRecordCount");
+        if (!currentRecords || !currentRecords.length) {
+          currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select a vessel to see its current record.</td></tr>`;
+          newBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select a vessel first.</td></tr>`;
+          countLabel.textContent = "";
+          RECORD_COLUMNS.forEach((column) => {
+            if (column.inputId) document.getElementById(column.inputId).classList.remove("field-changed");
+          });
+          return;
+        }
+        const filtered = getFilteredRecords();
+        countLabel.textContent = currentRecordQuery
+          ? `${filtered.length} of ${currentRecords.length} reported position${currentRecords.length === 1 ? "" : "s"} match "${currentRecordQuery}".`
+          : `${currentRecords.length} reported position${currentRecords.length === 1 ? "" : "s"} on file — showing up to 10 at a time, scroll for more.`;
+
+        // Current Record: every reported row matching the search filter (or
+        // all of them, unfiltered), newest first -- but only the selected
+        // row (selectedRecordIndex; defaults to the newest, index 0) is
+        // diffed against the form, so a trader can override an older trip's
+        // record by clicking its row instead of always the latest. The
+        // matching form control also gets flagged (.field-changed) so a
+        // changed field is visible in three places at once: the input
+        // itself, its Current Record cell, and its New Record cell.
+        const selectedIsVisible = filtered.some(({ index }) => index === selectedRecordIndex);
+        if (!filtered.length) {
+          currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">No records match "${currentRecordQuery}".</td></tr>`;
+        } else {
+          currentBody.innerHTML = filtered.map(({ record, index }) => {
+            const isSelected = index === selectedRecordIndex;
+            const cells = RECORD_COLUMNS.map((column) => {
+              const raw = record[column.key];
+              const changed = isSelected && column.overridable && isFieldChanged(column, raw);
+              if (isSelected && column.inputId) {
+                const inputEl = document.getElementById(column.inputId);
+                inputEl.classList.toggle("field-changed", changed);
+                if (column.diffColor) inputEl.style.setProperty("--field-diff-color", column.diffColor);
+              }
+              return displayValue(raw, column.fmt, changed, column.diffColor);
+            }).join("");
+            return `<tr data-index="${index}" class="${isSelected ? "selected-row" : ""}">${cells}</tr>`;
+          }).join("");
+        }
+        // The search filter can hide the selected row entirely -- its
+        // .field-changed flagging above only runs for rows actually
+        // rendered, so recompute it here directly against the selected
+        // record whenever the filter has scrolled it out of view.
+        if (!selectedIsVisible) {
+          const selected = currentRecords[selectedRecordIndex];
+          RECORD_COLUMNS.forEach((column) => {
+            if (!column.inputId) return;
+            const changed = column.overridable && isFieldChanged(column, selected[column.key]);
+            const inputEl = document.getElementById(column.inputId);
+            inputEl.classList.toggle("field-changed", changed);
+            if (column.diffColor) inputEl.style.setProperty("--field-diff-color", column.diffColor);
+          });
+        }
+
+        // New Record: one row -- the selected trip's record merged with
+        // whatever the trader has typed so far. "touched" (has a form
+        // value) and "changed" (that value actually differs from what's on
+        // file) are separate: the preview always shows what would actually
+        // be submitted for a touched field, even when it happens to match
+        // the selected record's existing value -- only the diff highlight
+        // is gated on "changed".
+        const selectedRecord = currentRecords[selectedRecordIndex];
+        const newCells = RECORD_COLUMNS.map((column) => {
+          const raw = selectedRecord[column.key];
+          const formValue = column.overridable ? column.formValue() : null;
+          const touched = formValue !== null;
+          const changed = touched && isFieldChanged(column, raw);
+          const effective = touched ? formValue : raw;
+          // A touched date column's effective value is a bare "YYYY-MM-DD"
+          // from the <input type=date>, not a timestamp -- formatDate()
+          // would otherwise mangle it, so it's shown as-is.
+          const fmt = column.formIsDateOnly && touched ? null : column.fmt;
+          return displayValue(effective, fmt, changed, column.diffColor);
+        }).join("");
+        newBody.innerHTML = `<tr>${newCells}</tr>`;
+      }
+
+      async function loadRecordPanel(vesselId) {
+        const currentBody = document.querySelector("#currentRecordTable tbody");
+        const newBody = document.querySelector("#newRecordTable tbody");
+        const colCount = RECORD_COLUMNS.length;
+        const loadingRow = `<tr><td class="record-empty" colspan="${colCount}"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr>`;
+        currentBody.innerHTML = loadingRow;
+        newBody.innerHTML = loadingRow;
+        document.getElementById("currentRecordCount").textContent = "";
+        selectedRecordIndex = 0; // a different vessel always starts diffed against its newest trip
+        currentRecordQuery = "";
+        document.getElementById("currentRecordSearch").value = "";
+        try {
+          currentRecords = await getJson(`/api/trader-override/vessels/${encodeURIComponent(vesselId)}`);
+          renderRecordTables();
+        } catch (error) {
+          currentRecords = null;
+          const msg = `<tr><td class="error" colspan="${colCount}">Could not load current record: ${escapeHtml(error.message)}</td></tr>`;
+          currentBody.innerHTML = msg;
+          newBody.innerHTML = msg;
+        }
+      }
+
+      // Row selection: click any Current Record row to diff/override that
+      // trip instead of always the newest one. Delegated on the table (not
+      // re-bound per row) since currentBody's innerHTML is replaced wholesale
+      // on every render.
+      document.querySelector("#currentRecordTable tbody").addEventListener("click", (event) => {
+        const row = event.target.closest("tr[data-index]");
+        if (!row || !currentRecords) return;
+        const index = Number(row.dataset.index);
+        if (index === selectedRecordIndex) return;
+        selectedRecordIndex = index;
+        renderRecordTables();
+      });
+
+      document.getElementById("currentRecordSearch").addEventListener("input", (event) => {
+        currentRecordQuery = event.target.value.trim();
+        renderRecordTables();
+      });
+
+      function renderVesselSuggestions(query) {
+        const list = vesselList();
+        const q = query.trim().toLowerCase();
+        const matches = (q ? vesselsCache.filter((v) => v.vessel_id.toLowerCase().includes(q)) : vesselsCache)
+          .slice(0, VESSEL_SUGGESTION_LIMIT);
+
+        vesselActiveIndex = -1;
+        if (!matches.length) {
+          list.innerHTML = `<li class="combobox-empty">No vessels match "${escapeHtml(query)}"</li>`;
+        } else {
+          list.innerHTML = matches.map((v, i) => `
+            <li class="combobox-option" role="option" data-index="${i}">
+              <span>${escapeHtml(v.vessel_id)}</span>
+              ${v.commercial_status ? `<span class="status">${escapeHtml(v.commercial_status)}</span>` : ""}
+            </li>
+          `).join("");
+          list.querySelectorAll(".combobox-option").forEach((el, i) => {
+            el.addEventListener("mousedown", (event) => {
+              // mousedown (not click) fires before the input's blur handler,
+              // so the list is still in the DOM when the selection is read.
+              event.preventDefault();
+              selectVessel(matches[i]);
+            });
+          });
+        }
+        list.classList.remove("hidden");
+        vesselInput().setAttribute("aria-expanded", "true");
+        list.dataset.matchCount = String(matches.length);
+        list._matches = matches;
+      }
+
+      function moveVesselActive(delta) {
+        const list = vesselList();
+        const options = list.querySelectorAll(".combobox-option");
+        if (!options.length) return;
+        vesselActiveIndex = (vesselActiveIndex + delta + options.length) % options.length;
+        options.forEach((el, i) => el.classList.toggle("active", i === vesselActiveIndex));
+        options[vesselActiveIndex].scrollIntoView({ block: "nearest" });
+      }
+
+      vesselInput().addEventListener("input", () => {
+        // Typing invalidates whatever was previously selected -- only a
+        // click or Enter on a suggestion below sets ovVessel again, so the
+        // form can never submit a vessel_id that doesn't match the visible text.
+        vesselHidden().value = "";
+        renderVesselSuggestions(vesselInput().value);
+      });
+      vesselInput().addEventListener("focus", () => {
+        // If a vessel is already selected, the input shows its full
+        // "id — status" label, not something meant to be searched against --
+        // re-focusing should browse the whole list, not filter by that label
+        // and come back empty.
+        const query = vesselHidden().value ? "" : vesselInput().value;
+        renderVesselSuggestions(query);
+      });
+      vesselInput().addEventListener("blur", closeVesselList);
+      vesselInput().addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (vesselList().classList.contains("hidden")) renderVesselSuggestions(vesselInput().value);
+          moveVesselActive(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveVesselActive(-1);
+        } else if (event.key === "Enter") {
+          if (vesselActiveIndex >= 0 && vesselList()._matches) {
+            event.preventDefault();
+            selectVessel(vesselList()._matches[vesselActiveIndex]);
+          }
+        } else if (event.key === "Escape") {
+          closeVesselList();
+        }
+      });
+
+      // Live diff: any change to an overridable field re-renders both
+      // record tables so the highlight/New Record value stays in sync as
+      // the trader types, without waiting for form submission.
+      ["ovStatus", "ovOpenArea", "ovOpenDateStart", "ovOpenDateEnd", "ovOrderAssignment"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", renderRecordTables);
+        document.getElementById(id).addEventListener("change", renderRecordTables);
+      });
+
+      async function loadVesselOptions() {
+        try {
+          vesselsCache = await getJson("/api/trader-override/vessels");
+          vesselInput().placeholder = vesselsCache.length
+            ? "Type to search a vessel…"
+            : "No vessels available";
+        } catch (error) {
+          vesselInput().placeholder = "Could not load vessels";
+        }
+      }
+
+      // Maps every OVERRIDE_STATUSES value (trader_override_queries.py) to
+      // a badge color: red for statuses that mean the tonnage is off the
+      // market or the deal fell through, green for statuses that mean it's
+      // successfully booked/secured, amber for genuinely uncertain ones,
+      // and the plain neutral badge (no class) for the rest.
+      const AUDIT_STATUS_CLASS = {
+        FIXED: "badge-good",
+        "ON SUBS": "badge-good",
+        CONTRACT: "badge-good",
+        "BALLAST FIXED": "badge-good",
+        FAILED: "badge-bad",
+        CANCELLED: "badge-bad",
+        "DO NOT COUNT": "badge-bad",
+        "POSS FIXED": "badge-caution",
+        WATCHLIST: "badge-caution",
+        RELET: "badge-caution",
+      };
+
+      function auditStatusBadge(status) {
+        const cls = AUDIT_STATUS_CLASS[status] || "";
+        return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
+      }
+
+      // Every Audit Trail column shows what that field changed *from* as
+      // well as *to* -- old_* columns (trader_override_audit) are the
+      // overridden row's own values just before the swap, read via
+      // tonnage_row_snapshot_sql. NULL there means "logged before this
+      // column existed", same as a genuinely blank field -- both render as
+      // literal "Null", so it reads as an actual value, not a rendering
+      // gap. An unchanged field (old === new) still collapses to just the
+      // one (green) value instead of "value → value" -- there's nothing to
+      // diff when nothing changed.
+      const AUDIT_DASH = `<span class="audit-diff-muted">Null</span>`;
+      const AUDIT_ARROW = `<span class="audit-diff-arrow">&rarr;</span>`;
+      const auditNew = (html) => `<span class="audit-diff-new">${html}</span>`;
+
+      function auditDiffText(oldVal, newVal) {
+        const oldText = oldVal === null || oldVal === undefined || oldVal === "" ? null : escapeHtml(String(oldVal));
+        const newText = newVal === null || newVal === undefined || newVal === "" ? null : escapeHtml(String(newVal));
+        const newSide = auditNew(newText ?? "Null");
+        if (oldText === newText) return newSide;
+        return `${oldText ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
+      }
+
+      function auditStatusDiff(row) {
+        const newBadge = auditStatusBadge(row.override_status);
+        if (row.old_override_status === row.override_status) return newBadge;
+        const oldBadge = row.old_override_status ? auditStatusBadge(row.old_override_status) : AUDIT_DASH;
+        return `${oldBadge}${AUDIT_ARROW}${newBadge}`;
+      }
+
+      function auditWindowDiff(row) {
+        const oldWindow = row.old_open_date_start || row.old_open_date_end
+          ? `${formatDate(row.old_open_date_start)} – ${formatDate(row.old_open_date_end)}`
+          : null;
+        const newWindow = row.open_date_start || row.open_date_end
+          ? `${formatDate(row.open_date_start)} – ${formatDate(row.open_date_end)}`
+          : null;
+        const newSide = auditNew(newWindow ?? "Null");
+        if (oldWindow === newWindow) return newSide;
+        return `${oldWindow ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
+      }
+
+      function auditRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${auditStatusDiff(row)}</td>
+            <td>${auditDiffText(row.old_open_area, row.open_area)}</td>
+            <td>${auditWindowDiff(row)}</td>
+            <td>${auditDiffText(row.old_order_assignment, row.order_assignment)}</td>
+            <td>${escapeHtml(row.entered_by)}</td>
+            <td>${formatDate(row.created_at)}</td>
+          </tr>
+        `;
+      }
+
+      async function loadAudit(isRefresh = false) {
+        const tbody = document.querySelector("#auditTable tbody");
+        try {
+          const rows = await getJson("/api/trader-override/audit");
+          tbody.innerHTML = rows.length
+            ? rows.map(auditRow).join("")
+            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
+        } catch (error) {
+          if (isRefresh) throw error;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+        }
+      }
+
+      function showFormMessage(kind, text) {
+        const el = document.getElementById("ovMessage");
+        el.className = `form-message visible ${kind}`;
+        el.textContent = text;
+      }
+
+      document.getElementById("overrideForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const submitBtn = document.getElementById("ovSubmit");
+        const vesselId = document.getElementById("ovVessel").value;
+        const overrideStatus = document.getElementById("ovStatus").value;
+        const enteredBy = document.getElementById("ovEnteredBy").value.trim();
+        const openArea = document.getElementById("ovOpenArea").value.trim();
+        const openDateStart = document.getElementById("ovOpenDateStart").value;
+        const openDateEnd = document.getElementById("ovOpenDateEnd").value;
+        const orderAssignment = document.getElementById("ovOrderAssignment").value.trim();
+
+        if (!vesselId) {
+          showFormMessage("error", "Select a vessel from the list.");
+          vesselInput().focus();
+          return;
+        }
+        if (!overrideStatus || !enteredBy) {
+          showFormMessage("error", "Status and Entered by are required.");
+          return;
+        }
+        if (openDateStart && openDateEnd && openDateEnd < openDateStart) {
+          showFormMessage("error", "Open date end cannot be earlier than open date start.");
+          return;
+        }
+        // The submission replaces whichever Current Record row is
+        // selected (baseTonnageRowKey) -- see override_tonnage_row_sql --
+        // so there must be a loaded record to replace.
+        if (!currentRecords || !currentRecords[selectedRecordIndex]) {
+          showFormMessage("error", "Could not find the record being overridden -- reselect the vessel and try again.");
+          return;
+        }
+        const baseTonnageRowKey = currentRecords[selectedRecordIndex].tonnage_row_key;
+
+        submitBtn.disabled = true;
+        try {
+          await postJson("/api/trader-override", {
+            vessel_id: vesselId,
+            base_tonnage_row_key: baseTonnageRowKey,
+            override_status: overrideStatus,
+            entered_by: enteredBy,
+            open_area: openArea || null,
+            open_date_start: toSimulatedDate(openDateStart),
+            open_date_end: toSimulatedDate(openDateEnd),
+            order_assignment: orderAssignment || null,
+          });
+          showFormMessage("success", `Replaced the selected record for ${vesselId}.`);
+          document.getElementById("overrideForm").reset();
+          populateStatusOptions();
+          await Promise.all([loadRecordPanel(vesselId), loadVesselOptions(), loadAudit()]);
+          // The vessel stays selected after a successful submit rather than
+          // making the trader re-search for it just to see what they just
+          // recorded -- form.reset() above cleared both the visible input
+          // and (in some browsers) the hidden one, so both are restored
+          // here once the picker cache has reloaded with this vessel's
+          // now-current label.
+          const submitted = vesselsCache.find((v) => v.vessel_id === vesselId);
+          vesselHidden().value = vesselId;
+          vesselInput().value = submitted ? vesselLabel(submitted) : vesselId;
+        } catch (error) {
+          showFormMessage("error", `Could not save update: ${error.message}`);
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      populateStatusOptions();
+      renderTableHeaders();
+      renderRecordTables();
+      loadVesselOptions();
+      loadAudit();
 
       // ---- auto-refresh, last-updated timestamp, stale-data indication ----
       // Traders want the dashboard current without a manual reload; an
@@ -1301,7 +2596,7 @@
       // yet for a stale banner to reference.
       async function refreshAll() {
         const sections = document.querySelectorAll(
-          "#summary-section, #vessels-section, #changes-section, #ecsa-section"
+          "#summary-section, #changes-section, #vessels-section, #orders-section, #ecsa-section, #overrides-section"
         );
         sections.forEach((el) => el.classList.add("section-refreshing"));
 
@@ -1310,9 +2605,11 @@
           ["Status counts", loadStatusCounts(true)],
           ["Flag counts", loadFlagCounts(true)],
           ["Daily trends", loadDailyTrends(true)],
-          ["Vessel tracker", loadVessels(true)],
           ["Change feed", loadChanges(currentChangeWindow, true)],
+          ["Vessel tracker", loadVessels(true)],
+          ["Order tracker", loadOrders(true)],
           ["ECSA tracker", loadEcsa(true)],
+          ["Override audit trail", loadAudit(true)],
         ];
         const results = await Promise.allSettled(named.map(([, promise]) => promise));
         sections.forEach((el) => el.classList.remove("section-refreshing"));
@@ -1340,8 +2637,9 @@
         loadStatusCounts(),
         loadFlagCounts(),
         loadDailyTrends(),
-        loadVessels(),
         loadChanges(currentChangeWindow),
+        loadVessels(),
+        loadOrders(),
         loadEcsa(),
       ]).then(() => {
         lastSuccessfulRefresh = new Date();

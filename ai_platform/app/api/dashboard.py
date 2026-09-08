@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -153,6 +154,100 @@ async def list_vessels(
     return await _run(sql, params)
 
 
+@router.get("/dashboard/vessels/by-day")
+async def vessels_by_day(
+    metric: dq.ClickableDailyMetric,
+    day: date,
+    range_since: datetime | None = None,
+    range_until: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Vessel tracker rows for the vessels counted in one Daily Trends bar.
+
+    Backs clicking a "New Vessels" or "Status Changes" bar in the Daily
+    Trends chart: the vessel tracker below switches to showing exactly the
+    vessels that bar counted, at their current status (see
+    :func:`ai_platform.backend.dashboard_queries.vessels_on_day_sql` for why
+    current rather than as-of-that-day). New Orders has no vessel-level
+    equivalent, so ``metric`` only accepts the other two.
+
+    Parameters
+    ----------
+    metric : "new_vessels" or "status_changes"
+        Which Daily Trends bar was clicked.
+    day : date
+        The calendar day the clicked bar represents, e.g. ``2025-08-29``.
+    range_since, range_until : datetime or None
+        The same ``range.since``/``range.until`` :func:`daily_counts`
+        returned alongside the chart data -- the caller should echo them
+        back unchanged so the clicked day's bounds are clipped exactly the
+        way that bar's own count was, including at the 14-day window's
+        (partial) first and last days. Omit only for an ad-hoc lookup
+        outside the chart, where a plain midnight-to-midnight day is fine.
+
+    Returns
+    -------
+    list of dict
+        Same shape as :func:`list_vessels`, one row per matched vessel.
+    """
+    sql, params = dq.vessels_on_day_sql(metric, day, range_since=range_since, range_until=range_until)
+    return await _run(sql, params)
+
+
+@router.get("/dashboard/orders")
+async def list_orders(
+    region: str | None = None,
+    sort: dq.OrderSortKey = "date_received",
+) -> list[dict[str, Any]]:
+    """Order tracker: non-future orders, filterable by region.
+
+    Parameters
+    ----------
+    region : str or None
+        Case-insensitive substring match against ``load_zone``.
+    sort : "date_received" or "laycan_start"
+        Sort key; defaults to most recently received first.
+
+    Returns
+    -------
+    list of dict
+        One row per order.
+    """
+    sql, params = dq.orders_sql(region, sort)
+    return await _run(sql, params)
+
+
+@router.get("/dashboard/orders/by-day")
+async def orders_by_day(
+    day: date,
+    range_since: datetime | None = None,
+    range_until: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Order tracker rows for the orders counted in one Daily Trends bar.
+
+    Backs clicking the "New Orders" bar in the Daily Trends chart: the
+    order tracker below switches to showing exactly the orders that bar
+    counted.
+
+    Parameters
+    ----------
+    day : date
+        The calendar day the clicked bar represents.
+    range_since, range_until : datetime or None
+        The same ``orders_range.since``/``orders_range.until``
+        :func:`daily_counts` returned alongside the chart data -- echo
+        them back unchanged so the clicked day's bounds match that bar's
+        own count exactly, including at the 14-day window's (partial)
+        first and last days.
+
+    Returns
+    -------
+    list of dict
+        Same shape as :func:`list_orders`, one row per matched order.
+    """
+    sql, params = dq.orders_on_day_sql(day, range_since=range_since, range_until=range_until)
+    return await _run(sql, params)
+
+
 @router.get("/dashboard/vessels/flag-counts")
 async def vessel_flag_counts() -> dict[str, int]:
     """Fleet-wide stale-vessel count, for the summary panel's KPI tile.
@@ -206,7 +301,15 @@ async def daily_counts(days: int = 14) -> dict[str, Any]:
     Returns
     -------
     dict
-        ``days`` echoed back, plus ``new_vessels``, ``status_changes``, and
+        ``days`` echoed back; ``range`` and ``orders_range`` (each
+        ``{"since": datetime, "until": datetime}``) -- the tonnage-side
+        bounds ``new_vessels``/``status_changes`` were computed from, and
+        the orders-side bounds ``new_orders`` was, respectively. A caller
+        driving the chart-bar click-to-filter interaction must echo the
+        matching one back to ``GET /dashboard/vessels/by-day`` or
+        ``GET /dashboard/orders/by-day`` unchanged, since the first and
+        last bars are partial days clipped to exactly that range, not full
+        calendar days; plus ``new_vessels``, ``status_changes``, and
         ``new_orders`` -- each a list of one row per calendar day in the
         range (zero-filled, never sparse):
         ``{"day": date, "count": int, "regions": [{"region": str, "count": int}, ...]}``.
@@ -241,6 +344,8 @@ async def daily_counts(days: int = 14) -> dict[str, Any]:
     )
     return {
         "days": days,
+        "range": {"since": tonnage_since, "until": tonnage_until},
+        "orders_range": {"since": orders_since, "until": orders_until},
         "new_vessels": _with_region_breakdown(new_vessels, new_vessels_by_region),
         "status_changes": _with_region_breakdown(status_changes, status_changes_by_region),
         "new_orders": _with_region_breakdown(new_orders, new_orders_by_region),
@@ -330,6 +435,9 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     recently" signal -- nothing in the source data marks a record
     withdrawn. See
     ``ai_platform.backend.dashboard_queries.vessels_no_longer_fresh_sql``.
+    Whether "Removed" should exist as a concept at all is a separate,
+    still-open question with the sponsor -- kept as originally defined
+    until that's resolved, not dropped pre-emptively.
 
     ``field_changes`` covers everything *except* the FIXED/OPEN/ON SUBS
     transition (that's ``vessel_status_changes``, kept separate so the same
@@ -354,9 +462,9 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     dict
         ``window``, the two simulated reference instants and window starts
         (``tonnage_reference_now``, ``tonnage_since``, ``orders_reference_now``,
-        ``orders_since``), and six row lists: ``new_vessels``,
+        ``orders_since``), and five row lists: ``new_vessels``,
         ``vessel_status_changes``, ``vessels_no_longer_fresh``,
-        ``field_changes``, ``new_orders``, ``amended_orders``.
+        ``field_changes``, ``new_orders``.
     """
     reference = (await _run(*dq.reference_times_sql()))[0]
     tonnage_now = reference["tonnage_now"]
@@ -379,14 +487,12 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         vessels_no_longer_fresh,
         field_changes,
         new_orders,
-        amended_orders,
     ) = await asyncio.gather(
-        _run(*dq.new_vessels_sql(tonnage_since)),
+        _run(*dq.new_vessels_sql(tonnage_since, tonnage_until)),
         _run(*dq.vessel_status_changes_sql(tonnage_since)),
         _run(*dq.vessels_no_longer_fresh_sql(tonnage_since, length)),
         _run(*dq.vessel_field_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.new_orders_sql(orders_since, orders_until)),
-        _run(*dq.amended_orders_sql(orders_since, orders_until)),
     )
     return {
         "window": window,
@@ -399,5 +505,4 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         "vessels_no_longer_fresh": vessels_no_longer_fresh,
         "field_changes": field_changes,
         "new_orders": new_orders,
-        "amended_orders": amended_orders,
     }
