@@ -737,13 +737,6 @@
                   <option value="" disabled selected>Select a status</option>
                 </select>
               </label>
-              <p class="form-hint">
-                FIXED is treated as good for 5 days from entry (e.g. heard it was
-                taken by another company, or it's a Cargill vessel) before Shipfix
-                data is trusted again.
-              </p>
-
-              <p class="form-section-label">Optional &mdash; only if you have fresh word on it</p>
               <div class="field-row">
                 <label>Open area
                   <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
@@ -2020,10 +2013,7 @@
       });
 
       // ---- trader status override ------------------------------------------
-      const OVERRIDE_STATUSES = [
-        "AVAILABLE", "ON SUBS", "FIXED", "FAILED", "CANCELLED", "POSS FIXED",
-        "PROGRAM", "CONTRACT", "RELET", "BALLAST FIXED", "DO NOT COUNT", "WATCHLIST",
-      ];
+      const OVERRIDE_STATUSES = ["AVAILABLE", "ON SUBS", "FIXED"];
 
       function populateStatusOptions() {
         const select = document.getElementById("ovStatus");
@@ -2522,6 +2512,10 @@
         }
         if (!overrideStatus || !enteredBy) {
           showFormMessage("error", "Status and Entered by are required.");
+          return;
+        }
+        if (openDateStart && openDateEnd && openDateEnd < openDateStart) {
+          showFormMessage("error", "Open date end cannot be earlier than open date start.");
           return;
         }
         // The submission replaces whichever Current Record row is
