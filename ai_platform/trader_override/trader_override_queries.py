@@ -460,15 +460,19 @@ def audit_sql(vessel_id: str | None, limit: int) -> tuple[str, list]:
     columns = ", ".join(_AUDIT_COLUMNS)
     if vessel_id is not None:
         return (
-            f"SELECT {columns} FROM public.trader_override_audit "
-            "WHERE vessel_id = $1 "
-            "ORDER BY created_at DESC "
-            "LIMIT $2",
+            (
+                f"SELECT {columns} FROM public.trader_override_audit "
+                "WHERE vessel_id = $1 "
+                "ORDER BY created_at DESC "
+                "LIMIT $2"
+            ),
             [vessel_id, limit],
         )
     return (
-        f"SELECT {columns} FROM public.trader_override_audit "
-        "ORDER BY created_at DESC "
-        "LIMIT $1",
+        (
+            f"SELECT {columns} FROM public.trader_override_audit "
+            "ORDER BY created_at DESC "
+            "LIMIT $1"
+        ),
         [limit],
     )
