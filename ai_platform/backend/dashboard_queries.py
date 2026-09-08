@@ -162,7 +162,6 @@ def vessels_sql(
     sort: SortKey,
     *,
     stale: bool | None = None,
-    conflict: bool | None = None,
 ) -> tuple[str, list]:
     """Vessel tracker: current status, optionally filtered by status/region.
 
@@ -183,8 +182,6 @@ def vessels_sql(
         ``True`` restricts to ``is_stale`` rows, ``False`` to non-stale,
         ``None`` applies no filter. Backs the summary panel's Stale KPI
         tile drilling down into the vessel table.
-    conflict : bool or None
-        Same shape as ``stale`` but against ``has_conflicting_reports``.
 
     Returns
     -------
@@ -203,8 +200,6 @@ def vessels_sql(
         )
     if stale is not None:
         clauses.append("is_stale" if stale else "NOT is_stale")
-    if conflict is not None:
-        clauses.append("has_conflicting_reports" if conflict else "NOT has_conflicting_reports")
     where_sql = " AND ".join(clauses) if clauses else "TRUE"
     order_sql = _SORT_COLUMNS[sort]
     sql = f"SELECT * FROM vessel_current_status WHERE {where_sql} ORDER BY {order_sql}"
@@ -240,25 +235,26 @@ def status_counts_sql() -> tuple[str, list]:
 
 
 def vessel_flag_counts_sql() -> tuple[str, list]:
-    """Fleet-wide stale / conflicting-reports counts -- the summary panel's other two KPI tiles.
+    """Fleet-wide stale-vessel count -- the summary panel's Stale KPI tile.
 
     Kept separate from :func:`status_counts_sql` rather than merged into one
-    payload -- stale/conflict are flags a vessel can carry regardless of its
+    payload -- staleness is a flag a vessel can carry regardless of its
     FIXED/OPEN/ON SUBS status (a FIXED vessel can still be stale), not
     another value of the same ``dashboard_status`` dimension.
+
+    (There used to be a second flag here, conflicting reports -- removed:
+    once overlapping/disagreeing rows are resolved by recency, per
+    ``vessel_current_status``'s ``active_bookings`` CTE and
+    ``vessel_status_history``'s timeline, there's nothing left that's
+    still ambiguous, so nothing left to flag.)
 
     Returns
     -------
     tuple
-        ``(sql, params)``; one row with ``stale`` and ``conflicts`` counts.
+        ``(sql, params)``; one row with a ``stale`` count.
     """
     return (
-        (
-            "SELECT "
-            "COUNT(*) FILTER (WHERE is_stale) AS stale, "
-            "COUNT(*) FILTER (WHERE has_conflicting_reports) AS conflicts "
-            "FROM vessel_current_status"
-        ),
+        "SELECT COUNT(*) FILTER (WHERE is_stale) AS stale FROM vessel_current_status",
         [],
     )
 
@@ -331,9 +327,13 @@ def daily_new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
 def daily_status_changes_sql(since: datetime, until: datetime) -> tuple[str, list]:
     """Day-bucketed count of FIXED/OPEN/ON SUBS transitions, one row per calendar day.
 
-    Backed by ``vessel_status_history``, excluding a vessel's first-ever row
-    (``prev_status IS NOT NULL``) the same way :func:`vessel_status_changes_sql`
-    does -- a new arrival isn't a "change".
+    Backed by ``vessel_status_history``, with ``prev_status`` recomputed
+    via ``LAG`` ordered by ``open_date_start`` the same way
+    :func:`vessel_status_changes_sql` does -- see its docstring for why
+    ``status IS DISTINCT FROM prev_status`` is checked explicitly rather
+    than assumed from adjacency alone (a reporting gap that returns to the
+    same status isn't a change), and why a vessel's first-ever segment
+    (``is_first_segment``) is excluded.
 
     Parameters
     ----------
@@ -351,10 +351,14 @@ def daily_status_changes_sql(since: datetime, until: datetime) -> tuple[str, lis
         (
             "WITH days AS ("
             "  SELECT generate_series(date_trunc('day', $1::timestamp), date_trunc('day', $2::timestamp), interval '1 day')::date AS day"
+            "), ordered AS ("
+            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
+            "  FROM vessel_status_history"
             "), counts AS ("
             "  SELECT date_trunc('day', update_date)::date AS day, COUNT(*) AS n"
-            "  FROM vessel_status_history"
-            "  WHERE update_date >= $1 AND update_date < $2 AND prev_status IS NOT NULL"
+            "  FROM ordered"
+            "  WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment"
+            "  AND status IS DISTINCT FROM prev_status"
             "  GROUP BY 1"
             ") "
             "SELECT d.day, COALESCE(c.n, 0)::int AS count "
@@ -401,6 +405,112 @@ def daily_new_orders_sql(since: datetime, until: datetime) -> tuple[str, list]:
     )
 
 
+# The three functions below are the per-region companions to
+# daily_new_vessels_sql / daily_status_changes_sql / daily_new_orders_sql
+# above -- same day range, but one row per (day, region) instead of one row
+# per day, so the Daily Trends chart's hover tooltip can show a region
+# breakdown alongside the bar's total. Deliberately NOT the source of the
+# bar's own height: a vessel or order spanning multiple regions is counted
+# once per region here (same convention regional_supply_demand already
+# uses for its own supply/demand aggregation), so summing these rows for a
+# day can exceed that day's total count -- that's expected, not a bug, and
+# the two are combined at the application layer (see dashboard.py's
+# daily_counts()), not unioned in SQL.
+
+
+def daily_new_vessels_by_region_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Per-region breakdown of new vessels, one row per (day, region).
+
+    Parameters
+    ----------
+    since : datetime
+        Range start, from :func:`daily_range_start`.
+    until : datetime
+        The simulated "now" itself.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; rows have ``day`` (date), ``region`` (str), and
+        ``count`` (int), ordered by day then descending count.
+    """
+    return (
+        (
+            "SELECT date_trunc('day', first_date_received)::date AS day, "
+            "trim(zone) AS region, COUNT(*) AS count "
+            "FROM vessel_current_status, LATERAL unnest(parent_zones) AS zone "
+            "WHERE first_date_received >= $1 AND first_date_received < $2 "
+            "AND trim(zone) <> '' "
+            "GROUP BY 1, 2 ORDER BY 1, 3 DESC"
+        ),
+        [since, until],
+    )
+
+
+def daily_status_changes_by_region_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Per-region breakdown of FIXED/OPEN/ON SUBS transitions, one row per (day, region).
+
+    Parameters
+    ----------
+    since : datetime
+        Range start, from :func:`daily_range_start`.
+    until : datetime
+        The simulated "now" itself.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; rows have ``day`` (date), ``region`` (str), and
+        ``count`` (int), ordered by day then descending count.
+    """
+    return (
+        (
+            "WITH ordered AS ("
+            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
+            "  FROM vessel_status_history"
+            ") "
+            "SELECT date_trunc('day', update_date)::date AS day, "
+            "trim(zone) AS region, COUNT(*) AS count "
+            "FROM ordered, "
+            "LATERAL regexp_split_to_table(trim(COALESCE(parent_zone, '')), '\\s*,\\s*') AS zone "
+            "WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment "
+            "AND status IS DISTINCT FROM prev_status "
+            "AND trim(zone) <> '' "
+            "GROUP BY 1, 2 ORDER BY 1, 3 DESC"
+        ),
+        [since, until],
+    )
+
+
+def daily_new_orders_by_region_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Per-region breakdown of new orders (by load zone), one row per (day, region).
+
+    Parameters
+    ----------
+    since : datetime
+        Range start, from :func:`daily_range_start`.
+    until : datetime
+        The simulated "now" itself.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; rows have ``day`` (date), ``region`` (str), and
+        ``count`` (int), ordered by day then descending count.
+    """
+    return (
+        (
+            "SELECT date_trunc('day', date_received)::date AS day, "
+            "trim(zone) AS region, COUNT(*) AS count "
+            "FROM public.order_test, "
+            "LATERAL regexp_split_to_table(trim(COALESCE(load_zone, '')), '\\s*,\\s*') AS zone "
+            "WHERE date_received >= $1 AND date_received < $2 AND trim(zone) <> '' "
+            "GROUP BY 1, 2 ORDER BY 1, 3 DESC"
+        ),
+        [since, until],
+    )
+
+
 def ecsa_ballasters_sql(sort: SortKey) -> tuple[str, list]:
     """ECSA ballast tracker list.
 
@@ -419,7 +529,15 @@ def ecsa_ballasters_sql(sort: SortKey) -> tuple[str, list]:
 
 
 def ecsa_history_sql(vessel_id: str) -> tuple[str, list]:
-    """Status history trail for one vessel (e.g. an ECSA ballaster).
+    """Resolved status timeline for one vessel (e.g. an ECSA ballaster).
+
+    Each row is a (date range, status) segment -- see
+    ``vessel_status_history`` in ``infra/sql/dashboard_gold_views.sql`` for
+    how overlapping/disagreeing reports are reconciled into it. Ordered by
+    ``open_date_start`` (chronological, oldest first) rather than
+    ``update_date`` (when it was reported) -- a later report can describe
+    an earlier segment than another row already on file, so only
+    ``open_date_start`` order is guaranteed to read as a timeline.
 
     Parameters
     ----------
@@ -432,7 +550,7 @@ def ecsa_history_sql(vessel_id: str) -> tuple[str, list]:
         ``(sql, params)``.
     """
     return (
-        "SELECT * FROM vessel_status_history WHERE vessel_id = $1 ORDER BY update_date",
+        "SELECT * FROM vessel_status_history WHERE vessel_id = $1 ORDER BY open_date_start",
         [vessel_id],
     )
 
@@ -463,9 +581,20 @@ def new_vessels_sql(since: datetime) -> tuple[str, list]:
 def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
     """Status transitions (e.g. On Subs -> Open) within the window.
 
-    Excludes a vessel's first-ever row (``prev_status IS NULL``) -- that's
-    a new arrival, reported separately by :func:`new_vessels_sql`, not a
-    change.
+    ``vessel_status_history`` no longer stores ``prev_status`` directly, so
+    it's recomputed here via ``LAG`` ordered by ``open_date_start`` -- the
+    segment's own chronological position, not ``update_date``. Adjacent
+    segments in that view are always a real status change *unless* there's
+    a reporting gap between them (no row covered the days in between) that
+    happens to return to the same status afterward -- e.g. OPEN, silence,
+    then OPEN again is not a change even though it's two separate segments
+    -- so ``status IS DISTINCT FROM prev_status`` is checked explicitly
+    rather than assumed from the segment boundary alone.
+
+    Also excludes a vessel's first-ever segment (``is_first_segment``) --
+    that's a new arrival, reported separately by :func:`new_vessels_sql`,
+    not a change (its ``prev_status`` is NULL, which is already "distinct"
+    from anything, so this exclusion isn't implied by the check above).
 
     Parameters
     ----------
@@ -479,8 +608,13 @@ def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
     """
     return (
         (
-            "SELECT * FROM vessel_status_history "
-            "WHERE update_date >= $1 AND prev_status IS NOT NULL "
+            "WITH ordered AS ("
+            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
+            "  FROM vessel_status_history"
+            ") "
+            "SELECT * FROM ordered "
+            "WHERE update_date >= $1 AND NOT is_first_segment "
+            "AND status IS DISTINCT FROM prev_status "
             "ORDER BY update_date DESC"
         ),
         [since],

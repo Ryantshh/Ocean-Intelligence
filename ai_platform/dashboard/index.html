@@ -177,7 +177,6 @@
       .status-tile-watchlist .value { color: var(--watchlist); }
       .status-tile-fixed .value { color: var(--fixed); }
       .status-tile-stale .value { color: var(--stale); }
-      .status-tile-conflict .value { color: var(--watchlist); }
 
       /* Summary panel: KPI tiles + heatmap + daily trends grouped together
          so the market shape is readable in one screen, without scrolling
@@ -224,7 +223,6 @@
       .badge-fixed { background: color-mix(in srgb, var(--fixed) 22%, transparent); color: var(--fixed); }
       .flag { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 650; padding: 0.1rem 0.4rem; border-radius: 0.35rem; border: 1px solid currentColor; }
       .flag-stale { color: var(--stale); }
-      .flag-conflict { color: var(--watchlist); }
 
       .view-toggle { display: flex; gap: 0.4rem; }
       .view-toggle button {
@@ -244,15 +242,21 @@
       .map-legend { display: flex; flex-wrap: wrap; gap: 1rem; padding: 0.6rem 0.9rem; font-size: 0.76rem; color: var(--muted); border-top: 1px solid var(--border); background: var(--card); }
       .map-legend .swatch { display: inline-flex; align-items: center; gap: 0.35rem; }
       .map-legend .dot { width: 0.7rem; height: 0.7rem; border-radius: 999px; display: inline-block; }
-      .map-tooltip {
-        position: absolute; pointer-events: none; z-index: 5; max-width: 15rem;
+      /* Shared hover-tooltip box -- used by the regions map and the Daily
+         Trends bar charts alike, so both look and behave identically. */
+      .hover-tooltip {
+        /* Fixed, not absolute -- an ancestor with `overflow: hidden` (the
+           map's rounded-corner clip, for one) would otherwise clip this
+           whenever the hovered point sits near an edge, hiding part of
+           the text. A fixed-position element isn't clipped that way. */
+        position: fixed; pointer-events: none; z-index: 20; max-width: 15rem;
         background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
         padding: 0.5rem 0.65rem; font-size: 0.78rem; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
         opacity: 0; transition: opacity 0.1s ease; transform: translate(-50%, -100%);
       }
-      .map-tooltip.visible { opacity: 1; }
-      .map-tooltip .t-title { font-weight: 650; margin-bottom: 0.2rem; }
-      .map-tooltip .t-value { font-variant-numeric: tabular-nums; }
+      .hover-tooltip.visible { opacity: 1; }
+      .hover-tooltip .t-title { font-weight: 650; margin-bottom: 0.2rem; }
+      .hover-tooltip .t-value { font-variant-numeric: tabular-nums; }
       .map-unmapped { padding: 0.5rem 0.9rem; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--border); }
       .regions-table-wrap { display: none; }
       .regions-table-wrap.visible { display: block; }
@@ -487,10 +491,6 @@
             <span class="value" id="statusTileStale">—</span>
             <span class="label">Stale</span>
           </button>
-          <button type="button" class="status-tile status-tile-conflict" id="flagTileConflict">
-            <span class="value" id="statusTileConflicts">—</span>
-            <span class="label">Conflicts</span>
-          </button>
         </div>
 
         <div class="summary-grid">
@@ -528,6 +528,7 @@
               <div class="trend-chart-title">New orders</div>
               <div id="chartNewOrders"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
             </div>
+            <div class="hover-tooltip" id="chartTooltip"></div>
           </div>
         </div>
       </section>
@@ -566,9 +567,6 @@
             </label>
             <label class="toolbar-checkbox">
               <input type="checkbox" id="vesselStaleOnly" /> Stale only
-            </label>
-            <label class="toolbar-checkbox">
-              <input type="checkbox" id="vesselConflictOnly" /> Conflicts only
             </label>
           </div>
         </div>
@@ -823,10 +821,9 @@
       }
 
       function flags(row) {
-        let out = "";
-        if (row.is_stale) out += '<span class="flag flag-stale" title="Not updated recently, or its open window has already lapsed">STALE</span>';
-        if (row.has_conflicting_reports) out += '<span class="flag flag-conflict" title="Multiple brokers reported different details for this vessel at the same timestamp">CONFLICT</span>';
-        return out;
+        return row.is_stale
+          ? '<span class="flag flag-stale" title="Not updated recently, or its open window has already lapsed">STALE</span>'
+          : "";
       }
 
       async function getJson(path) {
@@ -854,6 +851,28 @@
           throw new Error(detail);
         }
         return body;
+      }
+
+      // Shared `.hover-tooltip` positioner -- used by both the regions map
+      // and the Daily Trends charts, so the same box shows up in the same
+      // way everywhere. Positions the box centered above (x, y), which
+      // must already be viewport-relative coordinates (the tooltip is
+      // `position: fixed`), then nudges it back on-screen if the box would
+      // otherwise run past any edge of the browser window.
+      function showTooltip(tooltip, html, x, y) {
+        tooltip.innerHTML = html;
+        tooltip.style.left = `${x}px`;
+        tooltip.style.top = `${y}px`;
+        tooltip.classList.add("visible");
+        const box = tooltip.getBoundingClientRect();
+        const margin = 8;
+        if (box.left < margin) tooltip.style.left = `${x + (margin - box.left)}px`;
+        else if (box.right > window.innerWidth - margin) tooltip.style.left = `${x - (box.right - (window.innerWidth - margin))}px`;
+        if (box.top < margin) tooltip.style.top = `${y + (margin - box.top)}px`;
+      }
+
+      function hideTooltip(tooltip) {
+        tooltip.classList.remove("visible");
       }
 
       // ---- regional supply & demand: map ----------------------------------
@@ -1017,7 +1036,7 @@
             ${land}
             ${bubbles}
           </svg>
-          <div class="map-tooltip" id="mapTooltip"></div>
+          <div class="hover-tooltip" id="mapTooltip"></div>
           <div class="map-legend">
             <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Tight (demand &gt; supply)</span>
             <span class="swatch"><span class="dot" style="background:var(--status-warning)"></span>Balanced</span>
@@ -1034,12 +1053,11 @@
         }
 
         const tooltip = document.getElementById("mapTooltip");
-        const wrap = container.querySelector(".map-wrap") || container;
         container.querySelectorAll("g[data-region]").forEach((g) => {
           const hit = g.querySelector(".map-bubble-hit");
           const show = () => {
             const region = g.dataset.region, supply = g.dataset.supply, demand = g.dataset.demand, status = g.dataset.status;
-            tooltip.innerHTML = `
+            const html = `
               <div class="t-title">${escapeHtml(region)}</div>
               <div class="t-value">${formatNumber(supply)} open vessels</div>
               <div class="t-value">${formatNumber(demand)} recent orders</div>
@@ -1047,12 +1065,14 @@
             `;
             const circle = g.querySelector(".map-bubble");
             const cx = parseFloat(circle.getAttribute("cx")), cy = parseFloat(circle.getAttribute("cy"));
-            const scaleX = container.clientWidth / MAP_W;
-            tooltip.style.left = `${cx * scaleX}px`;
-            tooltip.style.top = `${(cy * scaleX) - 10}px`;
-            tooltip.classList.add("visible");
+            // .hover-tooltip is `position: fixed`, so these need to be
+            // viewport-relative (container's own on-screen rect), not
+            // container-relative the way `position: absolute` would want.
+            const rect = container.getBoundingClientRect();
+            const scaleX = rect.width / MAP_W;
+            showTooltip(tooltip, html, rect.left + cx * scaleX, rect.top + (cy * scaleX) - 10);
           };
-          const hide = () => tooltip.classList.remove("visible");
+          const hide = () => hideTooltip(tooltip);
           hit.addEventListener("pointerenter", show);
           hit.addEventListener("focus", show);
           hit.addEventListener("pointerleave", hide);
@@ -1112,11 +1132,9 @@
         try {
           const counts = await getJson("/api/dashboard/vessels/flag-counts");
           document.getElementById("statusTileStale").textContent = formatNumber(counts.stale);
-          document.getElementById("statusTileConflicts").textContent = formatNumber(counts.conflicts);
         } catch (error) {
           if (isRefresh) throw error;
           document.getElementById("statusTileStale").textContent = "—";
-          document.getElementById("statusTileConflicts").textContent = "—";
         }
       }
 
@@ -1128,6 +1146,16 @@
       // enough to be worth naming rather than making a trader hover each
       // one. Labels use a text token (--muted), never the bar's own color,
       // per the dataviz convention that value text isn't a series swatch.
+      // Region names are shown as-is, not abbreviated (e.g. the actual
+      // stored zone is "East Coast South America", never "ECSA") -- see
+      // terminology-fidelity: match the source data's own vocabulary
+      // rather than inventing a shorter label for it.
+      function regionBreakdownHtml(regions) {
+        return (regions || []).map(
+          (r) => `<div class="t-value">${escapeHtml(r.region)}: ${formatNumber(r.count)}</div>`
+        ).join("");
+      }
+
       function renderMiniBarChart(container, series, color) {
         if (!series.length) {
           container.innerHTML = '<p class="muted" style="font-size:0.8rem;">No data.</p>';
@@ -1140,20 +1168,39 @@
         const slot = plotW / series.length;
         const barW = Math.max(2, slot - 2);
         const dayLabel = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-        const parts = series.map((d, i) => {
+        const bars = series.map((d, i) => {
           const h = Math.max(1, (d.count / maxVal) * plotH);
           const x = PAD_L + i * slot + (slot - barW) / 2;
           const y = PAD_T + (plotH - h);
           const labelY = Math.max(9, y - 3);
           return `
             <text x="${(x + barW / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="mini-chart-label">${formatNumber(d.count)}</text>
-            <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}"><title>${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}</title></rect>
+            <rect data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}" tabindex="0" role="img" aria-label="${escapeHtml(dayLabel(d.day))}: ${formatNumber(d.count)}"></rect>
           `;
         }).join("");
         container.innerHTML = `
-          <svg viewBox="0 0 ${W} ${H}" class="mini-chart" role="img" aria-label="Daily trend chart with value labels">${parts}</svg>
+          <svg viewBox="0 0 ${W} ${H}" class="mini-chart" role="img" aria-label="Daily trend chart, hover a bar for its date, count, and region breakdown">${bars}</svg>
           <div class="mini-chart-axis"><span>${escapeHtml(dayLabel(series[0].day))}</span><span>${escapeHtml(dayLabel(series[series.length - 1].day))}</span></div>
         `;
+
+        const tooltip = document.getElementById("chartTooltip");
+        container.querySelectorAll("rect[data-index]").forEach((rect) => {
+          const d = series[Number(rect.dataset.index)];
+          const show = () => {
+            const html = `
+              <div class="t-title">${escapeHtml(dayLabel(d.day))}</div>
+              <div class="t-value">${formatNumber(d.count)} total</div>
+              ${regionBreakdownHtml(d.regions)}
+            `;
+            const box = rect.getBoundingClientRect();
+            showTooltip(tooltip, html, box.left + box.width / 2, box.top - 6);
+          };
+          const hide = () => hideTooltip(tooltip);
+          rect.addEventListener("pointerenter", show);
+          rect.addEventListener("focus", show);
+          rect.addEventListener("pointerleave", hide);
+          rect.addEventListener("blur", hide);
+        });
       }
 
       async function loadDailyTrends(isRefresh = false) {
@@ -1246,16 +1293,15 @@
           document.getElementById("statusTileFixed").textContent = formatNumber(counts.FIXED);
         } catch (error) {
           if (isRefresh) throw error;
-          // Only the four status tiles -- Stale/Conflicts are owned by
-          // loadFlagCounts() and shouldn't blank just because this call failed.
+          // Only the four status tiles -- Stale is owned by loadFlagCounts()
+          // and shouldn't blank just because this call failed.
           document.querySelectorAll(".status-tile[data-status] .value").forEach((el) => { el.textContent = "—"; });
         }
       }
 
       // The four status tiles ([data-status]) are one exclusive group; the
-      // Stale/Conflict tiles (below) are a separate, layerable filter and
-      // deliberately excluded from this selector/group so clicking one
-      // doesn't clear the other's checkbox state.
+      // Stale tile (below) is a separate, layerable filter and
+      // deliberately excluded from this selector/group.
       function scrollToVessels() {
         document.getElementById("vessels-section").scrollIntoView({ behavior: "smooth", block: "start" });
       }
@@ -1273,13 +1319,6 @@
 
       document.getElementById("flagTileStale").addEventListener("click", () => {
         document.getElementById("vesselStaleOnly").checked = true;
-        document.getElementById("vesselConflictOnly").checked = false;
-        loadVessels();
-        scrollToVessels();
-      });
-      document.getElementById("flagTileConflict").addEventListener("click", () => {
-        document.getElementById("vesselConflictOnly").checked = true;
-        document.getElementById("vesselStaleOnly").checked = false;
         loadVessels();
         scrollToVessels();
       });
@@ -1295,12 +1334,10 @@
         const region = document.getElementById("vesselRegion").value.trim();
         const sort = document.getElementById("vesselSort").value;
         const staleOnly = document.getElementById("vesselStaleOnly").checked;
-        const conflictOnly = document.getElementById("vesselConflictOnly").checked;
         const params = new URLSearchParams({ sort });
         if (status) params.set("status", status);
         if (region) params.set("region", region);
         if (staleOnly) params.set("stale", "true");
-        if (conflictOnly) params.set("conflict", "true");
         try {
           vesselsFetched = await getJson(`/api/dashboard/vessels?${params}`);
           vesselsPage = 0;
@@ -1412,8 +1449,12 @@
         container.innerHTML = '<span class="muted">Loading history&hellip;</span>';
         try {
           const rows = await getJson(`/api/dashboard/ecsa/${encodeURIComponent(vesselId)}/history`);
+          // Each row is a resolved (date range, status) segment, not a
+          // single reported timestamp -- see vessel_status_history's own
+          // comment in dashboard_gold_views.sql for how overlapping
+          // reports are reconciled into this timeline.
           container.innerHTML = rows.length
-            ? `<ol>${rows.map((r) => `<li>${statusBadge(r.status)} <span class="muted">${formatDate(r.update_date)}</span></li>`).join("")}</ol>`
+            ? `<ol>${rows.map((r) => `<li>${statusBadge(r.status)} <span class="muted">${formatDate(r.open_date_start)} &ndash; ${formatDate(r.open_date_end)}</span></li>`).join("")}</ol>`
             : '<span class="muted">No recorded transitions.</span>';
           container.dataset.loaded = "1";
         } catch (error) {
@@ -1554,7 +1595,6 @@
         renderVesselsTable();
       });
       document.getElementById("vesselStaleOnly").addEventListener("change", loadVessels);
-      document.getElementById("vesselConflictOnly").addEventListener("change", loadVessels);
 
       let currentChangeWindow = "dod";
       document.querySelectorAll(".window-btn").forEach((btn) => {

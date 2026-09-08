@@ -1,9 +1,8 @@
 """Shared Langfuse callback handle.
 
-Split out of ``graph.py`` so ``llm.py`` can read the current node's span off
-it (see ``trace_kwargs`` there) without an import cycle: ``graph`` imports
-``nodes``, which imports ``llm``, so ``llm`` cannot import back from
-``graph``.
+Attached to the agent's run config in ``cl_app``, which is what puts the agent's
+model calls and tool calls into Langfuse. Reads its credentials from the
+environment, and disables itself with a warning when they are absent.
 """
 
 from __future__ import annotations
