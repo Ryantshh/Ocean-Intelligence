@@ -435,6 +435,9 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     recently" signal -- nothing in the source data marks a record
     withdrawn. See
     ``ai_platform.backend.dashboard_queries.vessels_no_longer_fresh_sql``.
+    Whether "Removed" should exist as a concept at all is a separate,
+    still-open question with the sponsor -- kept as originally defined
+    until that's resolved, not dropped pre-emptively.
 
     ``field_changes`` covers everything *except* the FIXED/OPEN/ON SUBS
     transition (that's ``vessel_status_changes``, kept separate so the same
@@ -459,9 +462,9 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     dict
         ``window``, the two simulated reference instants and window starts
         (``tonnage_reference_now``, ``tonnage_since``, ``orders_reference_now``,
-        ``orders_since``), and six row lists: ``new_vessels``,
+        ``orders_since``), and five row lists: ``new_vessels``,
         ``vessel_status_changes``, ``vessels_no_longer_fresh``,
-        ``field_changes``, ``new_orders``, ``amended_orders``.
+        ``field_changes``, ``new_orders``.
     """
     reference = (await _run(*dq.reference_times_sql()))[0]
     tonnage_now = reference["tonnage_now"]
@@ -484,14 +487,12 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         vessels_no_longer_fresh,
         field_changes,
         new_orders,
-        amended_orders,
     ) = await asyncio.gather(
-        _run(*dq.new_vessels_sql(tonnage_since)),
+        _run(*dq.new_vessels_sql(tonnage_since, tonnage_until)),
         _run(*dq.vessel_status_changes_sql(tonnage_since)),
         _run(*dq.vessels_no_longer_fresh_sql(tonnage_since, length)),
         _run(*dq.vessel_field_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.new_orders_sql(orders_since, orders_until)),
-        _run(*dq.amended_orders_sql(orders_since, orders_until)),
     )
     return {
         "window": window,
@@ -504,5 +505,4 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         "vessels_no_longer_fresh": vessels_no_longer_fresh,
         "field_changes": field_changes,
         "new_orders": new_orders,
-        "amended_orders": amended_orders,
     }

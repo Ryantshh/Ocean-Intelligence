@@ -261,11 +261,47 @@
       .map-view-wrap.hidden { display: none; }
 
       .change-groups { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
-      .change-group { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
-      .change-group h3 { margin: 0 0 0.5rem; font-size: 0.85rem; }
+      .change-group { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
+      .change-group h3 { margin: 0 0 0.5rem; padding-right: 1.7rem; font-size: 0.85rem; }
       .change-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; font-size: 0.82rem; max-height: 12rem; overflow-y: auto; }
       .change-group li { border-bottom: 1px dashed var(--border); padding-bottom: 0.35rem; }
       .change-count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+      .change-group-expand {
+        position: absolute; top: 0.7rem; right: 0.7rem; width: 1.5rem; height: 1.5rem; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: 0.4rem;
+        background: var(--bg); color: var(--muted); cursor: pointer;
+      }
+      .change-group-expand:hover { color: var(--fg); border-color: var(--accent); }
+
+      /* A blurred, dimmed backdrop with a large centered card -- used to
+         show one Change Feed box's full, larger-type content without the
+         12rem scroll clamp its inline card is limited to. */
+      .modal-overlay {
+        position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+        background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+        padding: 2rem;
+      }
+      .modal-overlay.hidden { display: none; }
+      .modal-box {
+        display: flex; flex-direction: column; width: 100%; max-width: 40rem; max-height: 85vh;
+        background: var(--card); border: 1px solid var(--border); border-radius: 1rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+      .modal-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        padding: 1.1rem 1.4rem; border-bottom: 1px solid var(--border);
+      }
+      .modal-head h3 { margin: 0; font-size: 1.05rem; }
+      .modal-close {
+        width: 2rem; height: 2rem; padding: 0; flex-shrink: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: 0.5rem; background: var(--bg); color: var(--fg); cursor: pointer;
+      }
+      .modal-close:hover { border-color: var(--accent); }
+      .modal-body { padding: 1.25rem 1.4rem; overflow-y: auto; font-size: 1rem; }
+      .modal-body ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+      .modal-body li { border-bottom: 1px dashed var(--border); padding-bottom: 0.6rem; }
 
       .history-btn { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
       .history-trail { display: none; padding: 0.5rem 0.6rem 0.75rem; font-size: 0.82rem; }
@@ -479,6 +515,20 @@
         </div>
       </section>
     </main>
+
+    <div id="changeGroupModal" class="modal-overlay hidden">
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="changeGroupModalTitle">
+        <div class="modal-head">
+          <h3 id="changeGroupModalTitle"></h3>
+          <button type="button" class="modal-close" id="changeGroupModalClose" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body" id="changeGroupModalBody"></div>
+      </div>
+    </div>
 
     <script>
       // ---- theme toggle -----------------------------------------------
@@ -963,7 +1013,7 @@
       }
 
       // ---- vessel tracker ---------------------------------------------------
-      const VESSELS_PAGE_SIZE = 25;
+      const VESSELS_PAGE_SIZE = 15;
       let vesselsFetched = [];
       let vesselsPage = 0;
 
@@ -1174,7 +1224,7 @@
       // own day-filter banner) rather than sharing code with it -- orders
       // and vessels have different columns and no shared identity, so
       // there's nothing real to factor out beyond a naming convention.
-      const ORDERS_PAGE_SIZE = 25;
+      const ORDERS_PAGE_SIZE = 15;
       let ordersFetched = [];
       let ordersPage = 0;
       let activeOrderDayFilter = null;
@@ -1348,15 +1398,19 @@
         return groups;
       }
 
-      function changeList(rows, renderItem, dateField) {
+      // `limit` caps how many rows render inline in a box's own small
+      // scrolling card; the expand button's modal (see openChangeGroupModal)
+      // passes 0 to show every row instead, now that there's somewhere with
+      // room for the full list at a readable size.
+      function changeList(rows, renderItem, dateField, limit = 60) {
         if (!rows.length) return '<p class="muted" style="font-size:0.8rem;">None in this window.</p>';
-        const shown = rows.slice(0, 60);
+        const shown = limit ? rows.slice(0, limit) : rows;
         let html = "";
         for (const [day, dayRows] of groupByDay(shown, dateField)) {
           html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
           html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
         }
-        if (rows.length > shown.length) {
+        if (limit && rows.length > shown.length) {
           html += `<p class="muted" style="font-size:0.75rem;">+${formatNumber(rows.length - shown.length)} more not shown</p>`;
         }
         return html;
@@ -1382,13 +1436,44 @@
         return `<li>${escapeHtml(row.vessel_id)}${diffs}</li>`;
       }
 
+      const EXPAND_ICON_SVG = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+          <path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+      `;
+
+      // Keyed by the same index the expand button carries in its
+      // data-group-index, so the modal (opened well after loadChanges'
+      // own closures have gone out of scope) can still reach each box's
+      // title/rows/renderer/dateField to redraw them at full length.
+      let currentChangeGroups = [];
+
+      function openChangeGroupModal(groupIndex) {
+        const [title, rows, render, dateField] = currentChangeGroups[groupIndex];
+        document.getElementById("changeGroupModalTitle").textContent = `${title} (${formatNumber(rows.length)})`;
+        document.getElementById("changeGroupModalBody").innerHTML = changeList(rows, render, dateField, 0);
+        document.getElementById("changeGroupModal").classList.remove("hidden");
+      }
+
+      function closeChangeGroupModal() {
+        document.getElementById("changeGroupModal").classList.add("hidden");
+      }
+      document.getElementById("changeGroupModalClose").addEventListener("click", closeChangeGroupModal);
+      document.getElementById("changeGroupModal").addEventListener("click", (event) => {
+        if (event.target.id === "changeGroupModal") closeChangeGroupModal();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeChangeGroupModal();
+      });
+
       async function loadChanges(window_, isRefresh = false) {
         const el = document.getElementById("changeFeed");
         if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
         try {
           const data = await getJson(`/api/dashboard/changes?window=${window_}`);
           const groups = [
-            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "first_date_received"],
+            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "new_as_of"],
             ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, "update_date"],
             ["Field changes", data.field_changes, fieldChangeRow, "update_date"],
             [
@@ -1398,21 +1483,25 @@
               "update_date",
             ],
             ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, "date_received"],
-            ["Amended orders", data.amended_orders, (r) => `<li>Order ${escapeHtml(r.order_id)} &mdash; updated ${formatDate(r.update_date)}</li>`, "update_date"],
           ];
+          currentChangeGroups = groups;
           el.innerHTML = `
             <p class="muted" style="margin-top:0;">
               Simulated as of ${formatDate(data.tonnage_reference_now)} &mdash; today's real date minus one year, not today's actual date.
             </p>
             <div class="change-groups">
-              ${groups.map(([title, rows, render, dateField]) => `
+              ${groups.map(([title, rows, render, dateField], i) => `
                 <div class="change-group">
+                  <button type="button" class="change-group-expand" data-group-index="${i}" aria-label="Expand ${escapeHtml(title)}">${EXPAND_ICON_SVG}</button>
                   <h3>${title} <span class="change-count">${rows.length}</span></h3>
                   ${changeList(rows, render, dateField)}
                 </div>
               `).join("")}
             </div>
           `;
+          el.querySelectorAll(".change-group-expand").forEach((btn) => {
+            btn.addEventListener("click", () => openChangeGroupModal(Number(btn.dataset.groupIndex)));
+          });
         } catch (error) {
           if (isRefresh) throw error;
           el.innerHTML = `<p class="error">Could not load the change feed: ${escapeHtml(error.message)}</p>`;
