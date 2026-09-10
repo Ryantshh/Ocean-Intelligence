@@ -1,0 +1,6 @@
+[
+  {"id":"source-test-load-port","question":"List orders loading at Tubarao.","expected":{"action":"query","text_filters":{"load_port":"Tubarao"}},"expected_result":{"record_ids":["orders-3c6e735dd36c66053277"],"total_count":1}},
+  {"id":"source-test-open","question":"List tonnage with commercial status OPEN.","expected":{"action":"query","dataset":"tonnage","text_filters":{"commercial_status":"OPEN"}},"expected_result":{"vessel_names":["TEST VESSEL ALPHA"],"total_count":1}},
+  {"id":"source-test-empty","question":"List orders loading at NONEXISTENT TEST PORT.","expected":{"action":"query","text_filters":{"load_port":"NONEXISTENT TEST PORT"}},"expected_result":{"record_ids":[],"total_count":0}},
+  {"id":"source-test-match","question":"Screen vessels for order orders-3c6e735dd36c66053277.","expected":{"action":"match","record_id":"orders-3c6e735dd36c66053277"},"expected_result":{"candidates":[["TEST VESSEL ALPHA","needs_review"]],"excluded_names":["TEST VESSEL BRAVO","TEST VESSEL CHARLIE"]}}
+]

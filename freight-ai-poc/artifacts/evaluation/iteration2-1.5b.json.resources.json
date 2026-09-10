@@ -1,0 +1,37 @@
+{
+  "model_id": "Qwen/Qwen2.5-1.5B-Instruct",
+  "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "elapsed_seconds_including_loading": 391.01125929201953,
+  "peak_process_rss_bytes": 9675374592,
+  "memory_scope": "Process RSS; excludes separate GPU allocations",
+  "evaluation_scope": "Historical intent regression; not unseen chatbot evaluation",
+  "metrics": {
+    "base_zero": {
+      "json_valid": 0.7222222222222222,
+      "schema_valid": 0.4444444444444444,
+      "exact_match": 0.0,
+      "field_accuracy": 0.36363636363636365,
+      "examples": 18,
+      "mean_latency_seconds": 5.596193296390185,
+      "generation_errors": 0
+    },
+    "base_one": {
+      "json_valid": 0.9444444444444444,
+      "schema_valid": 0.6666666666666666,
+      "exact_match": 0.0,
+      "field_accuracy": 0.5252525252525252,
+      "examples": 18,
+      "mean_latency_seconds": 7.8891978610530105,
+      "generation_errors": 0
+    },
+    "base_few": {
+      "json_valid": 0.9444444444444444,
+      "schema_valid": 0.6666666666666666,
+      "exact_match": 0.4444444444444444,
+      "field_accuracy": 0.6464646464646465,
+      "examples": 18,
+      "mean_latency_seconds": 8.049360016226679,
+      "generation_errors": 0
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "generator": "synthetic_schema_behavior_v1",
+  "source_records_used": false,
+  "limitations": "Small synthetic intent corpus; not evidence of freight expertise or generalization.",
+  "splits": {
+    "train": {
+      "count": 66,
+      "sha256": "4761880805c8abc041efe244afc133e6170f1905073e9a2f6d0f72886e5157d7"
+    },
+    "validation": {
+      "count": 18,
+      "sha256": "db751c4e6a972f887e00c7bd87d8e93bd58cb4ea0bb647aaf8282a6b6141e248"
+    },
+    "test": {
+      "count": 18,
+      "sha256": "743670c5eeacad39b98b73b9c29c96601ce28ad1c5c06e409ac6a6e8e6ea35f7"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "freight-ai-poc"
+version = "0.1.0"
+description = "Inspectable freight intent, deterministic matching, and QLoRA experiments"
+requires-python = ">=3.11"
+dependencies = ["openpyxl>=3.1,<4", "pydantic>=2.10,<3", "PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "ruff>=0.11"]
+ui = ["streamlit>=1.45,<2"]
+model = ["torch>=2.6,<3", "transformers>=4.56,<5", "accelerate>=1.10,<2", "peft>=0.17,<0.19"]
+train = ["trl==0.24.0", "datasets>=3,<5", "bitsandbytes>=0.46,<0.49; sys_platform == 'linux'"]
+
+[project.scripts]
+freight-ai = "freight_ai.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/freight_ai"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"prompts" = "freight_ai/prompts"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

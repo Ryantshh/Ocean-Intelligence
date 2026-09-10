@@ -1,0 +1,474 @@
+{
+  "split": "test",
+  "dataset_manifest": {
+    "generator": "synthetic_schema_behavior_v1",
+    "source_records_used": false,
+    "limitations": "Small synthetic intent corpus; not evidence of freight expertise or generalization.",
+    "splits": {
+      "train": {
+        "count": 66,
+        "sha256": "4761880805c8abc041efe244afc133e6170f1905073e9a2f6d0f72886e5157d7"
+      },
+      "validation": {
+        "count": 18,
+        "sha256": "db751c4e6a972f887e00c7bd87d8e93bd58cb4ea0bb647aaf8282a6b6141e248"
+      },
+      "test": {
+        "count": 18,
+        "sha256": "743670c5eeacad39b98b73b9c29c96601ce28ad1c5c06e409ac6a6e8e6ea35f7"
+      }
+    }
+  },
+  "held_out_ids": [
+    "source-test-load-port",
+    "source-test-open",
+    "source-test-empty",
+    "source-test-match"
+  ],
+  "demonstration_ids": [
+    "train-0-0",
+    "train-1-0",
+    "train-2-0"
+  ],
+  "prompt_sha256": "e8b21906563c311f4140b69f3ff451d0f8df85f24cfeb9ee2be03a2e88eca396",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "tool_cases_sha256": "0b2b41e1eca5835b9f6243a4dede715bf014772939017d41f91ede3bde0c9a81",
+  "tool_as_of": "2026-09-01",
+  "matching_config": {
+    "cargo_fraction": null,
+    "required_quantity": "max",
+    "require_same_zone": false,
+    "blocked_statuses": [
+      "FIXED",
+      "ON SUBS"
+    ],
+    "allowed_statuses": [
+      "OPEN"
+    ],
+    "max_report_age_days": null,
+    "weights": {
+      "capacity": 0.5,
+      "window": 0.3,
+      "geography": 0.2
+    },
+    "coordinates": {}
+  },
+  "source_hashes": {
+    "orders": [
+      "9ecaa4edc94bfcbbb9a83bbb0cdb223630d040848bf0547164621d6f996b1e1e"
+    ],
+    "tonnage": [
+      "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833"
+    ]
+  },
+  "runs": {
+    "base_zero": {
+      "model": {
+        "backend": "transformers",
+        "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "device": "mps",
+        "max_new_tokens": 512,
+        "max_input_tokens": 4096,
+        "seed": 483,
+        "quantize_4bit": false,
+        "adapter_path": null,
+        "resolved_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+      },
+      "metrics": {
+        "json_valid": 0.0,
+        "schema_valid": 0.0,
+        "exact_match": 0.0,
+        "field_accuracy": 0.0,
+        "examples": 4,
+        "mean_latency_seconds": 2.5870718437436153,
+        "generation_errors": 0,
+        "tool_answer_correct": 0.0
+      },
+      "predictions": [
+        {
+          "id": "source-test-load-port",
+          "question": "List orders loading at Tubarao.",
+          "expected": {
+            "action": "query",
+            "text_filters": {
+              "load_port": "Tubarao"
+            }
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"Tubarao is known for its high-quality cargo handling.\",\n  \"dataset\": \"orders\",\n  \"limit\": 5,\n  \"max_tonnes\": 20000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"TUBARAO-ORDERS\",\n  \"text_filters\": {\n    \"cargo_capacity\": \"DWT\"\n  },\n  \"window_end\": null,\n  \"window_start\": \"2023-01-01\"\n}\n```",
+          "error": null,
+          "latency_seconds": 3.342604792007478,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\n  Invalid JSON: expected value at line 1 column 1 [type=json_invalid, input_value='```json\\n{\\n  \"action\": ...\": \"2023-01-01\"\\n}\\n```', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid",
+          "tool_answer_correct": false
+        },
+        {
+          "id": "source-test-open",
+          "question": "List tonnage with commercial status OPEN.",
+          "expected": {
+            "action": "query",
+            "dataset": "tonnage",
+            "text_filters": {
+              "commercial_status": "OPEN"
+            }
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"Open status indicates that the ship is in operation.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 10,\n  \"max_tonnes\": 500000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"\",\n  \"text_filters\": {},\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 2.092429375014035,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\n  Invalid JSON: expected value at line 1 column 1 [type=json_invalid, input_value='```json\\n{\\n  \"action\": ...ow_start\": null\\n}\\n```', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid",
+          "tool_answer_correct": false
+        },
+        {
+          "id": "source-test-empty",
+          "question": "List orders loading at NONEXISTENT TEST PORT.",
+          "expected": {
+            "action": "query",
+            "text_filters": {
+              "load_port": "NONEXISTENT TEST PORT"
+            }
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"The order is loading at NONEXISTENT TEST PORT.\",\n  \"dataset\": \"orders\",\n  \"limit\": 5,\n  \"max_tonnes\": 2000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"NONEXISTENT TEST PORT\",\n  \"text_filters\": {\n    \"port\": \"TEST PORT\"\n  }\n}\n```",
+          "error": null,
+          "latency_seconds": 2.0648965829750523,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\n  Invalid JSON: expected value at line 1 column 1 [type=json_invalid, input_value='```json\\n{\\n  \"action\": ...TEST PORT\"\\n  }\\n}\\n```', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid",
+          "tool_answer_correct": false
+        },
+        {
+          "id": "source-test-match",
+          "question": "Screen vessels for order orders-3c6e735dd36c66053277.",
+          "expected": {
+            "action": "match",
+            "record_id": "orders-3c6e735dd36c66053277"
+          },
+          "raw": "```json\n{\n  \"action\": \"screen\",\n  \"aggregation\": \"count\",\n  \"clarification\": \"The screen is looking at vessels that have an order ID of 'orders-3c6e735dd36c66053277'.\",\n  \"dataset\": \"vessels\",\n  \"limit\": 10,\n  \"max_tonnes\": null,\n  \"min_tonnes\": null,\n  \"record_id\": \"orders-3c6e735dd36c66053277\",\n  \"text_filters\": {},\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 2.848356624977896,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\n  Invalid JSON: expected value at line 1 column 1 [type=json_invalid, input_value='```json\\n{\\n  \"action\": ...ow_start\": null\\n}\\n```', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid",
+          "tool_answer_correct": false
+        }
+      ]
+    },
+    "base_one": {
+      "model": {
+        "backend": "transformers",
+        "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "device": "mps",
+        "max_new_tokens": 512,
+        "max_input_tokens": 4096,
+        "seed": 483,
+        "quantize_4bit": false,
+        "adapter_path": null,
+        "resolved_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+      },
+      "metrics": {
+        "json_valid": 1.0,
+        "schema_valid": 0.5,
+        "exact_match": 0.5,
+        "field_accuracy": 0.5,
+        "examples": 4,
+        "mean_latency_seconds": 1.6978885102435015,
+        "generation_errors": 0,
+        "tool_answer_correct": 0.5
+      },
+      "predictions": [
+        {
+          "id": "source-test-load-port",
+          "question": "List orders loading at Tubarao.",
+          "expected": {
+            "action": "query",
+            "text_filters": {
+              "load_port": "Tubarao"
+            }
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"Tubarao\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.6433688749966677,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": true,
+          "field_accuracy": 1.0,
+          "action_correct": true,
+          "tool_result": {
+            "total_count": 1,
+            "records": [
+              {
+                "record_id": "orders-3c6e735dd36c66053277",
+                "source": {
+                  "file": "SMU_Order_data_TEST.xlsx",
+                  "sha256": "9ecaa4edc94bfcbbb9a83bbb0cdb223630d040848bf0547164621d6f996b1e1e",
+                  "sheet": "Order Results",
+                  "row": 2
+                },
+                "date_received": "2026-08-10T09:15:00",
+                "update_date": "2026-08-11T08:00:00",
+                "laycan_start": "2026-09-01",
+                "laycan_end": "2026-09-10",
+                "load_port": "Tubarao",
+                "discharge_port": "Qingdao",
+                "cargo_type": "IRON ORE",
+                "cargo_description": "Iron ore fines",
+                "load_zone": "East Coast South America",
+                "discharge_zone": "Far East",
+                "cargo_weight_min": 170000.0,
+                "cargo_weight_max": 180000.0
+              }
+            ],
+            "truncated": false,
+            "aggregation": null,
+            "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+            "as_of": "2026-09-01",
+            "conflicting_vessel_reports": []
+          },
+          "tool_signature": {
+            "total_count": 1,
+            "record_ids": [
+              "orders-3c6e735dd36c66053277"
+            ]
+          },
+          "tool_answer_correct": true
+        },
+        {
+          "id": "source-test-open",
+          "question": "List tonnage with commercial status OPEN.",
+          "expected": {
+            "action": "query",
+            "dataset": "tonnage",
+            "text_filters": {
+              "commercial_status": "OPEN"
+            }
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"sum_tonnes\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"status\": \"OPEN\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.6265490829828195,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\n  Value error, Unsupported filter field for dataset [type=value_error, input_value={'action': 'query', 'aggr...e, 'window_start': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+          "tool_answer_correct": false
+        },
+        {
+          "id": "source-test-empty",
+          "question": "List orders loading at NONEXISTENT TEST PORT.",
+          "expected": {
+            "action": "query",
+            "text_filters": {
+              "load_port": "NONEXISTENT TEST PORT"
+            }
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"NONEXISTENT TEST PORT\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.690890625002794,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": true,
+          "field_accuracy": 1.0,
+          "action_correct": true,
+          "tool_result": {
+            "total_count": 0,
+            "records": [],
+            "truncated": false,
+            "aggregation": null,
+            "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+            "as_of": "2026-09-01",
+            "conflicting_vessel_reports": []
+          },
+          "tool_signature": {
+            "total_count": 0,
+            "record_ids": []
+          },
+          "tool_answer_correct": true
+        },
+        {
+          "id": "source-test-match",
+          "question": "Screen vessels for order orders-3c6e735dd36c66053277.",
+          "expected": {
+            "action": "match",
+            "record_id": "orders-3c6e735dd36c66053277"
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"vessels\", \"limit\": 1, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": \"orders-3c6e735dd36c66053277\", \"text_filters\": {}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.8307454579917248,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\ndataset\n  Input should be 'orders' or 'tonnage' [type=literal_error, input_value='vessels', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error",
+          "tool_answer_correct": false
+        }
+      ]
+    },
+    "base_few": {
+      "model": {
+        "backend": "transformers",
+        "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "device": "mps",
+        "max_new_tokens": 512,
+        "max_input_tokens": 4096,
+        "seed": 483,
+        "quantize_4bit": false,
+        "adapter_path": null,
+        "resolved_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+      },
+      "metrics": {
+        "json_valid": 1.0,
+        "schema_valid": 0.5,
+        "exact_match": 0.5,
+        "field_accuracy": 0.5,
+        "examples": 4,
+        "mean_latency_seconds": 1.861036947753746,
+        "generation_errors": 0,
+        "tool_answer_correct": 0.5
+      },
+      "predictions": [
+        {
+          "id": "source-test-load-port",
+          "question": "List orders loading at Tubarao.",
+          "expected": {
+            "action": "query",
+            "text_filters": {
+              "load_port": "Tubarao"
+            }
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"Tubarao\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.7002044580003712,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": true,
+          "field_accuracy": 1.0,
+          "action_correct": true,
+          "tool_result": {
+            "total_count": 1,
+            "records": [
+              {
+                "record_id": "orders-3c6e735dd36c66053277",
+                "source": {
+                  "file": "SMU_Order_data_TEST.xlsx",
+                  "sha256": "9ecaa4edc94bfcbbb9a83bbb0cdb223630d040848bf0547164621d6f996b1e1e",
+                  "sheet": "Order Results",
+                  "row": 2
+                },
+                "date_received": "2026-08-10T09:15:00",
+                "update_date": "2026-08-11T08:00:00",
+                "laycan_start": "2026-09-01",
+                "laycan_end": "2026-09-10",
+                "load_port": "Tubarao",
+                "discharge_port": "Qingdao",
+                "cargo_type": "IRON ORE",
+                "cargo_description": "Iron ore fines",
+                "load_zone": "East Coast South America",
+                "discharge_zone": "Far East",
+                "cargo_weight_min": 170000.0,
+                "cargo_weight_max": 180000.0
+              }
+            ],
+            "truncated": false,
+            "aggregation": null,
+            "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+            "as_of": "2026-09-01",
+            "conflicting_vessel_reports": []
+          },
+          "tool_signature": {
+            "total_count": 1,
+            "record_ids": [
+              "orders-3c6e735dd36c66053277"
+            ]
+          },
+          "tool_answer_correct": true
+        },
+        {
+          "id": "source-test-open",
+          "question": "List tonnage with commercial status OPEN.",
+          "expected": {
+            "action": "query",
+            "dataset": "tonnage",
+            "text_filters": {
+              "commercial_status": "OPEN"
+            }
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"status\": \"OPEN\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.543922000011662,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\n  Value error, Unsupported filter field for dataset [type=value_error, input_value={'action': 'query', 'aggr...e, 'window_start': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+          "tool_answer_correct": false
+        },
+        {
+          "id": "source-test-empty",
+          "question": "List orders loading at NONEXISTENT TEST PORT.",
+          "expected": {
+            "action": "query",
+            "text_filters": {
+              "load_port": "NONEXISTENT TEST PORT"
+            }
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"NONEXISTENT TEST PORT\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.620445375010604,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": true,
+          "field_accuracy": 1.0,
+          "action_correct": true,
+          "tool_result": {
+            "total_count": 0,
+            "records": [],
+            "truncated": false,
+            "aggregation": null,
+            "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+            "as_of": "2026-09-01",
+            "conflicting_vessel_reports": []
+          },
+          "tool_signature": {
+            "total_count": 0,
+            "record_ids": []
+          },
+          "tool_answer_correct": true
+        },
+        {
+          "id": "source-test-match",
+          "question": "Screen vessels for order orders-3c6e735dd36c66053277.",
+          "expected": {
+            "action": "match",
+            "record_id": "orders-3c6e735dd36c66053277"
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"vessels\", \"limit\": 1, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": \"orders-3c6e735dd36c66053277\", \"text_filters\": {\"order_id\": \"orders-3c6e735dd36c66053277\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.579575957992347,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0,
+          "tool_error": "1 validation error for Intent\ndataset\n  Input should be 'orders' or 'tonnage' [type=literal_error, input_value='vessels', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error",
+          "tool_answer_correct": false
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Synthetic intent benchmark only; no freight ranking relevance labels.",
+    "Field accuracy includes default fields; exact-match rate is the primary strict metric.",
+    "Explanation grounding requires separate expert review."
+  ]
+}

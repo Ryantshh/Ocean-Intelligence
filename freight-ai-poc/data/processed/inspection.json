@@ -1,0 +1,253 @@
+{
+  "orders": {
+    "file": "SMU_Order_data_TEST.xlsx",
+    "sha256": "9ecaa4edc94bfcbbb9a83bbb0cdb223630d040848bf0547164621d6f996b1e1e",
+    "sheet": "Order Results",
+    "rows": 3,
+    "columns": [
+      {
+        "source": "Date Received",
+        "canonical": "date_received",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Update Date",
+        "canonical": "update_date",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Lay-Can Start",
+        "canonical": "laycan_start",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Lay-Can End",
+        "canonical": "laycan_end",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Load / Deli",
+        "canonical": "load_port",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Disc / Redel",
+        "canonical": "discharge_port",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Cargo Types",
+        "canonical": "cargo_type",
+        "nulls": 1,
+        "types": {
+          "str": 2,
+          "NoneType": 1
+        }
+      },
+      {
+        "source": "Cargo Desc.",
+        "canonical": "cargo_description",
+        "nulls": 1,
+        "types": {
+          "str": 2,
+          "NoneType": 1
+        }
+      },
+      {
+        "source": "Load Parent Zone",
+        "canonical": "load_zone",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Disc Parent Zone",
+        "canonical": "discharge_zone",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Cargo Weight Min",
+        "canonical": "cargo_weight_min",
+        "nulls": 1,
+        "types": {
+          "int": 2,
+          "NoneType": 1
+        }
+      },
+      {
+        "source": "Cargo Weight Max",
+        "canonical": "cargo_weight_max",
+        "nulls": 1,
+        "types": {
+          "int": 2,
+          "NoneType": 1
+        }
+      }
+    ],
+    "processed_sha256": "c8ebbf458ff2af21ebd23478568651d198ef22c113acad1d3f844fa3ce34946d",
+    "accepted": 3,
+    "rejected": []
+  },
+  "tonnage": {
+    "file": "SMU_Tonnage_data_TEST.xlsx",
+    "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+    "sheet": "Tonnage Results",
+    "rows": 3,
+    "columns": [
+      {
+        "source": "Date Received",
+        "canonical": "date_received",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "First Date Received",
+        "canonical": "first_date_received",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Vessel Name",
+        "canonical": "vessel_name",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "DWT Summer",
+        "canonical": "dwt",
+        "nulls": 0,
+        "types": {
+          "int": 3
+        }
+      },
+      {
+        "source": "Open Areas",
+        "canonical": "open_area",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Open Dates Start",
+        "canonical": "open_date_start",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Open Dates End",
+        "canonical": "open_date_end",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Update Date",
+        "canonical": "update_date",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "ETA Dates Start",
+        "canonical": "eta_date_start",
+        "nulls": 0,
+        "types": {
+          "datetime": 3
+        }
+      },
+      {
+        "source": "Parent Zone",
+        "canonical": "parent_zone",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Commercial Status",
+        "canonical": "commercial_status",
+        "nulls": 1,
+        "types": {
+          "str": 2,
+          "NoneType": 1
+        }
+      },
+      {
+        "source": "Ship Types",
+        "canonical": "ship_type",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Ship Sizes",
+        "canonical": "ship_size",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Status",
+        "canonical": "vessel_status",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Ballast/Laden",
+        "canonical": "ballast_laden",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      },
+      {
+        "source": "Destination",
+        "canonical": "destination",
+        "nulls": 0,
+        "types": {
+          "str": 3
+        }
+      }
+    ],
+    "processed_sha256": "e8cf8ceef61750157de8e79f69e50b742e7c713f10d2f65f1c68d9d1b5daf5ba",
+    "accepted": 3,
+    "rejected": []
+  }
+}

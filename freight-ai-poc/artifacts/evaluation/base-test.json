@@ -1,0 +1,1489 @@
+{
+  "split": "test",
+  "dataset_manifest": {
+    "generator": "synthetic_schema_behavior_v1",
+    "source_records_used": false,
+    "limitations": "Small synthetic intent corpus; not evidence of freight expertise or generalization.",
+    "splits": {
+      "train": {
+        "count": 66,
+        "sha256": "4761880805c8abc041efe244afc133e6170f1905073e9a2f6d0f72886e5157d7"
+      },
+      "validation": {
+        "count": 18,
+        "sha256": "db751c4e6a972f887e00c7bd87d8e93bd58cb4ea0bb647aaf8282a6b6141e248"
+      },
+      "test": {
+        "count": 18,
+        "sha256": "743670c5eeacad39b98b73b9c29c96601ce28ad1c5c06e409ac6a6e8e6ea35f7"
+      }
+    }
+  },
+  "held_out_ids": [
+    "test-0-0",
+    "test-0-1",
+    "test-0-2",
+    "test-0-3",
+    "test-1-0",
+    "test-1-1",
+    "test-1-2",
+    "test-1-3",
+    "test-2-0",
+    "test-2-1",
+    "test-2-2",
+    "test-2-3",
+    "test-3-0",
+    "test-3-1",
+    "test-3-2",
+    "test-3-3",
+    "test-4-0",
+    "test-5-0"
+  ],
+  "demonstration_ids": [
+    "train-0-0",
+    "train-1-0",
+    "train-2-0"
+  ],
+  "prompt_sha256": "e8b21906563c311f4140b69f3ff451d0f8df85f24cfeb9ee2be03a2e88eca396",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "runs": {
+    "base_zero": {
+      "model": {
+        "backend": "transformers",
+        "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "device": "cpu",
+        "max_new_tokens": 512,
+        "max_input_tokens": 4096,
+        "seed": 483,
+        "quantize_4bit": false,
+        "adapter_path": null,
+        "resolved_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+      },
+      "metrics": {
+        "json_valid": 0.1111111111111111,
+        "schema_valid": 0.05555555555555555,
+        "exact_match": 0.0,
+        "field_accuracy": 0.0303030303030303,
+        "examples": 18,
+        "mean_latency_seconds": 3.7280212547193514,
+        "generation_errors": 0
+      },
+      "predictions": [
+        {
+          "id": "test-0-0",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 900.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 900"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"clarification\": \"The cargo enquiries should include the load port.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 2000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"SYNTHETIC PORT 900\",\n  \"text_filters\": {\n    \"load_port\": \"SYNTHETIC PORT\"\n  }\n}\n```",
+          "error": null,
+          "latency_seconds": 3.3234751250129193,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-1",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 901.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 901"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"clarification\": \"The cargo enquiries should include the load port.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 2000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"SYNTHETIC PORT 901\",\n  \"text_filters\": {\n    \"load_port\": \"SYNTHETIC PORT 901\"\n  }\n}\n```",
+          "error": null,
+          "latency_seconds": 3.37752291598008,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-2",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 902.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 902"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"clarification\": \"The cargo enquiries should include the load port.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 1000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"SYNTHETIC PORT 902\",\n  \"text_filters\": {\n    \"load_port\": \"SYNTHETIC PORT\"\n  }\n}\n```",
+          "error": null,
+          "latency_seconds": 3.2874599999922793,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-3",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 903.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 903"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"clarification\": \"The cargo enquiries should include the load port.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 2000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"SYNTHETIC PORT 903\",\n  \"text_filters\": {\n    \"load_port\": \"SYNTHETIC PORT\"\n  }\n}\n```",
+          "error": null,
+          "latency_seconds": 3.3642102090234403,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-0",
+          "question": "I need the tonnage list restricted to DWT >= 90000 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90000.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"Restricting the tonnage list to DWT >= 90000 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 90000,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {\n    \"text_filters\": [\n      \"DWT >= 90000\"\n    ]\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.198075416992651,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-1",
+          "question": "I need the tonnage list restricted to DWT >= 90100 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90100.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"Restricting the tonnage list to DWT >= 90100 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 90100,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {\n    \"text_filters\": [\n      \"DWT >= 90100\"\n    ]\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.209794416994555,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-2",
+          "question": "I need the tonnage list restricted to DWT >= 90200 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90200.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"Restricting the tonnage list to DWT >= 90200 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 90200,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {\n    \"text_filters\": [\n      \"DWT >= 90200\"\n    ]\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.18951716698939,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-3",
+          "question": "I need the tonnage list restricted to DWT >= 90300 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90300.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"Restricting the tonnage list to DWT >= 90300 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 90300,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {\n    \"text_filters\": [\n      \"DWT >= 90300\"\n    ]\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.194266290985979,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-2-0",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 900.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 900"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\n  \"action\": \"clarify\",\n  \"clarification\": \"The order with the discharge port being 'SYNTHETIC PORT 900' should be clarified.\",\n  \"dataset\": \"orders\",\n  \"limit\": 1,\n  \"max_tonnes\": null,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {\n    \"SYNTHETIC PORT 900\": \"\"\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}",
+          "error": null,
+          "latency_seconds": 3.53097270798753,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-2-1",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 901.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 901"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\n  \"action\": \"clarify\",\n  \"clarification\": \"The order with the record ID 'SYNTHETIC PORT 901' has been clarified.\",\n  \"dataset\": \"orders\",\n  \"limit\": 1,\n  \"max_tonnes\": null,\n  \"min_tonnes\": null,\n  \"record_id\": \"SYNTHETIC PORT 901\",\n  \"text_filters\": {\n    \"discharge_port\": \"synthetic\"\n  }\n}",
+          "error": null,
+          "latency_seconds": 3.243058749998454,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.5454545454545454,
+          "action_correct": false
+        },
+        {
+          "id": "test-2-2",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 902.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 902"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"count\",\n  \"clarification\": \"The discharge port of SYNTHETIC PORT 902 does not appear in any orders.\",\n  \"dataset\": \"orders\",\n  \"limit\": 5,\n  \"max_tonnes\": null,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {},\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 3.317818500014255,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-2-3",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 903.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 903"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"count\",\n  \"clarification\": \"The discharge port of SYNTHETIC PORT 903 does not appear in any orders.\",\n  \"dataset\": \"orders\",\n  \"limit\": 5,\n  \"max_tonnes\": null,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {},\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 3.318052666989388,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-0",
+          "question": "For cargo order synthetic-order-900, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-900",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"summarize\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"The total tonnage of the cargo is 5000 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 10,\n  \"max_tonnes\": 5000,\n  \"min_tonnes\": null,\n  \"record_id\": \"synthetic-order-900\",\n  \"text_filters\": {\n    \"cargo_capacity\": \"DWT > 4000\"\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.127361292019486,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-1",
+          "question": "For cargo order synthetic-order-901, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-901",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"summarize\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"The total tonnage of the cargo is 5000 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 10,\n  \"max_tonnes\": 5000,\n  \"min_tonnes\": null,\n  \"record_id\": \"synthetic-order-901\",\n  \"text_filters\": {\n    \"cargo_capacity\": \"DWT > 4000\"\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.124037749978015,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-2",
+          "question": "For cargo order synthetic-order-902, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-902",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"summarize\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"The total tonnage of the cargo is 5000 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 10,\n  \"max_tonnes\": 5000,\n  \"min_tonnes\": null,\n  \"record_id\": \"synthetic-order-902\",\n  \"text_filters\": {\n    \"cargo_capacity\": \"DWT > 4000\"\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.127235374995507,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-3",
+          "question": "For cargo order synthetic-order-903, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-903",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"summarize\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"The total tonnage of the cargo is 5000 tonnes.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 10,\n  \"max_tonnes\": 5000,\n  \"min_tonnes\": null,\n  \"record_id\": \"synthetic-order-903\",\n  \"text_filters\": {\n    \"cargo_capacity\": \"DWT > 4000\"\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.133712541981367,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-4-0",
+          "question": "Define deadweight tonnage for me.",
+          "expected": {
+            "action": "qa",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"Deadweight tonnage is calculated by subtracting the net tonnage from the gross tonnage.\",\n  \"dataset\": \"tonnage\",\n  \"limit\": 5,\n  \"max_tonnes\": 2000000,\n  \"min_tonnes\": 0,\n  \"record_id\": \"deadweight_tonnage\",\n  \"text_filters\": {\n    \"text\": \"deadweight tonnage\"\n  },\n  \"window_end\": \"\",\n  \"window_start\": \"\"\n}\n```",
+          "error": null,
+          "latency_seconds": 4.041167167015374,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-5-0",
+          "question": "Filter the fleet by crane certification.",
+          "expected": {
+            "action": "clarify",
+            "aggregation": "none",
+            "clarification": "Crane certification is not available in the current schema. Which supported constraints should I use?",
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"clarification\": \"filter fleet by crane certification\",\n  \"dataset\": \"fleet\",\n  \"limit\": 5,\n  \"max_tonnes\": 20000,\n  \"min_tonnes\": 1000,\n  \"record_id\": \"crane_certification\",\n  \"text_filters\": {\n    \"text\": \"crane certification\"\n  }\n}\n```",
+          "error": null,
+          "latency_seconds": 2.9966442919976544,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        }
+      ]
+    },
+    "base_one": {
+      "model": {
+        "backend": "transformers",
+        "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "device": "cpu",
+        "max_new_tokens": 512,
+        "max_input_tokens": 4096,
+        "seed": 483,
+        "quantize_4bit": false,
+        "adapter_path": null,
+        "resolved_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+      },
+      "metrics": {
+        "json_valid": 1.0,
+        "schema_valid": 0.5,
+        "exact_match": 0.0,
+        "field_accuracy": 0.35858585858585856,
+        "examples": 18,
+        "mean_latency_seconds": 2.90218164371941,
+        "generation_errors": 0
+      },
+      "predictions": [
+        {
+          "id": "test-0-0",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 900.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 900"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"cargo_enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 900\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.880058332986664,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-1",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 901.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 901"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 901\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.877030333998846,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-2",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 902.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 902"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"cargo_enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 902\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.873889666981995,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-3",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 903.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 903"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"cargo_enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 903\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.905505542003084,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-0",
+          "question": "I need the tonnage list restricted to DWT >= 90000 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90000.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": 90000, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 100\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.9556601669755764,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.5454545454545454,
+          "action_correct": true
+        },
+        {
+          "id": "test-1-1",
+          "question": "I need the tonnage list restricted to DWT >= 90100 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90100.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": 90100, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 100\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.964124374993844,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.5454545454545454,
+          "action_correct": true
+        },
+        {
+          "id": "test-1-2",
+          "question": "I need the tonnage list restricted to DWT >= 90200 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90200.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": 90200, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 100\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.988104584015673,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.5454545454545454,
+          "action_correct": true
+        },
+        {
+          "id": "test-1-3",
+          "question": "I need the tonnage list restricted to DWT >= 90300 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90300.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": 90300, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 100\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.9768391249817796,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.5454545454545454,
+          "action_correct": true
+        },
+        {
+          "id": "test-2-0",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 900.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 900"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 900\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.8779864170064684,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.9090909090909091,
+          "action_correct": false
+        },
+        {
+          "id": "test-2-1",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 901.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 901"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 901\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.8451067080022767,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.9090909090909091,
+          "action_correct": false
+        },
+        {
+          "id": "test-2-2",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 902.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 902"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 902\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.8789361249946523,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.9090909090909091,
+          "action_correct": false
+        },
+        {
+          "id": "test-2-3",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 903.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 903"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 903\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.8514911250094883,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.9090909090909091,
+          "action_correct": false
+        },
+        {
+          "id": "test-3-0",
+          "question": "For cargo order synthetic-order-900, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-900",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"vessels\", \"limit\": 1, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": \"synthetic-order-900\", \"text_filters\": {\"load_order\": \"cargo order\", \"load_vessel\": \"synthetic-order-900\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.194970791984815,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-1",
+          "question": "For cargo order synthetic-order-901, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-901",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"vessels\", \"limit\": 1, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": \"synthetic-order-901\", \"text_filters\": {\"load_vessel\": \"true\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.8394150419917423,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-2",
+          "question": "For cargo order synthetic-order-902, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-902",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"vessels\", \"limit\": 1, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": \"synthetic-order-902\", \"text_filters\": {\"load_order\": \"cargo order\", \"load_vessel\": \"synthetic-order-902\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.2960408750222996,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-3",
+          "question": "For cargo order synthetic-order-903, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-903",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"vessels\", \"limit\": 1, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": \"synthetic-order-903\", \"text_filters\": {\"load_order\": \"cargo order\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.8996263340231963,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-4-0",
+          "question": "Define deadweight tonnage for me.",
+          "expected": {
+            "action": "qa",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"sum_tonnes\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 1, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.485492166975746,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.6363636363636364,
+          "action_correct": false
+        },
+        {
+          "id": "test-5-0",
+          "question": "Filter the fleet by crane certification.",
+          "expected": {
+            "action": "clarify",
+            "aggregation": "none",
+            "clarification": "Crane certification is not available in the current schema. Which supported constraints should I use?",
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"fleet\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"crane_certification\": \"yes\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.6489918750012293,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        }
+      ]
+    },
+    "base_few": {
+      "model": {
+        "backend": "transformers",
+        "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "device": "cpu",
+        "max_new_tokens": 512,
+        "max_input_tokens": 4096,
+        "seed": 483,
+        "quantize_4bit": false,
+        "adapter_path": null,
+        "resolved_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+      },
+      "metrics": {
+        "json_valid": 1.0,
+        "schema_valid": 0.2222222222222222,
+        "exact_match": 0.0,
+        "field_accuracy": 0.18181818181818182,
+        "examples": 18,
+        "mean_latency_seconds": 2.855724949106742,
+        "generation_errors": 0
+      },
+      "predictions": [
+        {
+          "id": "test-0-0",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 900.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 900"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"cargo_enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 900\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.0009574170107953,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-1",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 901.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 901"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"cargo_enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 901\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.0435318340023514,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-2",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 902.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 902"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"cargo_enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 902\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.042717000003904,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-0-3",
+          "question": "Return the cargo enquiries with load port SYNTHETIC PORT 903.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 903"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"cargo_enquiries\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 903\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.118456750002224,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-0",
+          "question": "I need the tonnage list restricted to DWT >= 90000 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90000.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 10, \"max_tonnes\": 90000.0, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 100\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.206856666976819,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-1",
+          "question": "I need the tonnage list restricted to DWT >= 90100 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90100.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 10, \"max_tonnes\": 90100.0, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 100\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.208382790995529,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-2",
+          "question": "I need the tonnage list restricted to DWT >= 90200 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90200.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 10, \"max_tonnes\": 90200.0, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"dwt\": \">=\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.0264200839737896,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-1-3",
+          "question": "I need the tonnage list restricted to DWT >= 90300 tonnes.",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "tonnage",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": 90300.0,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 10, \"max_tonnes\": 90300.0, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"dwt\": \">=\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.020728915988002,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-2-0",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 900.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 900"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"clarify\", \"clarification\": \"The orders that discharge from the port of SYNTHETIC PORT 900.\", \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 900\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.3190450420079287,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.8181818181818182,
+          "action_correct": false
+        },
+        {
+          "id": "test-2-1",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 901.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 901"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"clarify\", \"clarification\": \"The orders that discharge from the port of SYNTHETIC PORT 901.\", \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 901\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.4071762079838663,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.8181818181818182,
+          "action_correct": false
+        },
+        {
+          "id": "test-2-2",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 902.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 902"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"clarify\", \"clarification\": \"The orders that discharge from the port of SYNTHETIC PORT 902.\", \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 902\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.296354459016584,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.8181818181818182,
+          "action_correct": false
+        },
+        {
+          "id": "test-2-3",
+          "question": "Describe the orders whose discharge port is SYNTHETIC PORT 903.",
+          "expected": {
+            "action": "summarize",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "discharge_port": "SYNTHETIC PORT 903"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"clarify\", \"clarification\": \"The orders that discharge from the port of SYNTHETIC PORT 903.\", \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"discharge_port\": \"SYNTHETIC PORT 903\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 3.357964832975995,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.8181818181818182,
+          "action_correct": false
+        },
+        {
+          "id": "test-3-0",
+          "question": "For cargo order synthetic-order-900, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-900",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"screening\", \"dataset\": \"vessels\", \"limit\": 1, \"text_filters\": {\"order_id\": \"synthetic-order-900\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.9356023330183234,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-1",
+          "question": "For cargo order synthetic-order-901, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-901",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"screening\", \"dataset\": \"vessels\", \"limit\": 1, \"text_filters\": {\"order_id\": \"synthetic-order-901\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.965800624981057,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-2",
+          "question": "For cargo order synthetic-order-902, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-902",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"screening\", \"dataset\": \"vessels\", \"limit\": 1, \"text_filters\": {\"order_id\": \"synthetic-order-902\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.9862096249999013,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-3-3",
+          "question": "For cargo order synthetic-order-903, produce a vessel screening.",
+          "expected": {
+            "action": "match",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": "synthetic-order-903",
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"screening\", \"dataset\": \"vessels\", \"limit\": 1, \"text_filters\": {\"order_id\": \"synthetic-order-903\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.958547082991572,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-4-0",
+          "question": "Define deadweight tonnage for me.",
+          "expected": {
+            "action": "qa",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"tonnage\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"deadweight\": true}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.7192477919743396,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        },
+        {
+          "id": "test-5-0",
+          "question": "Filter the fleet by crane certification.",
+          "expected": {
+            "action": "clarify",
+            "aggregation": "none",
+            "clarification": "Crane certification is not available in the current schema. Which supported constraints should I use?",
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {},
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"fleet\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"crane_certification\": true}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 2.7890496250183787,
+          "json_valid": true,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Synthetic intent benchmark only; no freight ranking relevance labels.",
+    "Field accuracy includes default fields; exact-match rate is the primary strict metric.",
+    "Explanation grounding requires separate expert review."
+  ]
+}

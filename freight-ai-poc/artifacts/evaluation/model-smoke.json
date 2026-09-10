@@ -1,0 +1,136 @@
+{
+  "purpose": "Real base-model smoke; one validation example, not a quality benchmark",
+  "model": {
+    "backend": "transformers",
+    "device": "auto",
+    "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "revision": "main",
+    "max_new_tokens": 512,
+    "max_input_tokens": 4096,
+    "seed": 483,
+    "quantize_4bit": false,
+    "adapter_path": null,
+    "resolved_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+  },
+  "runs": {
+    "zero": {
+      "metrics": {
+        "json_valid": 0.0,
+        "schema_valid": 0.0,
+        "exact_match": 0.0,
+        "field_accuracy": 0.0,
+        "examples": 1,
+        "mean_latency_seconds": 4.836910916987108,
+        "generation_errors": 0
+      },
+      "predictions": [
+        {
+          "id": "validation-0-0",
+          "question": "Which cargo orders load in SYNTHETIC PORT 500?",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 500"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "```json\n{\n  \"action\": \"clarify\",\n  \"aggregation\": \"sum_tonnes\",\n  \"clarification\": \"The cargo orders that load at SYNTHETIC PORT 500 include items with a total tonnage of 2000 tonnes.\",\n  \"dataset\": \"orders\",\n  \"limit\": 1,\n  \"max_tonnes\": 2000,\n  \"min_tonnes\": null,\n  \"record_id\": null,\n  \"text_filters\": {\n    \"synthetic_port_500_loads\": \"true\"\n  },\n  \"window_end\": null,\n  \"window_start\": null\n}\n```",
+          "error": null,
+          "latency_seconds": 4.836910916987108,
+          "json_valid": false,
+          "schema_valid": false,
+          "exact_match": false,
+          "field_accuracy": 0.0
+        }
+      ]
+    },
+    "one": {
+      "metrics": {
+        "json_valid": 1.0,
+        "schema_valid": 1.0,
+        "exact_match": 0.0,
+        "field_accuracy": 0.9090909090909091,
+        "examples": 1,
+        "mean_latency_seconds": 1.9969232919975184,
+        "generation_errors": 0
+      },
+      "predictions": [
+        {
+          "id": "validation-0-0",
+          "question": "Which cargo orders load in SYNTHETIC PORT 500?",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 500"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"count\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 500\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.9969232919975184,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": false,
+          "field_accuracy": 0.9090909090909091,
+          "action_correct": true
+        }
+      ]
+    },
+    "few": {
+      "metrics": {
+        "json_valid": 1.0,
+        "schema_valid": 1.0,
+        "exact_match": 1.0,
+        "field_accuracy": 1.0,
+        "examples": 1,
+        "mean_latency_seconds": 1.9784422920201905,
+        "generation_errors": 0
+      },
+      "predictions": [
+        {
+          "id": "validation-0-0",
+          "question": "Which cargo orders load in SYNTHETIC PORT 500?",
+          "expected": {
+            "action": "query",
+            "aggregation": "none",
+            "clarification": null,
+            "dataset": "orders",
+            "limit": 10,
+            "max_tonnes": null,
+            "min_tonnes": null,
+            "record_id": null,
+            "text_filters": {
+              "load_port": "SYNTHETIC PORT 500"
+            },
+            "window_end": null,
+            "window_start": null
+          },
+          "raw": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"SYNTHETIC PORT 500\"}, \"window_end\": null, \"window_start\": null}",
+          "error": null,
+          "latency_seconds": 1.9784422920201905,
+          "json_valid": true,
+          "schema_valid": true,
+          "exact_match": true,
+          "field_accuracy": 1.0,
+          "action_correct": true
+        }
+      ]
+    }
+  }
+}

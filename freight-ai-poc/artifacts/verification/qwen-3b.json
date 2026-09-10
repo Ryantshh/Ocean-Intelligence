@@ -1,0 +1,72 @@
+{
+  "model_id": "Qwen/Qwen2.5-3B-Instruct",
+  "revision": "aa8e72537993ba99e69dfaafa59ed015b17504d1",
+  "local_path": "/Users/louishartawan/Documents/School/Y4S1/IS483/freight-ai-poc/artifacts/hf-cache/hub/models--Qwen--Qwen2.5-3B-Instruct/snapshots/aa8e72537993ba99e69dfaafa59ed015b17504d1",
+  "authority": "Hugging Face repository Git/LFS metadata via HTTPS; not a publisher signature",
+  "files": {
+    "config.json": {
+      "algorithm": "git-sha1",
+      "expected": "51b83fbd4e2d363b60235b9c8d494046a83c1cbf",
+      "actual": "51b83fbd4e2d363b60235b9c8d494046a83c1cbf",
+      "passed": true,
+      "bytes": 661
+    },
+    "generation_config.json": {
+      "algorithm": "git-sha1",
+      "expected": "bf077f03dc569cfb8a90b3ec1ad20365a620bad6",
+      "actual": "bf077f03dc569cfb8a90b3ec1ad20365a620bad6",
+      "passed": true,
+      "bytes": 242
+    },
+    "merges.txt": {
+      "algorithm": "git-sha1",
+      "expected": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+      "actual": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+      "passed": true,
+      "bytes": 1671839
+    },
+    "model-00001-of-00002.safetensors": {
+      "algorithm": "sha256",
+      "expected": "67347b23fb4165b652eb6611f5e1f2a06dfcddba8e909df1b2b0b1857bee06c2",
+      "actual": "67347b23fb4165b652eb6611f5e1f2a06dfcddba8e909df1b2b0b1857bee06c2",
+      "passed": true,
+      "bytes": 3968658944
+    },
+    "model-00002-of-00002.safetensors": {
+      "algorithm": "sha256",
+      "expected": "a40d941d0e7e0b966ad8b62bb6d6b7c88cce1299197b599d9d0a4ce59aabfc1d",
+      "actual": "a40d941d0e7e0b966ad8b62bb6d6b7c88cce1299197b599d9d0a4ce59aabfc1d",
+      "passed": true,
+      "bytes": 2203268048
+    },
+    "model.safetensors.index.json": {
+      "algorithm": "git-sha1",
+      "expected": "38047c6284a25427043f0ab040f623a2a20dd093",
+      "actual": "38047c6284a25427043f0ab040f623a2a20dd093",
+      "passed": true,
+      "bytes": 35581
+    },
+    "tokenizer.json": {
+      "algorithm": "git-sha1",
+      "expected": "443909a61d429dff23010e5bddd28ff530edda00",
+      "actual": "443909a61d429dff23010e5bddd28ff530edda00",
+      "passed": true,
+      "bytes": 7031645
+    },
+    "tokenizer_config.json": {
+      "algorithm": "git-sha1",
+      "expected": "07bfe0640cb5a0037f9322287fbfc682806cf672",
+      "actual": "07bfe0640cb5a0037f9322287fbfc682806cf672",
+      "passed": true,
+      "bytes": 7305
+    },
+    "vocab.json": {
+      "algorithm": "git-sha1",
+      "expected": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "actual": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "passed": true,
+      "bytes": 2776833
+    }
+  },
+  "passed": true
+}

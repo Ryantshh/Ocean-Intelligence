@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+data/processed/*.jsonl
+artifacts/adapters/*
+artifacts/checkpoints/*
+!**/.gitkeep
+artifacts/hf-cache/
+artifacts/streamlit.log

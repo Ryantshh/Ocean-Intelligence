@@ -1,0 +1,51 @@
+{
+  "intent": {
+    "action": "query",
+    "dataset": "orders",
+    "record_id": null,
+    "text_filters": {
+      "load_port": "Tubarao"
+    },
+    "min_tonnes": null,
+    "max_tonnes": null,
+    "window_start": null,
+    "window_end": null,
+    "aggregation": "none",
+    "limit": 10,
+    "clarification": null
+  },
+  "raw_intent": "{\"action\": \"query\", \"aggregation\": \"none\", \"clarification\": null, \"dataset\": \"orders\", \"limit\": 10, \"max_tonnes\": null, \"min_tonnes\": null, \"record_id\": null, \"text_filters\": {\"load_port\": \"Tubarao\"}, \"window_end\": null, \"window_start\": null}",
+  "tool_result": {
+    "total_count": 1,
+    "records": [
+      {
+        "record_id": "orders-3c6e735dd36c66053277",
+        "source": {
+          "file": "SMU_Order_data_TEST.xlsx",
+          "sha256": "9ecaa4edc94bfcbbb9a83bbb0cdb223630d040848bf0547164621d6f996b1e1e",
+          "sheet": "Order Results",
+          "row": 2
+        },
+        "date_received": "2026-08-10T09:15:00",
+        "update_date": "2026-08-11T08:00:00",
+        "laycan_start": "2026-09-01",
+        "laycan_end": "2026-09-10",
+        "load_port": "Tubarao",
+        "discharge_port": "Qingdao",
+        "cargo_type": "IRON ORE",
+        "cargo_description": "Iron ore fines",
+        "load_zone": "East Coast South America",
+        "discharge_zone": "Far East",
+        "cargo_weight_min": 170000.0,
+        "cargo_weight_max": 180000.0
+      }
+    ],
+    "truncated": false,
+    "aggregation": null,
+    "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+    "as_of": "2026-09-01",
+    "conflicting_vessel_reports": []
+  },
+  "explanation": "The deterministic query found 1 record(s).\n\nOrder orders-3c6e735dd36c66053277: Tubarao \u2192 Qingdao; cargo type: IRON ORE; offered quantity: 170000.0\u2013180000.0 metric tonnes; laycan: 2026-09-01 to 2026-09-10.",
+  "explanation_error": null
+}

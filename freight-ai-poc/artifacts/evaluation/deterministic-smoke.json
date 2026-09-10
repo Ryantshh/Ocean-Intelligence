@@ -1,0 +1,370 @@
+{
+  "mode": "deterministic_smoke_no_model",
+  "ingestion_counts": {
+    "orders": 3,
+    "tonnage": 3
+  },
+  "matches": [
+    {
+      "order_record_id": "orders-3c6e735dd36c66053277",
+      "as_of": "2026-09-01",
+      "candidates": [
+        {
+          "vessel_record_id": "tonnage-d83afc9939cd5cf28f2c",
+          "vessel_name": "TEST VESSEL ALPHA",
+          "status": "needs_review",
+          "score": 15.0,
+          "components": {
+            "capacity": null,
+            "window": 0.5,
+            "geography": 0.0
+          },
+          "exclusions": [],
+          "unknowns": [
+            "usable_cargo_capacity_unknown",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": 180000.0,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 2
+          },
+          "confirmed_match": false
+        }
+      ],
+      "candidate_count": 1,
+      "excluded": [
+        {
+          "vessel_record_id": "tonnage-22f7d84e6a35dc574558",
+          "vessel_name": "TEST VESSEL BRAVO",
+          "status": "excluded",
+          "score": 35.0,
+          "components": {
+            "capacity": null,
+            "window": 0.5,
+            "geography": 1.0
+          },
+          "exclusions": [
+            "cargo_exceeds_total_deadweight"
+          ],
+          "unknowns": [
+            "usable_cargo_capacity_unknown",
+            "commercial_status_unknown_or_unmapped"
+          ],
+          "required_tonnes": 180000.0,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 3
+          },
+          "confirmed_match": false
+        },
+        {
+          "vessel_record_id": "tonnage-b5f2d4f3545e58a3ad6d",
+          "vessel_name": "TEST VESSEL CHARLIE",
+          "status": "excluded",
+          "score": 0.0,
+          "components": {
+            "capacity": null,
+            "window": null,
+            "geography": 0.0
+          },
+          "exclusions": [
+            "cargo_exceeds_total_deadweight",
+            "commercial_status_blocked",
+            "no_remaining_window_overlap"
+          ],
+          "unknowns": [
+            "usable_cargo_capacity_unknown",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": 180000.0,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 4
+          },
+          "confirmed_match": false
+        }
+      ],
+      "vessel_snapshots_considered": 3,
+      "input_vessel_snapshots": 3,
+      "assumptions": {
+        "cargo_fraction": null,
+        "required_quantity": "max",
+        "require_same_zone": false,
+        "blocked_statuses": [
+          "FIXED",
+          "ON SUBS"
+        ],
+        "allowed_statuses": [
+          "OPEN"
+        ],
+        "max_report_age_days": null,
+        "weights": {
+          "capacity": 0.5,
+          "window": 0.3,
+          "geography": 0.2
+        },
+        "coordinates": {}
+      },
+      "limitations": [
+        "Provisional screening, never a confirmed fixture.",
+        "No sailing-time, draft, gear, cargo-compatibility or port restriction validation.",
+        "Missing score components contribute zero; scores are not probabilities.",
+        "Coordinates, when configured, provide straight-line distance only."
+      ]
+    },
+    {
+      "order_record_id": "orders-75913c37e068f3224588",
+      "as_of": "2026-09-01",
+      "candidates": [
+        {
+          "vessel_record_id": "tonnage-22f7d84e6a35dc574558",
+          "vessel_name": "TEST VESSEL BRAVO",
+          "status": "needs_review",
+          "score": 23.6364,
+          "components": {
+            "capacity": null,
+            "window": 0.45454545454545453,
+            "geography": 0.5
+          },
+          "exclusions": [],
+          "unknowns": [
+            "usable_cargo_capacity_unknown",
+            "commercial_status_unknown_or_unmapped",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": 66000.0,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 3
+          },
+          "confirmed_match": false
+        },
+        {
+          "vessel_record_id": "tonnage-d83afc9939cd5cf28f2c",
+          "vessel_name": "TEST VESSEL ALPHA",
+          "status": "needs_review",
+          "score": 5.4545,
+          "components": {
+            "capacity": null,
+            "window": 0.18181818181818182,
+            "geography": 0.0
+          },
+          "exclusions": [],
+          "unknowns": [
+            "usable_cargo_capacity_unknown",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": 66000.0,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 2
+          },
+          "confirmed_match": false
+        }
+      ],
+      "candidate_count": 2,
+      "excluded": [
+        {
+          "vessel_record_id": "tonnage-b5f2d4f3545e58a3ad6d",
+          "vessel_name": "TEST VESSEL CHARLIE",
+          "status": "excluded",
+          "score": 5.4545,
+          "components": {
+            "capacity": null,
+            "window": 0.18181818181818182,
+            "geography": 0.0
+          },
+          "exclusions": [
+            "cargo_exceeds_total_deadweight",
+            "commercial_status_blocked"
+          ],
+          "unknowns": [
+            "usable_cargo_capacity_unknown",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": 66000.0,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 4
+          },
+          "confirmed_match": false
+        }
+      ],
+      "vessel_snapshots_considered": 3,
+      "input_vessel_snapshots": 3,
+      "assumptions": {
+        "cargo_fraction": null,
+        "required_quantity": "max",
+        "require_same_zone": false,
+        "blocked_statuses": [
+          "FIXED",
+          "ON SUBS"
+        ],
+        "allowed_statuses": [
+          "OPEN"
+        ],
+        "max_report_age_days": null,
+        "weights": {
+          "capacity": 0.5,
+          "window": 0.3,
+          "geography": 0.2
+        },
+        "coordinates": {}
+      },
+      "limitations": [
+        "Provisional screening, never a confirmed fixture.",
+        "No sailing-time, draft, gear, cargo-compatibility or port restriction validation.",
+        "Missing score components contribute zero; scores are not probabilities.",
+        "Coordinates, when configured, provide straight-line distance only."
+      ]
+    },
+    {
+      "order_record_id": "orders-8a892e01ca7411fc31d8",
+      "as_of": "2026-09-01",
+      "candidates": [],
+      "candidate_count": 0,
+      "excluded": [
+        {
+          "vessel_record_id": "tonnage-22f7d84e6a35dc574558",
+          "vessel_name": "TEST VESSEL BRAVO",
+          "status": "excluded",
+          "score": 0.0,
+          "components": {
+            "capacity": null,
+            "window": null,
+            "geography": 0.0
+          },
+          "exclusions": [
+            "no_remaining_window_overlap"
+          ],
+          "unknowns": [
+            "required_cargo_quantity_unknown",
+            "usable_cargo_capacity_unknown",
+            "commercial_status_unknown_or_unmapped",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": null,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 3
+          },
+          "confirmed_match": false
+        },
+        {
+          "vessel_record_id": "tonnage-b5f2d4f3545e58a3ad6d",
+          "vessel_name": "TEST VESSEL CHARLIE",
+          "status": "excluded",
+          "score": 16.6667,
+          "components": {
+            "capacity": null,
+            "window": 0.5555555555555556,
+            "geography": 0.0
+          },
+          "exclusions": [
+            "commercial_status_blocked"
+          ],
+          "unknowns": [
+            "required_cargo_quantity_unknown",
+            "usable_cargo_capacity_unknown",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": null,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 4
+          },
+          "confirmed_match": false
+        },
+        {
+          "vessel_record_id": "tonnage-d83afc9939cd5cf28f2c",
+          "vessel_name": "TEST VESSEL ALPHA",
+          "status": "excluded",
+          "score": 0.0,
+          "components": {
+            "capacity": null,
+            "window": null,
+            "geography": 0.0
+          },
+          "exclusions": [
+            "no_remaining_window_overlap"
+          ],
+          "unknowns": [
+            "required_cargo_quantity_unknown",
+            "usable_cargo_capacity_unknown",
+            "sea_route_and_arrival_feasibility_unverified"
+          ],
+          "required_tonnes": null,
+          "assumed_capacity_tonnes": null,
+          "straight_line_distance_nm": null,
+          "source": {
+            "file": "SMU_Tonnage_data_TEST.xlsx",
+            "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+            "sheet": "Tonnage Results",
+            "row": 2
+          },
+          "confirmed_match": false
+        }
+      ],
+      "vessel_snapshots_considered": 3,
+      "input_vessel_snapshots": 3,
+      "assumptions": {
+        "cargo_fraction": null,
+        "required_quantity": "max",
+        "require_same_zone": false,
+        "blocked_statuses": [
+          "FIXED",
+          "ON SUBS"
+        ],
+        "allowed_statuses": [
+          "OPEN"
+        ],
+        "max_report_age_days": null,
+        "weights": {
+          "capacity": 0.5,
+          "window": 0.3,
+          "geography": 0.2
+        },
+        "coordinates": {}
+      },
+      "limitations": [
+        "Provisional screening, never a confirmed fixture.",
+        "No sailing-time, draft, gear, cargo-compatibility or port restriction validation.",
+        "Missing score components contribute zero; scores are not probabilities.",
+        "Coordinates, when configured, provide straight-line distance only."
+      ]
+    }
+  ]
+}

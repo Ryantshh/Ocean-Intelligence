@@ -1,0 +1,58 @@
+{
+  "model_id": "Qwen/Qwen2.5-1.5B-Instruct",
+  "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "local_path": "/Users/louishartawan/Documents/School/Y4S1/IS483/freight-ai-poc/artifacts/hf-cache/hub/models--Qwen--Qwen2.5-1.5B-Instruct/snapshots/989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "authority": "Hugging Face repository Git/LFS metadata via HTTPS; not a publisher signature",
+  "files": {
+    "config.json": {
+      "algorithm": "git-sha1",
+      "expected": "f81ead14ab072d65a07817f83a3ee0e5a1890d10",
+      "actual": "f81ead14ab072d65a07817f83a3ee0e5a1890d10",
+      "passed": true,
+      "bytes": 660
+    },
+    "generation_config.json": {
+      "algorithm": "git-sha1",
+      "expected": "dfc11073787daf1b0f9c0f1499487ab5f4c93738",
+      "actual": "dfc11073787daf1b0f9c0f1499487ab5f4c93738",
+      "passed": true,
+      "bytes": 242
+    },
+    "merges.txt": {
+      "algorithm": "git-sha1",
+      "expected": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+      "actual": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+      "passed": true,
+      "bytes": 1671839
+    },
+    "model.safetensors": {
+      "algorithm": "sha256",
+      "expected": "dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee",
+      "actual": "dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee",
+      "passed": true,
+      "bytes": 3087467144
+    },
+    "tokenizer.json": {
+      "algorithm": "git-sha1",
+      "expected": "443909a61d429dff23010e5bddd28ff530edda00",
+      "actual": "443909a61d429dff23010e5bddd28ff530edda00",
+      "passed": true,
+      "bytes": 7031645
+    },
+    "tokenizer_config.json": {
+      "algorithm": "git-sha1",
+      "expected": "07bfe0640cb5a0037f9322287fbfc682806cf672",
+      "actual": "07bfe0640cb5a0037f9322287fbfc682806cf672",
+      "passed": true,
+      "bytes": 7305
+    },
+    "vocab.json": {
+      "algorithm": "git-sha1",
+      "expected": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "actual": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "passed": true,
+      "bytes": 2776833
+    }
+  },
+  "passed": true
+}

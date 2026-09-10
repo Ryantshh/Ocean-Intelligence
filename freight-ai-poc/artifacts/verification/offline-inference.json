@@ -1,0 +1,1 @@
+{"local_model_load_and_generation": "passed", "answer": "DWT stands for Discrete Wavelet Transform, which is a type of wavelet transform used to decompose signals into different frequency components, allowing for the analysis", "scope": "Inference process only; browser and Streamlit network isolation not covered"}
