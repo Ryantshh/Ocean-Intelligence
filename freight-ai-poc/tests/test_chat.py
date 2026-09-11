@@ -110,3 +110,58 @@ def test_common_matching_question_bypasses_route_model(tmp_path):
     assert result["kind"] == "data"
     assert result["intent"]["action"] == "match"
     assert result["tool_result"]["candidate_count"] == 1
+
+
+def test_percentage_persists_across_order_change_and_resets(tmp_path):
+    cfg = config(tmp_path)
+    first = respond(
+        FakeBackend(), "Screen the Tubarao order at 90% of DWT.", cfg, date(2026, 9, 1)
+    )
+    second = respond(
+        FakeBackend(),
+        "Now screen the Santos order.",
+        cfg,
+        date(2026, 9, 1),
+        conversation_state=first["conversation_state"],
+    )
+    assert second["conversation_state"]["cargo_fraction"] == 0.9
+    for row in second["tool_result"]["candidates"] + second["tool_result"]["excluded"]:
+        if row["assumed_capacity_tonnes"] is not None:
+            from freight_ai.service import current_records
+
+            vessel = next(
+                v
+                for v in current_records(cfg)["tonnage"]
+                if v.record_id == row["vessel_record_id"]
+            )
+            assert row["assumed_capacity_tonnes"] == vessel.dwt * 0.9
+    assert "90%" in second["content"]
+    reset = respond(
+        FakeBackend(),
+        "Reset the capacity assumption.",
+        cfg,
+        date(2026, 9, 1),
+        conversation_state=second["conversation_state"],
+    )
+    assert not reset["conversation_state"]["fraction_overridden"]
+    invalid = respond(
+        FakeBackend(),
+        "Use 120% of DWT.",
+        cfg,
+        date(2026, 9, 1),
+        conversation_state=second["conversation_state"],
+    )
+    assert invalid["kind"] == "clarification"
+    assert invalid["conversation_state"]["cargo_fraction"] == 0.9
+
+
+def test_negative_and_fractional_percentages():
+    import pytest
+    from freight_ai.inference.conversation import ConversationState
+
+    with pytest.raises(ValueError):
+        ConversationState().updated_assumption("Use -5% of DWT")
+    assert (
+        ConversationState().updated_assumption("Use 92.5% of DWT").cargo_fraction
+        == 0.925
+    )

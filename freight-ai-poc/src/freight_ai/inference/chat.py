@@ -313,7 +313,7 @@ def data_answer(result, intent, records):
     return "\n\n".join(lines)
 
 
-def respond(
+def _respond(
     backend,
     question,
     config,
@@ -497,9 +497,6 @@ def respond(
         if intent.action == "qa":
             raise ValueError("The record request was interpreted as a general question")
         matching_settings = dict(config["matching"])
-        fraction = re.search(r"(\d+(?:\.\d+)?)\s*%", question)
-        if fraction and intent.action == "match":
-            matching_settings["cargo_fraction"] = float(fraction[1]) / 100
         result = execute(intent, records, MatchingConfig(**matching_settings), as_of)
     except ValueError as exc:
         return {
@@ -515,3 +512,96 @@ def respond(
         "basis": f"Checked against the supplied Order and Tonnage workbooks as of {display(as_of)}.",
         "diagnostics": {"route_raw": route_raw, "raw_intent": raw},
     }
+
+
+def respond(
+    backend,
+    question,
+    config,
+    as_of,
+    history=(),
+    previous_intent=None,
+    strategy="few",
+    demonstrations=(),
+    conversation_state=None,
+):
+    from copy import deepcopy
+
+    from .conversation import ConversationState
+
+    state = ConversationState.model_validate(
+        conversation_state or {"previous_intent": previous_intent}
+    )
+    try:
+        updated = state.updated_assumption(question)
+    except ValueError as exc:
+        return {
+            "kind": "clarification",
+            "content": str(exc),
+            "conversation_state": state.model_dump(mode="json"),
+        }
+    effective = deepcopy(config)
+    if updated.fraction_overridden:
+        effective["matching"]["cargo_fraction"] = updated.cargo_fraction
+    prior = (
+        updated.previous_intent.model_dump(mode="json")
+        if updated.previous_intent
+        else previous_intent
+    )
+    text = question.casefold()
+    reset = bool(
+        re.search(
+            r"\b(reset|clear|remove)\b.*\b(assumption|allowance|percentage|cargo fraction)\b",
+            text,
+        )
+    )
+    if re.search(
+        r"what.*assumption.*(?:using|active)|what.*(?:percentage|allowance).*using",
+        text,
+    ):
+        description = (
+            f"{updated.cargo_fraction:.1%} of DWT for cargo"
+            if updated.fraction_overridden
+            else "the sidebar's configured capacity setting"
+        )
+        return {
+            "kind": "data",
+            "content": f"The active capacity assumption is {description}.",
+            "conversation_state": updated.model_dump(mode="json"),
+        }
+    if (
+        updated.fraction_overridden
+        and not prior
+        and re.match(r"(?:actually )?(?:use|assume|set)\b", text)
+    ):
+        return {
+            "kind": "data",
+            "content": f"I will use {updated.cargo_fraction:.1%} of DWT for cargo in subsequent screening. Which cargo order should I screen?",
+            "conversation_state": updated.model_dump(mode="json"),
+        }
+    if reset:
+        return {
+            "kind": "data",
+            "content": "The conversation capacity assumption is cleared. Future screening uses the sidebar settings.",
+            "conversation_state": updated.model_dump(mode="json"),
+        }
+    if (
+        re.search(r"\d+(?:\.\d+)?\s*%", question)
+        and prior
+        and prior.get("action") == "match"
+        and not re.search(r"\b(fit|screen|match|excluded)\b", text)
+    ):
+        question = "Screen the previous order. " + question
+    answer = _respond(
+        backend, question, effective, as_of, history, prior, strategy, demonstrations
+    )
+    if answer.get("intent"):
+        updated.previous_intent = Intent.model_validate(answer["intent"])
+    if updated.fraction_overridden and "candidate_count" in answer.get(
+        "tool_result", {}
+    ):
+        answer["content"] += (
+            f"\n\n**Active conversation assumption:** {updated.cargo_fraction:.0%} of DWT for cargo. This stays active until you reset the assumption or start a new conversation."
+        )
+    answer["conversation_state"] = updated.model_dump(mode="json")
+    return answer

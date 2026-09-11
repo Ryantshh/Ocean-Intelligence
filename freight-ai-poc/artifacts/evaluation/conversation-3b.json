@@ -1,0 +1,676 @@
+{
+  "scope": "Development cases, not blind or expert-reviewed; rules and model both contribute",
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "results": [
+    {
+      "question": "Find ships open at Singapore.",
+      "response": {
+        "content": "I found **1 matching vessel report** in the supplied records, based on information available by **01 Sep 2026**.\n\n**Search applied:** Search vessels; Open location: Singapore.\n\n### 1. TEST VESSEL ALPHA\n\nThis is reported as a **Bulk Carrier**, in the **Capesize** category, with **180,000 metric tonnes of deadweight**. Deadweight includes fuel and stores, so it does not establish the amount of cargo the ship can actually load.\n\nThe reported open location is **Singapore**, with an availability window of **02 Sep 2026 to 06 Sep 2026**. Commercial status is **OPEN**. The reported voyage condition is **BALLAST**.\n\nThe reported destination is **QINGDAO**, and the earliest reported ETA is **01 Sep 2026**. This ETA describes the reported destination; it does not verify arrival at a cargo's loading port.\n\nSource: SMU_Tonnage_data_TEST.xlsx, worksheet \u201cTonnage Results\u201d, row 2. Report received: 10 Aug 2026. These are report details, not evidence of completed loading or sailing.\n\nIf you want, you can ask me to narrow this down by port, date, vessel or quantity, or to screen the vessels against a specific cargo order.",
+        "kind": "data",
+        "intent": {
+          "action": "query",
+          "dataset": "tonnage",
+          "record_id": null,
+          "text_filters": {
+            "open_area": "Singapore"
+          },
+          "min_tonnes": null,
+          "max_tonnes": null,
+          "window_start": null,
+          "window_end": null,
+          "aggregation": "none",
+          "limit": 10,
+          "clarification": null
+        },
+        "tool_result": {
+          "total_count": 1,
+          "records": [
+            {
+              "record_id": "tonnage-d83afc9939cd5cf28f2c",
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 2
+              },
+              "date_received": "2026-08-10T09:00:00",
+              "update_date": "2026-08-11T08:00:00",
+              "vessel_name": "TEST VESSEL ALPHA",
+              "first_date_received": "2026-08-08T07:00:00",
+              "dwt": 180000.0,
+              "open_area": "Singapore",
+              "open_date_start": "2026-09-02",
+              "open_date_end": "2026-09-06",
+              "eta_date_start": "2026-09-01",
+              "parent_zone": "SE Asia",
+              "commercial_status": "OPEN",
+              "ship_type": "Bulk Carrier",
+              "ship_size": "Capesize",
+              "vessel_status": "Under way using its engine",
+              "ballast_laden": "BALLAST",
+              "destination": "QINGDAO"
+            }
+          ],
+          "truncated": false,
+          "aggregation": null,
+          "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+          "as_of": "2026-09-01",
+          "conflicting_vessel_reports": []
+        },
+        "basis": "Checked against the supplied Order and Tonnage workbooks as of 01 Sep 2026.",
+        "diagnostics": {
+          "route_raw": null,
+          "raw_intent": "deterministic business-question parser"
+        }
+      },
+      "seconds": 0.0035209580091759562
+    },
+    {
+      "question": "Show orders discharging at Rotterdam.",
+      "response": {
+        "content": "I found **1 matching cargo order** in the supplied records, based on information available by **01 Sep 2026**.\n\n**Search applied:** Search cargo orders; Discharge port: Rotterdam.\n\n### 1. Santos \u2192 Rotterdam\n\nThe cargo type is **SOYBEANS**. The description supplied is **Soybeans in bulk**. The offered quantity ranges from **60,000 to 66,000 metric tonnes**.\n\nThe loading window runs from **05 Sep 2026 to 15 Sep 2026**. The reported load region is East Coast South America and the discharge region is Continent.\n\nSource: SMU_Order_data_TEST.xlsx, worksheet \u201cOrder Results\u201d, row 3. Report received: 10 Aug 2026. These are report details, not evidence of completed loading or sailing.\n\nIf you want, you can ask me to narrow this down by port, date, vessel or quantity, or to screen the vessels against a specific cargo order.",
+        "kind": "data",
+        "intent": {
+          "action": "query",
+          "dataset": "orders",
+          "record_id": null,
+          "text_filters": {
+            "discharge_port": "Rotterdam"
+          },
+          "min_tonnes": null,
+          "max_tonnes": null,
+          "window_start": null,
+          "window_end": null,
+          "aggregation": "none",
+          "limit": 10,
+          "clarification": null
+        },
+        "tool_result": {
+          "total_count": 1,
+          "records": [
+            {
+              "record_id": "orders-75913c37e068f3224588",
+              "source": {
+                "file": "SMU_Order_data_TEST.xlsx",
+                "sha256": "9ecaa4edc94bfcbbb9a83bbb0cdb223630d040848bf0547164621d6f996b1e1e",
+                "sheet": "Order Results",
+                "row": 3
+              },
+              "date_received": "2026-08-10T10:02:00",
+              "update_date": "2026-08-11T08:05:00",
+              "laycan_start": "2026-09-05",
+              "laycan_end": "2026-09-15",
+              "load_port": "Santos",
+              "discharge_port": "Rotterdam",
+              "cargo_type": "SOYBEANS",
+              "cargo_description": "Soybeans in bulk",
+              "load_zone": "East Coast South America",
+              "discharge_zone": "Continent",
+              "cargo_weight_min": 60000.0,
+              "cargo_weight_max": 66000.0
+            }
+          ],
+          "truncated": false,
+          "aggregation": null,
+          "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+          "as_of": "2026-09-01",
+          "conflicting_vessel_reports": []
+        },
+        "basis": "Checked against the supplied Order and Tonnage workbooks as of 01 Sep 2026.",
+        "diagnostics": {
+          "route_raw": null,
+          "raw_intent": "deterministic business-question parser"
+        }
+      },
+      "seconds": 0.0019429579842835665
+    },
+    {
+      "question": "List vessels with at least 175,000 tonnes DWT.",
+      "response": {
+        "content": "I found **1 matching vessel report** in the supplied records, based on information available by **01 Sep 2026**.\n\n**Search applied:** Search vessels; Minimum quantity: 175,000 tonnes.\n\n### 1. TEST VESSEL ALPHA\n\nThis is reported as a **Bulk Carrier**, in the **Capesize** category, with **180,000 metric tonnes of deadweight**. Deadweight includes fuel and stores, so it does not establish the amount of cargo the ship can actually load.\n\nThe reported open location is **Singapore**, with an availability window of **02 Sep 2026 to 06 Sep 2026**. Commercial status is **OPEN**. The reported voyage condition is **BALLAST**.\n\nThe reported destination is **QINGDAO**, and the earliest reported ETA is **01 Sep 2026**. This ETA describes the reported destination; it does not verify arrival at a cargo's loading port.\n\nSource: SMU_Tonnage_data_TEST.xlsx, worksheet \u201cTonnage Results\u201d, row 2. Report received: 10 Aug 2026. These are report details, not evidence of completed loading or sailing.\n\nIf you want, you can ask me to narrow this down by port, date, vessel or quantity, or to screen the vessels against a specific cargo order.",
+        "kind": "data",
+        "intent": {
+          "action": "query",
+          "dataset": "tonnage",
+          "record_id": null,
+          "text_filters": {},
+          "min_tonnes": 175000.0,
+          "max_tonnes": null,
+          "window_start": null,
+          "window_end": null,
+          "aggregation": "none",
+          "limit": 10,
+          "clarification": null
+        },
+        "tool_result": {
+          "total_count": 1,
+          "records": [
+            {
+              "record_id": "tonnage-d83afc9939cd5cf28f2c",
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 2
+              },
+              "date_received": "2026-08-10T09:00:00",
+              "update_date": "2026-08-11T08:00:00",
+              "vessel_name": "TEST VESSEL ALPHA",
+              "first_date_received": "2026-08-08T07:00:00",
+              "dwt": 180000.0,
+              "open_area": "Singapore",
+              "open_date_start": "2026-09-02",
+              "open_date_end": "2026-09-06",
+              "eta_date_start": "2026-09-01",
+              "parent_zone": "SE Asia",
+              "commercial_status": "OPEN",
+              "ship_type": "Bulk Carrier",
+              "ship_size": "Capesize",
+              "vessel_status": "Under way using its engine",
+              "ballast_laden": "BALLAST",
+              "destination": "QINGDAO"
+            }
+          ],
+          "truncated": false,
+          "aggregation": null,
+          "missing_policy": "Missing constrained values excluded; records are snapshots, not unique business orders.",
+          "as_of": "2026-09-01",
+          "conflicting_vessel_reports": []
+        },
+        "basis": "Checked against the supplied Order and Tonnage workbooks as of 01 Sep 2026.",
+        "diagnostics": {
+          "route_raw": null,
+          "raw_intent": "deterministic business-question parser"
+        }
+      },
+      "seconds": 0.0014166670152917504
+    },
+    {
+      "question": "Screen the cargo from Tubarao to Qingdao.",
+      "response": {
+        "content": "Here is the preliminary view for the **IRON ORE order from Tubarao to Qingdao**, based on the latest information available by **01 Sep 2026**.\n\nThe offered cargo is **170,000\u2013180,000 metric tonnes**, with a loading window of **01 Sep 2026 to 10 Sep 2026**. Missing quantities have not been estimated.\n\n**Screening outcome:** 1 vessel(s) remain for consideration and 2 are excluded. These are preliminary screening results, not confirmed fixtures.\n\n### TEST VESSEL ALPHA \u2014 needs further review\n\n- Usable cargo capacity has not been confirmed.\n- Arrival at the load port has not been verified.\n\nThe provisional screening score is **15.0/100**. This is a comparison score under the selected rules, not the probability of a successful shipment.\n\n### TEST VESSEL BRAVO \u2014 excluded\n\n- Cargo quantity exceeds the vessel's total deadweight.\n- Usable cargo capacity has not been confirmed.\n- Commercial availability needs confirmation.\n\n### TEST VESSEL CHARLIE \u2014 excluded\n\n- Cargo quantity exceeds the vessel's total deadweight.\n- Commercial status is excluded under the screening rules.\n- The remaining availability and loading windows do not overlap.\n- Usable cargo capacity has not been confirmed.\n- Arrival at the load port has not been verified.\n\n### What to confirm before proceeding\nConfirm usable cargo capacity, commercial availability and arrival at the load port. Sailing time, draft, cargo compatibility, vessel gear and port restrictions have not been verified by this screening. A date-window overlap alone does not establish voyage feasibility.",
+        "kind": "data",
+        "intent": {
+          "action": "match",
+          "dataset": "orders",
+          "record_id": "orders-3c6e735dd36c66053277",
+          "text_filters": {},
+          "min_tonnes": null,
+          "max_tonnes": null,
+          "window_start": null,
+          "window_end": null,
+          "aggregation": "none",
+          "limit": 10,
+          "clarification": null
+        },
+        "tool_result": {
+          "order_record_id": "orders-3c6e735dd36c66053277",
+          "as_of": "2026-09-01",
+          "candidates": [
+            {
+              "vessel_record_id": "tonnage-d83afc9939cd5cf28f2c",
+              "vessel_name": "TEST VESSEL ALPHA",
+              "status": "needs_review",
+              "score": 15.0,
+              "components": {
+                "capacity": null,
+                "window": 0.5,
+                "geography": 0.0
+              },
+              "exclusions": [],
+              "unknowns": [
+                "usable_cargo_capacity_unknown",
+                "sea_route_and_arrival_feasibility_unverified"
+              ],
+              "required_tonnes": 180000.0,
+              "assumed_capacity_tonnes": null,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 2
+              },
+              "confirmed_match": false
+            }
+          ],
+          "candidate_count": 1,
+          "excluded": [
+            {
+              "vessel_record_id": "tonnage-22f7d84e6a35dc574558",
+              "vessel_name": "TEST VESSEL BRAVO",
+              "status": "excluded",
+              "score": 35.0,
+              "components": {
+                "capacity": null,
+                "window": 0.5,
+                "geography": 1.0
+              },
+              "exclusions": [
+                "cargo_exceeds_total_deadweight"
+              ],
+              "unknowns": [
+                "usable_cargo_capacity_unknown",
+                "commercial_status_unknown_or_unmapped"
+              ],
+              "required_tonnes": 180000.0,
+              "assumed_capacity_tonnes": null,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 3
+              },
+              "confirmed_match": false
+            },
+            {
+              "vessel_record_id": "tonnage-b5f2d4f3545e58a3ad6d",
+              "vessel_name": "TEST VESSEL CHARLIE",
+              "status": "excluded",
+              "score": 0.0,
+              "components": {
+                "capacity": null,
+                "window": null,
+                "geography": 0.0
+              },
+              "exclusions": [
+                "cargo_exceeds_total_deadweight",
+                "commercial_status_blocked",
+                "no_remaining_window_overlap"
+              ],
+              "unknowns": [
+                "usable_cargo_capacity_unknown",
+                "sea_route_and_arrival_feasibility_unverified"
+              ],
+              "required_tonnes": 180000.0,
+              "assumed_capacity_tonnes": null,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 4
+              },
+              "confirmed_match": false
+            }
+          ],
+          "vessel_snapshots_considered": 3,
+          "input_vessel_snapshots": 3,
+          "assumptions": {
+            "cargo_fraction": null,
+            "required_quantity": "max",
+            "require_same_zone": false,
+            "blocked_statuses": [
+              "FIXED",
+              "ON SUBS"
+            ],
+            "allowed_statuses": [
+              "OPEN"
+            ],
+            "max_report_age_days": null,
+            "weights": {
+              "capacity": 0.5,
+              "window": 0.3,
+              "geography": 0.2
+            },
+            "coordinates": {}
+          },
+          "limitations": [
+            "Provisional screening, never a confirmed fixture.",
+            "No sailing-time, draft, gear, cargo-compatibility or port restriction validation.",
+            "Missing score components contribute zero; scores are not probabilities.",
+            "Coordinates, when configured, provide straight-line distance only."
+          ]
+        },
+        "basis": "Checked against the supplied Order and Tonnage workbooks as of 01 Sep 2026.",
+        "diagnostics": {
+          "route_raw": null,
+          "raw_intent": "deterministic business-question parser"
+        }
+      },
+      "seconds": 0.0013346250052563846
+    },
+    {
+      "question": "Would it fit at 90% of DWT?",
+      "response": {
+        "content": "Here is the preliminary view for the **IRON ORE order from Tubarao to Qingdao**, based on the latest information available by **01 Sep 2026**.\n\nThe offered cargo is **170,000\u2013180,000 metric tonnes**, with a loading window of **01 Sep 2026 to 10 Sep 2026**. Missing quantities have not been estimated.\n\n**Screening outcome:** 0 vessel(s) remain for consideration and 3 are excluded. These are preliminary screening results, not confirmed fixtures.\n\n### TEST VESSEL BRAVO \u2014 excluded\n\n- Cargo quantity exceeds the vessel's total deadweight.\n- Cargo quantity exceeds capacity under the selected allowance.\n- Commercial availability needs confirmation.\n\nUnder the selected cargo allowance, assumed capacity is 73,800 tonnes against a required quantity of 180,000 tonnes.\n\n### TEST VESSEL CHARLIE \u2014 excluded\n\n- Cargo quantity exceeds the vessel's total deadweight.\n- Cargo quantity exceeds capacity under the selected allowance.\n- Commercial status is excluded under the screening rules.\n- The remaining availability and loading windows do not overlap.\n- Arrival at the load port has not been verified.\n\nUnder the selected cargo allowance, assumed capacity is 56,700 tonnes against a required quantity of 180,000 tonnes.\n\n### TEST VESSEL ALPHA \u2014 excluded\n\n- Cargo quantity exceeds capacity under the selected allowance.\n- Arrival at the load port has not been verified.\n\nUnder the selected cargo allowance, assumed capacity is 162,000 tonnes against a required quantity of 180,000 tonnes.\n\n### What to confirm before proceeding\nConfirm usable cargo capacity, commercial availability and arrival at the load port. Sailing time, draft, cargo compatibility, vessel gear and port restrictions have not been verified by this screening. A date-window overlap alone does not establish voyage feasibility.",
+        "kind": "data",
+        "intent": {
+          "action": "match",
+          "dataset": "orders",
+          "record_id": "orders-3c6e735dd36c66053277",
+          "text_filters": {},
+          "min_tonnes": null,
+          "max_tonnes": null,
+          "window_start": null,
+          "window_end": null,
+          "aggregation": "none",
+          "limit": 10,
+          "clarification": null
+        },
+        "tool_result": {
+          "order_record_id": "orders-3c6e735dd36c66053277",
+          "as_of": "2026-09-01",
+          "candidates": [],
+          "candidate_count": 0,
+          "excluded": [
+            {
+              "vessel_record_id": "tonnage-22f7d84e6a35dc574558",
+              "vessel_name": "TEST VESSEL BRAVO",
+              "status": "excluded",
+              "score": 35.0,
+              "components": {
+                "capacity": null,
+                "window": 0.5,
+                "geography": 1.0
+              },
+              "exclusions": [
+                "cargo_exceeds_total_deadweight",
+                "cargo_exceeds_assumed_capacity"
+              ],
+              "unknowns": [
+                "commercial_status_unknown_or_unmapped"
+              ],
+              "required_tonnes": 180000.0,
+              "assumed_capacity_tonnes": 73800.0,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 3
+              },
+              "confirmed_match": false
+            },
+            {
+              "vessel_record_id": "tonnage-b5f2d4f3545e58a3ad6d",
+              "vessel_name": "TEST VESSEL CHARLIE",
+              "status": "excluded",
+              "score": 0.0,
+              "components": {
+                "capacity": null,
+                "window": null,
+                "geography": 0.0
+              },
+              "exclusions": [
+                "cargo_exceeds_total_deadweight",
+                "cargo_exceeds_assumed_capacity",
+                "commercial_status_blocked",
+                "no_remaining_window_overlap"
+              ],
+              "unknowns": [
+                "sea_route_and_arrival_feasibility_unverified"
+              ],
+              "required_tonnes": 180000.0,
+              "assumed_capacity_tonnes": 56700.0,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 4
+              },
+              "confirmed_match": false
+            },
+            {
+              "vessel_record_id": "tonnage-d83afc9939cd5cf28f2c",
+              "vessel_name": "TEST VESSEL ALPHA",
+              "status": "excluded",
+              "score": 15.0,
+              "components": {
+                "capacity": null,
+                "window": 0.5,
+                "geography": 0.0
+              },
+              "exclusions": [
+                "cargo_exceeds_assumed_capacity"
+              ],
+              "unknowns": [
+                "sea_route_and_arrival_feasibility_unverified"
+              ],
+              "required_tonnes": 180000.0,
+              "assumed_capacity_tonnes": 162000.0,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 2
+              },
+              "confirmed_match": false
+            }
+          ],
+          "vessel_snapshots_considered": 3,
+          "input_vessel_snapshots": 3,
+          "assumptions": {
+            "cargo_fraction": 0.9,
+            "required_quantity": "max",
+            "require_same_zone": false,
+            "blocked_statuses": [
+              "FIXED",
+              "ON SUBS"
+            ],
+            "allowed_statuses": [
+              "OPEN"
+            ],
+            "max_report_age_days": null,
+            "weights": {
+              "capacity": 0.5,
+              "window": 0.3,
+              "geography": 0.2
+            },
+            "coordinates": {}
+          },
+          "limitations": [
+            "Provisional screening, never a confirmed fixture.",
+            "No sailing-time, draft, gear, cargo-compatibility or port restriction validation.",
+            "Missing score components contribute zero; scores are not probabilities.",
+            "Coordinates, when configured, provide straight-line distance only."
+          ]
+        },
+        "basis": "Checked against the supplied Order and Tonnage workbooks as of 01 Sep 2026.",
+        "diagnostics": {
+          "route_raw": null,
+          "raw_intent": "deterministic business-question parser"
+        }
+      },
+      "seconds": 0.0013089579879306257
+    },
+    {
+      "question": "Now screen the Santos order.",
+      "response": {
+        "content": "Here is the preliminary view for the **SOYBEANS order from Santos to Rotterdam**, based on the latest information available by **01 Sep 2026**.\n\nThe offered cargo is **60,000\u201366,000 metric tonnes**, with a loading window of **05 Sep 2026 to 15 Sep 2026**. Missing quantities have not been estimated.\n\n**Screening outcome:** 2 vessel(s) remain for consideration and 1 are excluded. These are preliminary screening results, not confirmed fixtures.\n\n### TEST VESSEL BRAVO \u2014 needs further review\n\n- Usable cargo capacity has not been confirmed.\n- Commercial availability needs confirmation.\n- Arrival at the load port has not been verified.\n\nThe provisional screening score is **23.6/100**. This is a comparison score under the selected rules, not the probability of a successful shipment.\n\n### TEST VESSEL ALPHA \u2014 needs further review\n\n- Usable cargo capacity has not been confirmed.\n- Arrival at the load port has not been verified.\n\nThe provisional screening score is **5.5/100**. This is a comparison score under the selected rules, not the probability of a successful shipment.\n\n### TEST VESSEL CHARLIE \u2014 excluded\n\n- Cargo quantity exceeds the vessel's total deadweight.\n- Commercial status is excluded under the screening rules.\n- Usable cargo capacity has not been confirmed.\n- Arrival at the load port has not been verified.\n\n### What to confirm before proceeding\nConfirm usable cargo capacity, commercial availability and arrival at the load port. Sailing time, draft, cargo compatibility, vessel gear and port restrictions have not been verified by this screening. A date-window overlap alone does not establish voyage feasibility.",
+        "kind": "data",
+        "intent": {
+          "action": "match",
+          "dataset": "orders",
+          "record_id": "orders-75913c37e068f3224588",
+          "text_filters": {},
+          "min_tonnes": null,
+          "max_tonnes": null,
+          "window_start": null,
+          "window_end": null,
+          "aggregation": "none",
+          "limit": 10,
+          "clarification": null
+        },
+        "tool_result": {
+          "order_record_id": "orders-75913c37e068f3224588",
+          "as_of": "2026-09-01",
+          "candidates": [
+            {
+              "vessel_record_id": "tonnage-22f7d84e6a35dc574558",
+              "vessel_name": "TEST VESSEL BRAVO",
+              "status": "needs_review",
+              "score": 23.6364,
+              "components": {
+                "capacity": null,
+                "window": 0.45454545454545453,
+                "geography": 0.5
+              },
+              "exclusions": [],
+              "unknowns": [
+                "usable_cargo_capacity_unknown",
+                "commercial_status_unknown_or_unmapped",
+                "sea_route_and_arrival_feasibility_unverified"
+              ],
+              "required_tonnes": 66000.0,
+              "assumed_capacity_tonnes": null,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 3
+              },
+              "confirmed_match": false
+            },
+            {
+              "vessel_record_id": "tonnage-d83afc9939cd5cf28f2c",
+              "vessel_name": "TEST VESSEL ALPHA",
+              "status": "needs_review",
+              "score": 5.4545,
+              "components": {
+                "capacity": null,
+                "window": 0.18181818181818182,
+                "geography": 0.0
+              },
+              "exclusions": [],
+              "unknowns": [
+                "usable_cargo_capacity_unknown",
+                "sea_route_and_arrival_feasibility_unverified"
+              ],
+              "required_tonnes": 66000.0,
+              "assumed_capacity_tonnes": null,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 2
+              },
+              "confirmed_match": false
+            }
+          ],
+          "candidate_count": 2,
+          "excluded": [
+            {
+              "vessel_record_id": "tonnage-b5f2d4f3545e58a3ad6d",
+              "vessel_name": "TEST VESSEL CHARLIE",
+              "status": "excluded",
+              "score": 5.4545,
+              "components": {
+                "capacity": null,
+                "window": 0.18181818181818182,
+                "geography": 0.0
+              },
+              "exclusions": [
+                "cargo_exceeds_total_deadweight",
+                "commercial_status_blocked"
+              ],
+              "unknowns": [
+                "usable_cargo_capacity_unknown",
+                "sea_route_and_arrival_feasibility_unverified"
+              ],
+              "required_tonnes": 66000.0,
+              "assumed_capacity_tonnes": null,
+              "straight_line_distance_nm": null,
+              "source": {
+                "file": "SMU_Tonnage_data_TEST.xlsx",
+                "sha256": "ab5b8649c0781db75a22f039b034aa49981db5cfacba7c84d734d3595a575833",
+                "sheet": "Tonnage Results",
+                "row": 4
+              },
+              "confirmed_match": false
+            }
+          ],
+          "vessel_snapshots_considered": 3,
+          "input_vessel_snapshots": 3,
+          "assumptions": {
+            "cargo_fraction": null,
+            "required_quantity": "max",
+            "require_same_zone": false,
+            "blocked_statuses": [
+              "FIXED",
+              "ON SUBS"
+            ],
+            "allowed_statuses": [
+              "OPEN"
+            ],
+            "max_report_age_days": null,
+            "weights": {
+              "capacity": 0.5,
+              "window": 0.3,
+              "geography": 0.2
+            },
+            "coordinates": {}
+          },
+          "limitations": [
+            "Provisional screening, never a confirmed fixture.",
+            "No sailing-time, draft, gear, cargo-compatibility or port restriction validation.",
+            "Missing score components contribute zero; scores are not probabilities.",
+            "Coordinates, when configured, provide straight-line distance only."
+          ]
+        },
+        "basis": "Checked against the supplied Order and Tonnage workbooks as of 01 Sep 2026.",
+        "diagnostics": {
+          "route_raw": null,
+          "raw_intent": "deterministic business-question parser"
+        }
+      },
+      "seconds": 0.001316834008321166
+    },
+    {
+      "question": "Explain dry-bulk shipping in two sentences.",
+      "response": {
+        "content": "Dry-bulk shipping involves transporting large quantities of unpackaged solid commodities in bulk across the ocean, typically using specialized vessels designed to handle heavy, non-containerized goods like grains, coal, and minerals. This mode of transportation is efficient for moving massive volumes of cargo over long distances.",
+        "kind": "general",
+        "diagnostics": {
+          "route_raw": null,
+          "routing": "deterministic concept safety net"
+        },
+        "basis": "General shipping explanation from the model; not a live shipment or market report."
+      },
+      "seconds": 9.548695750010666
+    },
+    {
+      "question": "How does travelling in ballast differ from travelling laden?",
+      "response": {
+        "content": "Travelling in ballast versus laden differs significantly in several aspects related to a vessel's operation, efficiency, and environmental impact. When a vessel is in ballast, it is essentially empty of cargo, meaning all its cargo holds, tanks, and spaces are filled with seawater or ballast water to maintain stability and balance. In contrast, when a vessel is laden, it carries cargo, which can include dry goods, liquid products, or containers.\n\n### Stability and Maneuverability\n- **Ballast**: In ballast, the vessel has more stability due to the even distribution of weight. This makes it easier to maneuver and navigate through various sea conditions. However, the reduced cargo capacity means less revenue potential.\n- **Laden**: Laden vessels are less stable because they have a higher center of gravity. They require more power to turn and may be more susceptible to rolling in rough seas. Despite this, they can carry more cargo, which increases their profitability.\n\n### Fuel Efficiency\n- **Ballast**: Vessels in ballast typically consume less fuel per unit of distance traveled because they are lighter and thus require less energy to move. This can lead to cost savings.\n- **Laden**: Laden vessels burn more fuel due to increased weight and resistance from the cargo. This impacts both operational costs and carbon emissions.\n\n### Environmental Impact\n- **Ballast**: The environmental impact is generally lower since there is no cargo to handle, reducing pollution from emissions and waste.\n- **Laden**: Laden vessels contribute more to air and water pollution due to the handling of cargo, including emissions from engines and potential spills from tankers.\n\n### Operational Costs\n- **Ballast**: Lower operational costs due to fewer crew members needed and less maintenance required for empty spaces.\n- **Laden**: Higher operational costs due to the need for additional crew, specialized equipment, and potentially higher insurance premiums.\n\n### Practical Examples\nImagine a container ship traveling from Asia to Europe. During the voyage, the ship might spend some time in ballast to adjust its position and ensure safe navigation. Once it reaches its final destination, it would likely be laden with containers, increasing its profitability but also requiring more fuel and crew resources.\n\nIn summary, while ballasting provides benefits in terms of stability and fuel efficiency, laden voyages offer higher revenue potential but come with increased operational and environmental costs. The choice between ballasting and laden depends on the specific needs of the shipping company and the cargo being transported.",
+        "kind": "general",
+        "diagnostics": {
+          "route_raw": null,
+          "routing": "deterministic concept safety net"
+        },
+        "basis": "General shipping explanation from the model; not a live shipment or market report."
+      },
+      "seconds": 70.35013691603672
+    },
+    {
+      "question": "What does ETA tell me, and does it prove readiness at the loading port?",
+      "response": {
+        "content": "ETA, or Estimated Time of Arrival, tells you when a vessel is expected to reach its final destination. However, it does not necessarily indicate whether the vessel is ready to load cargo at the loading port. The readiness of the vessel to load cargo is typically determined by factors such as its ballasting status, the availability of necessary equipment, and compliance with laycan conditions.\n\nTo clarify, ETA is a forecast of when the vessel will arrive at its destination, which could be a port, terminal, or another location. This forecast is based on the vessel's schedule, weather conditions, and any delays that might occur. On the other hand, the readiness of the vessel to load cargo is assessed through a process called \"laycan,\" which sets a specific timeframe during which the vessel can be loaded without cancellation.\n\nIn summary, ETA provides information about the vessel's projected arrival time but does not confirm if the vessel is prepared to load cargo at the loading port. To ensure readiness, you would need to check the vessel's laycan status and verify that all necessary preparations have been made.",
+        "kind": "general",
+        "diagnostics": {
+          "route_raw": null,
+          "routing": "deterministic concept safety net"
+        },
+        "basis": "General shipping explanation from the model; not a live shipment or market report."
+      },
+      "seconds": 31.20309266599361
+    },
+    {
+      "question": "Is there enough information to confirm a fixture?",
+      "response": {
+        "content": "Which cargo, vessel or shipping topic are you referring to? Please name the load port, vessel or concept so I can give you a precise answer.",
+        "kind": "clarification",
+        "diagnostics": {
+          "route_raw": "{\"route\":\"clarify\",\"question\":\"What specific fixture are you referring to and what information do you have about it?\"}",
+          "routing": "model"
+        }
+      },
+      "seconds": 4.430309000017587
+    }
+  ]
+}

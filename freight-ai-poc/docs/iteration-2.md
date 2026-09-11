@@ -82,3 +82,29 @@ and the backend passes it to both Hugging Face loaders. Chat uses lazy model loa
 so deterministic queries do not need weights. A Streamlit AppTest submits both a
 DWT-filter question and an empty-port search with model loading forbidden. Runtime
 errors no longer tell users to rephrase a valid question.
+
+## Completed base comparison
+
+All three verified models have completed all three prompt strategies (162 total
+intent predictions) and 10 conversation turns each (30 total). See
+[comparison](base-model-comparison.md) and [conversation review](conversation-review.md).
+Pinned optional configs are configs/qwen-1.5b.yaml and configs/qwen-3b.yaml. The
+application default remains the preserved 0.5B baseline. No adapter was trained.
+
+## Subsequent prompt/state iteration
+
+Verified selector retained. See schema-experiment.md for the executed 1.5B few-shot
+ablation. ConversationState now retains and resets percentage overrides independently
+of the public intent schema; Streamlit stores this state and clears it on model
+switch/new chat. Negative/invalid percentages are rejected without changing state.
+Expert review candidates and reviewer instructions are available, but no expert
+review is claimed or fabricated. No model training was performed.
+
+### Stateful API live-reload regression
+
+Streamlit reran the updated UI while retaining an imported pre-state respond()
+function, causing an unexpected conversation_state keyword TypeError. The UI now
+fingerprints chat/state source and refreshes those modules when changed, caching
+only the current API. A regression test injects the old signature before submitting
+the reported question. Verified the exact question in the live browser with 3B
+selected: the assistant explains absent fixture evidence and no exception occurs.

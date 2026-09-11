@@ -1,0 +1,41 @@
+sources: ../test_data
+processed: data/processed
+training_data: data/training
+model:
+  model_id: Qwen/Qwen2.5-3B-Instruct
+  revision: aa8e72537993ba99e69dfaafa59ed015b17504d1
+  device: cpu
+  max_new_tokens: 512
+  max_input_tokens: 4096
+  seed: 483
+  quantize_4bit: false
+  adapter_path: null
+  local_files_only: true
+training:
+  output_dir: artifacts/adapters/freight-qlora
+  checkpoint_dir: artifacts/checkpoints/freight-qlora
+  seed: 483
+  epochs: 1
+  learning_rate: 0.0002
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  max_length: 2048
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: all-linear
+matching:
+  cargo_fraction: null
+  required_quantity: max
+  require_same_zone: false
+  blocked_statuses:
+  - FIXED
+  - ON SUBS
+  allowed_statuses:
+  - OPEN
+  max_report_age_days: null
+  weights:
+    capacity: 0.5
+    window: 0.3
+    geography: 0.2
+  coordinates: {}

@@ -1,3 +1,5 @@
+import hashlib
+import importlib
 import json
 from datetime import date
 from pathlib import Path
@@ -6,16 +8,34 @@ import streamlit as st
 from freight_ai.config import ModelConfig, load_config
 from freight_ai.data.ingest import preprocess
 from freight_ai.data.models import Intent
+from freight_ai.inference import chat, conversation
 from freight_ai.inference.backend import HFBackend
-from freight_ai.inference.chat import respond
 from freight_ai.matching.engine import MatchingConfig
 from freight_ai.presentation import intent_description, record_table, render_result
 from freight_ai.service import ask, current_records, execute
 from freight_ai.training.dataset import demonstrations
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@st.cache_resource(max_entries=1)
+def load_chat_api(source_digest):
+    """Refresh imported Python modules when their source changes during development."""
+    importlib.invalidate_caches()
+    importlib.reload(conversation)
+    return importlib.reload(chat).respond
+
+
+chat_digest = hashlib.sha256(
+    Path(chat.__file__).read_bytes() + Path(conversation.__file__).read_bytes()
+).hexdigest()
+respond = load_chat_api(chat_digest)
+
 st.set_page_config(page_title="Freight AI POC", layout="wide")
-st.title("Freight AI POC")
+st.markdown(
+    f"<style>{(ROOT / 'app/styles.css').read_text()}</style>", unsafe_allow_html=True
+)
+st.title("Freight AI")
 st.caption(
     "Inspect freight records, screen vessels and compare language-model experiments."
 )
@@ -105,7 +125,7 @@ with match_tab:
             st.json(result)
 
 
-@st.cache_resource
+@st.cache_resource(max_entries=1)
 def load_backend(config_json):
     return HFBackend(ModelConfig.model_validate_json(config_json))
 
@@ -128,25 +148,68 @@ with chat_tab:
     st.caption(
         "General shipping explanations come from the language model. Questions about your actual cargoes, vessels or screening results are checked against the source workbooks."
     )
-    with st.expander("Advanced chatbot settings"):
+    model_labels = {
+        "0.5b": "Qwen 0.5B · Lightweight baseline",
+        "1.5b": "Qwen 1.5B · Balanced experiment",
+        "3b": "Qwen 3B · Higher memory use",
+    }
+
+    def reset_chat():
+        st.session_state["chat_messages"] = []
+        st.session_state.pop("chat_previous_intent", None)
+        st.session_state.pop("chat_conversation_state", None)
+        load_backend.clear()
+
+    selected_model = st.selectbox(
+        "Conversation model",
+        list(model_labels),
+        format_func=model_labels.get,
+        key="selected_chat_model",
+        on_change=reset_chat,
+        help="Switching models starts a fresh conversation for a fair comparison.",
+    )
+    manifest_path = ROOT / "artifacts/verification" / f"qwen-{selected_model}.json"
+    model_ready = False
+    mc = dict(config["model"])
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        model_ready = (
+            bool(manifest.get("passed")) and Path(manifest["local_path"]).is_dir()
+        )
+        mc.update(
+            model_id=manifest["local_path"],
+            revision=manifest["revision"],
+            local_files_only=True,
+            adapter_path=None,
+            device="cpu",
+        )
+    except (OSError, ValueError, KeyError):
+        pass
+    st.session_state["active_chat_model_config"] = mc
+    if not model_ready:
+        st.warning(
+            "This model is not available locally. Complete its download and verification first."
+        )
+    else:
+        st.caption(
+            "Local inference · Base model · Switching models clears the conversation"
+        )
+    st.button("New conversation", on_click=reset_chat, key="reset_shipping_chat")
+    with st.expander("Experiment settings"):
         chat_strategy = st.selectbox(
             "Intent examples",
             ["zero", "one", "few"],
             index=2,
             key="chat_strategy",
             format_func=lambda x: {
-                "zero": "No examples",
-                "one": "One example",
-                "few": "Three examples",
+                "zero": "Zero-shot",
+                "one": "One-shot",
+                "few": "Few-shot (three examples)",
             }[x],
         )
-        chat_model_id = st.text_input(
-            "Model ID or local model path",
-            config["model"]["model_id"],
-            key="chat_model_id",
-        )
-        chat_adapter = st.text_input(
-            "Adapter directory (blank = base model)", "", key="chat_adapter"
+        st.caption(f"Pinned revision: {mc['revision']}")
+        st.caption(
+            "The selector controls this Shipping chatbot tab. Structured searches use the freight engine; other experiment tabs have their own settings."
         )
     if "chat_messages" not in st.session_state:
         st.session_state["chat_messages"] = []
@@ -158,17 +221,16 @@ with chat_tab:
             if message.get("diagnostics"):
                 with st.expander("Technical details"):
                     st.json(message["diagnostics"])
-    chat_question = st.chat_input("Ask a shipping question…", key="shipping_chat_input")
+    chat_question = st.chat_input(
+        "Ask about cargoes, vessels or shipping…",
+        key="shipping_chat_input",
+        disabled=not model_ready,
+    )
     if chat_question:
         st.session_state["chat_messages"].append(
             {"role": "user", "content": chat_question}
         )
         try:
-            mc = {
-                **config["model"],
-                "model_id": chat_model_id,
-                "adapter_path": chat_adapter or None,
-            }
             with st.spinner("Checking the question and preparing an answer…"):
                 backend = LazyChatBackend(json.dumps(mc, sort_keys=True))
                 prior = st.session_state["chat_messages"][:-1]
@@ -182,14 +244,23 @@ with chat_tab:
                     previous_intent,
                     chat_strategy,
                     demonstrations(config["training_data"]),
+                    conversation_state=st.session_state.get("chat_conversation_state"),
                 )
             assistant_message = {
                 "role": "assistant",
                 "content": chat_response["content"],
-                "basis": chat_response.get("basis"),
+                "basis": " · ".join(
+                    filter(
+                        None, [model_labels[selected_model], chat_response.get("basis")]
+                    )
+                ),
                 "diagnostics": chat_response.get("diagnostics"),
             }
             st.session_state["chat_messages"].append(assistant_message)
+            if chat_response.get("conversation_state"):
+                st.session_state["chat_conversation_state"] = chat_response[
+                    "conversation_state"
+                ]
             if chat_response.get("intent"):
                 st.session_state["chat_previous_intent"] = chat_response["intent"]
             st.rerun()

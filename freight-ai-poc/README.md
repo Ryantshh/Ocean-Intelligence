@@ -262,3 +262,30 @@ launching and reproducible comparison commands. Model loading now defaults to
 local cache only. Download/verify model assets separately before first use.
 The legacy 18 examples are regression cases; passing application tests does not
 establish model quality. No QLoRA adapter has been trained.
+
+### Switch models in the chatbot
+
+In Shipping chatbot, use **Conversation model** to select Qwen 0.5B, 1.5B or 3B.
+Each choice loads the matching local snapshot and pinned revision from its
+verification report. CPU inference is used for consistency with the comparison.
+Switching clears conversation context and the cached backend. The other experiment
+tabs retain their own settings. Missing local snapshots disable chat with an
+explanation. The first model-generated response includes model-loading time.
+
+### Persistent screening assumptions
+
+Percentage assumptions stated in Shipping chatbot remain active across follow-ups
+and order changes within that conversation. Ask "What percentage are you using?"
+or "Reset the capacity assumption" to inspect or clear it. Starting a new chat
+or changing models clears this state. Invalid percentages do not replace the
+previous valid value. Sidebar defaults apply when no conversation override exists.
+
+### Prompt/schema experiment and expert review
+
+Install the optional `experiment` extra for LM Format Enforcer 0.11.3. The paired
+1.5B few-shot experiment is `scripts/schema_experiment.py`; it preserves the original
+prompt and adds a versioned experiment prompt, comparing unrestricted generation
+against token-level JSON-schema constraints. Semantic validation still applies.
+See `data/evaluation/expert_review_queue.json` and
+`docs/expert-evaluation-review.md`: these are candidate cases **pending external
+freight-expert review**, not an expert-approved or blind benchmark.

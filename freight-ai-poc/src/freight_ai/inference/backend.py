@@ -104,7 +104,10 @@ class HFBackend:
             "resolved_revision": getattr(self.model.config, "_commit_hash", None),
         }
 
-    def generate(self, messages):
+    def generate_json(self, messages, schema):
+        return self.generate(messages, schema=schema)
+
+    def generate(self, messages, schema=None):
         import torch
 
         inputs = self.tokenizer.apply_chat_template(
@@ -123,11 +126,24 @@ class HFBackend:
                 "Prompt exceeds token budget; context was not silently truncated"
             )
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+        decoding = {}
+        if schema is not None:
+            from lmformatenforcer import JsonSchemaParser
+            from lmformatenforcer.integrations.transformers import (
+                build_transformers_prefix_allowed_tokens_fn,
+            )
+
+            decoding["prefix_allowed_tokens_fn"] = (
+                build_transformers_prefix_allowed_tokens_fn(
+                    self.tokenizer, JsonSchemaParser(schema)
+                )
+            )
         with torch.inference_mode():
             output = self.model.generate(
                 **inputs,
                 max_new_tokens=self.config.max_new_tokens,
                 do_sample=False,
+                **decoding,
                 pad_token_id=self.tokenizer.pad_token_id,
             )
         return self.tokenizer.decode(
