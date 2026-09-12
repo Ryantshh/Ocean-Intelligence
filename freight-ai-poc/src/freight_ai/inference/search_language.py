@@ -29,6 +29,8 @@ def parse_search(text, as_of):
             return Intent(action='clarify', clarification='Please use a report period between 1 and 3,650 days.')
         field = 'received' if match[2] == 'received' else 'updated'
         return Intent(action='query', dataset='tonnage' if match[1].startswith('vessel') else 'orders', **{field+'_from':end-timedelta(days=days-1),field+'_to':end})
+    if re.fullmatch(r'(?:show|list|find|give)(?: me)? (?:all )?(?:open )?(?:cargo )?(?:orders|cargoes)', text):
+        return Intent(action='query', dataset='orders', window_start=as_of, window_end=as_of)
     match = re.fullmatch(r'(?:show|list)(?: me)? (?:the )?(?:history|historical reports|past positions) (?:for|of) (.+)',text)
     if match:
         return Intent(action='query', dataset='tonnage', include_history=True, text_filters={'vessel_name':match[1]})

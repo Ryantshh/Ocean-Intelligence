@@ -1,5 +1,9 @@
 # Ocean-Intelligence-
 
+The main chat profile picker now also offers local Qwen 0.5B, 1.5B and 3B.
+See [local Qwen integration](ai_platform/docs/local-qwen.md) for setup, data-flow
+boundaries and Checkpoint 1A rollback information.
+
 Data pipeline for the SMU IS483 capstone with Cargill Ocean Transportation. An Excel file placed in the bronze S3 bucket is automatically transformed into cleaned JSON in the silver bucket, then embedded and loaded into Supabase gold tables, where it becomes available to the dashboard and chatbot.
 
 This repository covers the bronze-to-silver-to-gold data layers and the chat agent that queries the gold tables. The RAG components are maintained elsewhere.

@@ -529,6 +529,11 @@ def _respond(
             raise ValueError("A cargo search cannot be answered with vessel records")
         if intent.action in {"query", "summarize"} and config.get("text_match"):
             intent = intent.model_copy(update={"text_match": config["text_match"]})
+        # The host UI paginates deterministic rows. Keep the full practical
+        # result set in the response instead of truncating it to the model's
+        # conversational default of ten rows.
+        if config.get("ui_pagination") and intent.action in {"query", "summarize"}:
+            intent = intent.model_copy(update={"limit": 100})
         if config.get("query_execution") == "database" and config.get("data_source") == "supabase" and intent.action in {"query", "summarize"}:
             from freight_ai.data.supabase import search_records
             records = search_records(intent, as_of)

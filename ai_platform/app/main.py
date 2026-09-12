@@ -1,4 +1,4 @@
-"""FastAPI application hosting the dashboard and the mounted chat.
+"""FastAPI application hosting the dashboard and mounted chat.
 
 Ordering is load-bearing. Routes must be registered before ``mount_chainlit``;
 anything declared after it returns 404. ``root_path`` must stay unset or
@@ -44,13 +44,7 @@ def read_health() -> dict[str, str]:
 
 @app.get("/")
 def read_dashboard() -> FileResponse:
-    """Serve the dashboard page.
-
-    Returns
-    -------
-    FileResponse
-        ``static/index.html``.
-    """
+    """Serve the main dashboard page."""
     return FileResponse(DASHBOARD_DIR / "index.html")
 
 

@@ -61,7 +61,7 @@ that belongs in semantic, and never put a date or a size in semantic.
 PLACE ROUTING. The zone fields — load_zone, discharge_parent_zone, parent_zone —
 accept only the names on this list:
 
-  Arabian Gulf · Asia · Atlantic · Australia · Baltic · Black Sea · Caribs
+  Arabian Gulf · Asia · Atlantic · Australia · Black Sea · Caribs
   East Africa · East Australia · East Coast Canada · East Coast India
   East Coast South America · East Coast United States · East Mediterranean
   Europe · Europe Atlantic Coast · Far East · Great Lakes · India

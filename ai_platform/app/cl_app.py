@@ -16,6 +16,8 @@ import chainlit as cl
 from chainlit.types import ThreadDict
 
 from ai_platform.app.data_layer import get_data_layer
+from ai_platform.backend import local_qwen
+from ai_platform.backend.clock import working_date
 from ai_platform.backend.context import (
     fill_fraction,
     history_tokens,
@@ -127,7 +129,11 @@ def json_safe(value: Any) -> Any:
     if isinstance(value, Decimal):
         return int(value) if value == value.to_integral_value() else float(value)
     if isinstance(value, datetime):
-        return value.date().isoformat() if value.time() == time.min else value.isoformat(" ")
+        return (
+            value.date().isoformat()
+            if value.time() == time.min
+            else value.isoformat(" ")
+        )
     if isinstance(value, date):
         return value.isoformat()
     return value
@@ -172,6 +178,37 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
         ],
         "noun": module.DISPLAY_NOUN,
     }
+
+
+def qwen_results_props(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Adapt the POC's deterministic rows to the main Results element."""
+    tool = result.get("tool_result") or {}
+    rows = tool.get("records") or []
+    intent = result.get("intent") or {}
+    dataset = intent.get("dataset")
+    if not rows or dataset not in {"orders", "tonnage"}:
+        return None
+    if dataset == "orders":
+        fields = [("record_id", "Order ID"), ("cargo_type", "Cargo"),
+                  ("load_port", "Load port"), ("discharge_port", "Discharge port"),
+                  ("cargo_weight_min", "Min tonnes"), ("cargo_weight_max", "Max tonnes"),
+                  ("laycan_start", "Laycan start"), ("laycan_end", "Laycan end")]
+    else:
+        fields = [("vessel_name", "Vessel"), ("dwt", "DWT (tonnes)"),
+                  ("open_area", "Open location"), ("open_date_start", "Open from"),
+                  ("open_date_end", "Open until"), ("commercial_status", "Commercial status")]
+    columns = [label for _, label in fields]
+    return {"columns": columns, "rows": [[json_safe(row.get(key)) for key, _ in fields] for row in rows],
+            "noun": "cargo orders" if dataset == "orders" else "vessel reports"}
+
+
+def qwen_summary(content: str, has_table: bool) -> str:
+    """Keep Qwen's facts and caveats while using the main UI's side-table style."""
+    if not has_table:
+        return content
+    lines = content.splitlines()
+    kept = [line for line in lines if not line.lstrip().startswith("|")]
+    return "\n".join(kept).strip()
 
 
 async def refresh_gauge(
@@ -395,6 +432,21 @@ async def list_chat_profiles(
                 "document access.**"
             ),
         ),
+    ] + [
+        cl.ChatProfile(
+            name=name,
+            display_name=f"Qwen {size.upper()}",
+            markdown_description="Local freight assistant with read-only Supabase retrieval, preliminary screening and record tables. Uses the application's working date. Chat history uses the main application's existing storage.",
+            starters=[
+                cl.Starter(label=q, message=q)
+                for q in (
+                    "List vessels with at least 180,000 tonnes DWT.",
+                    "Show orders received in the past 7 days.",
+                    "What is deadweight tonnage?",
+                )
+            ],
+        )
+        for name, size in local_qwen.PROFILES.items()
     ]
 
 
@@ -423,8 +475,6 @@ async def authenticate(username: str, password: str) -> cl.User | None:
     return None
 
 
-
-
 @cl.on_chat_resume
 async def resume_chat(thread: ThreadDict) -> None:
     """Reattach to a persisted conversation and restore the gauge.
@@ -446,6 +496,13 @@ async def resume_chat(thread: ThreadDict) -> None:
     -------
     None
     """
+    if cl.user_session.get("chat_profile") in local_qwen.PROFILES:
+        for step in reversed(thread.get("steps") or []):
+            metadata = step.get("metadata") or {}
+            if "qwen_state" in metadata:
+                cl.user_session.set("qwen_state", metadata["qwen_state"])
+                break
+        return
     anchors = [
         str(step_id)
         for step in thread.get("steps") or []
@@ -478,6 +535,33 @@ async def handle_message(message: cl.Message) -> None:
     -------
     None
     """
+    profile = cl.user_session.get("chat_profile")
+    if profile in local_qwen.PROFILES:
+        try:
+            async with cl.Step(name="Checking freight records locally"):
+                result = await local_qwen.answer(
+                    profile,
+                    message.content,
+                    cl.chat_context.to_openai()[:-1],
+                    cl.user_session.get("qwen_state"),
+                    working_date(),
+                )
+            cl.user_session.set("qwen_state", result.get("conversation_state"))
+            table_props = qwen_results_props(result)
+            reply = cl.Message(
+                content=qwen_summary(result["content"], table_props is not None),
+                metadata={"qwen_state": result.get("conversation_state")},
+            )
+            if table_props:
+                reply.elements = [cl.CustomElement(name=RESULTS_ELEMENT, props=table_props, display="side")]
+                await reply.stream_token(f"\n\n{RESULTS_ELEMENT}")
+            reply.parent_id = None
+            await reply.send()
+        except (TimeoutError, RuntimeError, ValueError, OSError):
+            await cl.Message(
+                content="The local model could not complete this request. Please retry or select another model in a new chat."
+            ).send()
+        return
     if cl.user_session.get("chat_profile") == PLAIN_MODEL_PROFILE:
         reply = root_message()
         async for token in stream_chat(cl.chat_context.to_openai()):
