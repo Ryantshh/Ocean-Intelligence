@@ -79,6 +79,16 @@ class Intent(StrictModel):
     text_filters: dict[str, str] = Field(default_factory=dict)
     min_tonnes: float | None = Field(default=None, ge=0)
     max_tonnes: float | None = Field(default=None, ge=0)
+    received_from: date | None = None
+    received_to: date | None = None
+    start_from: date | None = None
+    start_to: date | None = None
+    end_to: date | None = None
+    include_history: bool = False
+    include_future: bool = False
+    text_match: Literal["exact", "normalized"] = "exact"
+    updated_from: date | None = None
+    updated_to: date | None = None
     window_start: date | None = None
     window_end: date | None = None
     aggregation: Literal["none", "count", "sum_tonnes"] = "none"
@@ -87,8 +97,11 @@ class Intent(StrictModel):
 
     @model_validator(mode="after")
     def validate_constraints(self):
+        if self.action not in {"query", "summarize"} and any((self.received_from, self.received_to, self.start_from, self.start_to, self.end_to, self.include_history, self.include_future, self.text_match != "exact")):
+            raise ValueError("Search options require a query or summary")
         allowed = {
             "orders": {
+                "cargo_description",
                 "load_port",
                 "discharge_port",
                 "cargo_type",
@@ -96,6 +109,8 @@ class Intent(StrictModel):
                 "discharge_zone",
             },
             "tonnage": {
+                "destination",
+                "vessel_status",
                 "vessel_name",
                 "open_area",
                 "parent_zone",
@@ -110,6 +125,9 @@ class Intent(StrictModel):
         for lo, hi in [
             (self.min_tonnes, self.max_tonnes),
             (self.window_start, self.window_end),
+            (self.updated_from, self.updated_to),
+            (self.received_from, self.received_to),
+            (self.start_from, self.start_to),
         ]:
             if lo is not None and hi is not None and lo > hi:
                 raise ValueError("Query range is reversed")
@@ -117,6 +135,8 @@ class Intent(StrictModel):
             raise ValueError("Match requires an order record_id and dataset=orders")
         if self.action == "clarify" and not self.clarification:
             raise ValueError("Clarify requires a question")
+        if self.action in {"match", "qa", "clarify"} and (self.updated_from or self.updated_to):
+            raise ValueError("Report-date filters require a query or summary")
         if self.action == "match" and (
             self.text_filters
             or self.min_tonnes is not None

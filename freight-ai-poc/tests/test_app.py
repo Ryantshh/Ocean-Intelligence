@@ -1,6 +1,13 @@
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
+
+
+@pytest.fixture(autouse=True)
+def excel_test_source(monkeypatch, tmp_path):
+    monkeypatch.setenv("FREIGHT_POC_SOURCE", "excel")
+    monkeypatch.setenv("FREIGHT_CHAT_HISTORY", str(tmp_path / "history.sqlite3"))
 
 
 def test_streamlit_start_and_deterministic_query():
@@ -9,12 +16,13 @@ def test_streamlit_start_and_deterministic_query():
     )
     app.run(timeout=20)
     assert not app.exception
-    next(b for b in app.button if b.label == "Run search").click().run()
     assert not app.exception
-    assert app.session_state["response"]["tool_result"]["total_count"] == 1
-    next(b for b in app.button if b.label == "Screen vessels").click().run()
+    assert any(b.label == "＋ New chat" for b in app.button)
+    assert not any(s.label in {"Prompt examples", "Query execution", "Text matching"} for s in app.selectbox)
+    assert app.chat_input[0].placeholder == "Message Freight AI…"
+    app.chat_input[0].set_value("Show orders loading at Tubarao.").run()
     assert not app.exception
-    assert app.session_state["screening"]["candidate_count"] == 1
+    assert app.session_state["chat_messages"][-1]["role"] == "assistant"
 
 
 def test_chat_submission_without_model_loading(monkeypatch):
@@ -84,6 +92,8 @@ def test_stale_chat_import_is_refreshed_before_stateful_call(monkeypatch):
         raise AssertionError("The stale API must not be invoked")
 
     monkeypatch.setattr(chat, "respond", old_respond)
+    import freight_ai
+    monkeypatch.setattr(freight_ai, "_app_digest", "old-source", raising=False)
     app = AppTest.from_file(
         str(Path(__file__).resolve().parents[1] / "app/streamlit_app.py")
     )

@@ -1,6 +1,9 @@
-# Model evaluation and technical specification
+# Historical 0.5B model evaluation and technical specification
 
-## Current model
+Historical experiment, not the current chatbot configuration. For current manual
+acceptance tests see [current-chatbot-tests.md](current-chatbot-tests.md).
+
+## Model tested in this experiment
 
 The tested base model is **Qwen2.5-0.5B-Instruct**, loaded from the pinned Hub
 revision `7ae557604adf67be50417f59c2c2f167def9a775`. It is an approximately 0.5

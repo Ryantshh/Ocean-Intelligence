@@ -1,12 +1,22 @@
 /* Use Streamlit theme tokens so light and dark appearances remain readable. */
 .stApp { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-.block-container { max-width: 1180px; padding-top: 2.5rem; padding-bottom: 3rem; }
+.block-container { max-width: 1200px; padding-top: 3rem; padding-bottom: 7rem; }
 h1 { letter-spacing: -.045em; font-weight: 750; }
 h2, h3 { letter-spacing: -.02em; }
 [data-testid="stSidebar"] { border-right: 1px solid rgba(128,145,165,.18); }
-[data-testid="stChatMessage"] { border: 1px solid rgba(128,145,165,.2); border-radius: 16px; padding: 1.2rem; margin-bottom: .8rem; }
+[data-testid="stSidebar"] > div:first-child { padding: 1.5rem 1rem 2rem; }
+[data-testid="stSidebar"] h1 { font-size: 1.35rem; margin-bottom: .8rem; }
+[data-testid="stSidebar"] .stButton > button { text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .82rem; min-height: 2.35rem; }
+[data-testid="stSidebar"] [data-testid="stExpander"] { margin-bottom: .8rem; }
+[data-testid="stChatMessage"] { border: none; border-radius: 0; padding: 1rem 0; margin-bottom: 1rem; min-width: 0; background: transparent; }
+[data-testid="stChatMessageContent"] { min-width: 0; max-width: 100%; overflow-x: auto; }
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] { min-width: 0; max-width: 100%; overflow-x: auto; }
+[data-testid="stChatMessage"] table { font-size: .85rem; width: 100%; border-collapse: collapse; }
+[data-testid="stChatMessage"] th { white-space: nowrap; padding: .65rem; }
+[data-testid="stChatMessage"] td { padding: .65rem; vertical-align: top; min-width: 90px; max-width: 230px; overflow-wrap: anywhere; }
+[data-testid="stChatMessage"] td:first-child { min-width: 110px; max-width: 160px; word-break: break-all; }
 [data-testid="stChatMessage"] p { line-height: 1.7; }
-[data-testid="stChatInput"] { border: 1px solid rgba(128,145,165,.35); border-radius: 16px; }
+[data-testid="stChatInput"] { border: 1px solid rgba(128,145,165,.35); border-radius: 16px; box-shadow: 0 8px 28px rgba(0,0,0,.14); }
 [data-baseweb="tab-list"] { gap: 1.4rem; }
 [data-baseweb="tab"] { padding-bottom: .85rem; }
 [data-testid="stExpander"] { border-radius: 12px; }

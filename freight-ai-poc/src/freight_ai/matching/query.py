@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import date
 
 from freight_ai.data.models import Intent, Order
@@ -7,14 +9,34 @@ def norm(value):
     return " ".join((value or "").casefold().split())
 
 
+def text_matches(actual, requested, mode):
+    if mode == "exact":
+        return norm(actual) == norm(requested)
+    def tokens(value):
+        value = unicodedata.normalize("NFKD", norm(value))
+        return set(re.findall(r"[a-z0-9]+", "".join(c for c in value if not unicodedata.combining(c))))
+    wanted = tokens(requested)
+    return wanted <= tokens(actual) if wanted else not norm(actual)
+
+
 def query(records, intent: Intent):
     """Inclusive interval overlap; missing constrained values do not pass."""
     results = []
     for r in records:
+        received = r.date_received.date() if r.date_received else None
+        if intent.received_from and (received is None or received < intent.received_from):
+            continue
+        if intent.received_to and (received is None or received > intent.received_to):
+            continue
+        updated = r.update_date.date() if r.update_date else None
+        if intent.updated_from and (updated is None or updated < intent.updated_from):
+            continue
+        if intent.updated_to and (updated is None or updated > intent.updated_to):
+            continue
         if intent.record_id and r.record_id != intent.record_id:
             continue
         if any(
-            norm(getattr(r, key)) != norm(value)
+            not text_matches(getattr(r, key), value, intent.text_match)
             for key, value in intent.text_filters.items()
         ):
             continue
@@ -28,6 +50,12 @@ def query(records, intent: Intent):
             if isinstance(r, Order)
             else (r.open_date_start, r.open_date_end)
         )
+        if intent.start_from and (start is None or start < intent.start_from):
+            continue
+        if intent.start_to and (start is None or start > intent.start_to):
+            continue
+        if intent.end_to and (end is None or end > intent.end_to):
+            continue
         if intent.min_tonnes is not None and (hi is None or hi < intent.min_tonnes):
             continue
         if intent.max_tonnes is not None and (lo is None or lo > intent.max_tonnes):

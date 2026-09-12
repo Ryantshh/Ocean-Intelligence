@@ -110,11 +110,24 @@ def intent_description(intent):
         return "More information is needed before proceeding."
     noun = "cargo orders" if intent.get("dataset", "orders") == "orders" else "vessels"
     parts = [f"Search {noun}"]
+    if intent.get("include_history"):
+        parts.append("Include historical vessel reports")
+    if intent.get("include_future"):
+        parts.append("Include future-dated reports")
+    if intent.get("text_match") == "normalized":
+        parts.append("Accent-insensitive whole-word text matching")
     for key, value in intent.get("text_filters", {}).items():
         parts.append(f"{LABELS.get(key, key.replace('_', ' '))}: {value}")
     for key, label in [
         ("min_tonnes", "Minimum quantity"),
         ("max_tonnes", "Maximum quantity"),
+        ("received_from", "Received on or after"),
+        ("received_to", "Received on or before"),
+        ("updated_from", "Updated on or after"),
+        ("updated_to", "Updated on or before"),
+        ("start_from", "First loading/open date on or after"),
+        ("start_to", "First loading/open date on or before"),
+        ("end_to", "Last loading/open date on or before"),
         ("window_start", "Window starts"),
         ("window_end", "Window ends"),
     ]:

@@ -1,5 +1,26 @@
 # Freight AI POC
 
+Wide result tables use a wider, borderless chat layout with horizontal overflow
+contained inside the message. Historical DWT queries preserve both quantity and
+history constraints; the reference snapshot returns 4,708 historical reports at
+180,000 tonnes or above, rather than the 470 latest-only reports.
+
+Record lists are rendered as source-backed Markdown tables in chat, including
+record IDs, relevant quantities/dates and provenance. General record-search
+requests cannot be routed to unrestricted general-knowledge prose. Explicit
+laycan-start ranges and cargo similarity requests have validated query paths.
+The 12 September read-only smoke returned 102 orders starting laycan on
+1–15 January 2025 and ten locally ranked cargo suggestions for steelmaking raw
+materials (as of 1 September 2026). Suggestions are not fixture evidence.
+
+Business chat defaults: few-shot prompting, local conversation summarisation,
+accent-insensitive word matching, and live read-only filtering for Supabase.
+Semantic suggestions are selected for explicit “similar”, “related”, or “semantic”
+requests when the local embedding model exists; ordinary lookups retain hard
+filters. Capacity assumptions must be supplied by the user in chat.
+Technical experiment controls are hidden unless `FREIGHT_POC_DEVELOPER=1` is set.
+Model, source, reference date and refresh remain available in normal Settings.
+
 A local, modular experiment for open-weight freight-language interpretation,
 structured data queries, provisional vessel screening and QLoRA supervised fine-tuning.
 The existing Ocean Intelligence application is unchanged. This package has its own
@@ -229,7 +250,10 @@ confidence intervals. Evidence-selection relevance and any future free-prose
 explanation mode need expert review.
 
 The model smoke report uses one validation example and is explicitly not a benchmark.
-See `artifacts/evaluation/` for executed results and `docs/phases.md` for phase checks.
+See `artifacts/evaluation/` for executed results and
+[current chatbot tests](docs/current-chatbot-tests.md) for manual acceptance prompts.
+The obsolete phase log and Excel-only prompt list were removed from active docs;
+a recovery copy is in `artifacts/documentation-backups/obsolete-docs-2026-09-12.tar.gz`.
 
 ## Verification and layout
 
@@ -289,3 +313,108 @@ against token-level JSON-schema constraints. Semantic validation still applies.
 See `data/evaluation/expert_review_queue.json` and
 `docs/expert-evaluation-review.md`: these are candidate cases **pending external
 freight-expert review**, not an expert-approved or blind benchmark.
+
+### Supabase (read-only) data source
+
+In Streamlit, select **Data source → Supabase (read-only)** in the sidebar.
+The POC reads `public.order_test` and `public.tonnage_test`, the same tables as
+ the main chatbot. Supabase is the Streamlit default. Excel remains selectable for reproducible historical evaluations. Set `FREIGHT_POC_SOURCE=excel` to start the UI in Excel mode.
+Install the optional connector with `uv pip install -e '.[supabase]'` from this directory.
+Credentials come from `POC_SUPABASE_DB_URL` (preferred) or the main project's
+`CHAINLIT_DATABASE_URL`, in the environment or parent project `.env`. Never paste
+credentials into chat. A SELECT-only database account can be supplied via the
+preferred variable; the integration does not create roles or change permissions.
+
+The connector uses TLS, a read-only connection default, and an explicit read-only,
+repeatable-read transaction. Only fixed SELECT statements run; model-generated SQL
+is never executed. No inserts, updates, deletes, migrations, or remote embeddings
+are performed. Supabase retrieval requires network access; model inference remains
+local. The in-memory snapshot is retained for the session. **Refresh Supabase snapshot**
+reads again and clears the conversation and screening results. Switching sources also
+clears those results, preventing Excel references carrying into Supabase conversations.
+
+Mapping is based on the inspected database schema: `discharge_parent_zone` maps to
+`discharge_zone`; `vessel_id` supplies the vessel label (an identifier, not a verified
+ship name); `tonnage_row_key` identifies each report; `eta` maps to `eta_date_start`;
+`first_date_received` supplies vessel report receipt time. Nulls remain unknown.
+No synthetic `order_id` relationship or assignment field is interpreted as a confirmed
+fixture. Geographic filters remain exact text comparisons; compound port/zone values
+and spelling variants may not match. Existing as-of rules exclude records with missing
+required timestamps. DWT allowances and matching remain provisional. The connector
+fails rather than silently dropping invalid records or truncating beyond 100,000 rows
+per table. Training and held-out Excel evaluation pipelines are unchanged.
+
+Validation on 12 September 2026: loaded 1,864 orders and 11,102 vessel reports;
+Streamlit source selection and a DWT-filter chatbot question completed without errors.
+Counts reflect that snapshot, not a promise about future database contents.
+
+Relative report-date searches: “show me orders from past week” (also “past 7 days”
+or “last 7 days”, for orders or vessels) filters `update_date` across seven inclusive
+calendar dates ending on the selected **As-of date**. The response explicitly states
+this interpretation; it is not a laycan filter or a claim that reports were newly
+created. Change As-of date to control the reference date. Empty results are valid
+when the source contains no updates in that period.
+
+During development, Streamlit fingerprints the complete POC Python package and
+invalidates its imports together when source changes. This prevents new parsers
+from using stale Pydantic schemas. Such code changes clear session state and cached
+model resources; start a fresh conversation after an update.
+
+### Expanded retrieval and local conversations
+
+The query schema now distinguishes `received_from/to`, `updated_from/to`,
+`start_from/to` and `end_to` (laycan/open endpoints), alongside interval overlap.
+`include_history` preserves superseded vessel reports; `include_future` explicitly
+removes the as-of horizon. Missing status remains unknown. Example chat requests:
+
+- Show orders received in the past 7 days.
+- Show orders updated in the past 30 days.
+- Show history for VESSEL 0001.
+
+These relative dates use the visible as-of date. More complex questions use the
+LLM's schema extraction and require checking the displayed interpreted search.
+In Experiment settings, **Flexible words and accents (local)** enables whole-word,
+accent-insensitive containment (e.g. Tubarao matches Tubarão, Brazil). Exact mode
+remains the default. This is lexical matching, not vector semantic retrieval;
+country/region membership and synonym inference are not implemented.
+
+**Saved conversations — stored locally** saves and restores replies and typed
+capacity/intent state in `artifacts/conversations.sqlite3` with owner-only file
+permissions. Restore requires the same source, model and as-of date. Replies are
+historical; subsequent retrieval uses the current snapshot. Older user requests
+are retained as bounded verbatim context alongside recent exchanges; this is not
+LLM summarisation or unlimited memory. No chat persistence writes to Supabase.
+
+This iteration changes the intent schema/prompt: old benchmark artifacts remain
+historical baselines; rerun controlled comparisons before reporting new accuracy.
+The POC still uses full read-only snapshots rather than SQL filter pushdown. Main
+chatbot feature parity is not yet established for vector search, automatic semantic
+history compaction, or large-database query execution. These require separate
+implementation and measurement; current local inference, screening, model selector
+and training workflows remain available.
+
+### Optional retrieval and memory experiments
+
+In **Experiment settings**:
+
+- **Live database filtering** pushes report dates, quantities and latest-report
+  selection into parameterised SELECTs in a read-only transaction. Text matching
+  remains canonical/local for consistent semantics. Matching still uses the session
+  snapshot: refresh before comparing live search with screening. Source inspection
+  still loads a snapshot, so this is not yet a fully lazy large-database UI.
+- **Local semantic suggestions** uses a local Sentence Transformers embedding model.
+  Install `.[semantic]`; set its local directory in the UI. No remote inference or
+  Cohere calls are made. Hard numeric/date/status/identifier filters remain mandatory;
+  geographic/commodity fields are ranked by cosine similarity. Ranked suggestions
+  are not exact matches and cannot be used as exact counts/quantity totals. The
+  experiment has no validated freight relevance threshold; domain evaluation is needed.
+- **Summarise older conversation locally** uses the selected Qwen model for an extra
+  summary call after ten messages. Summaries are explicitly unverified historical
+  context; typed intent/capacity state stays authoritative. Default is off for baseline
+  reproducibility. Summarisation may introduce errors and has not established better
+  conversational accuracy than the bounded verbatim-context baseline.
+
+Read-only SQL/snapshot parity was checked on the current Supabase snapshot:
+470 latest vessel reports above 180,000 DWT; 4,708 historical reports with that
+threshold; 1,857 orders updated from 1 January 2025 through the selected horizon.
+These are snapshot-specific integration checks, not general model-accuracy scores.

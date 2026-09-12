@@ -15,6 +15,11 @@ GLOSSARY = {
 
 
 def current_records(config):
+    if config.get("data_source") == "supabase":
+        if "_snapshot" in config:
+            return config["_snapshot"]
+        from freight_ai.data.supabase import load_snapshot
+        return load_snapshot()
     manifest = json.loads((Path(config["processed"]) / "inspection.json").read_text())
     for kind, name in FILENAMES.items():
         if digest(Path(config["sources"]) / name) != manifest[kind]["sha256"]:
@@ -58,10 +63,11 @@ def execute(intent, records, matching_config, as_of: date):
         return match(
             orders[0], records["tonnage"], matching_config, as_of, intent.limit
         )
-    selected = as_of_records(records[intent.dataset], as_of)
+    horizon = date.max if intent.include_future else as_of
+    selected = as_of_records(records[intent.dataset], horizon)
     conflicts = set()
-    if intent.dataset == "tonnage":
-        selected, conflicts = latest_vessels(selected, as_of)
+    if intent.dataset == "tonnage" and not intent.include_history:
+        selected, conflicts = latest_vessels(selected, horizon)
     result = query(selected, intent)
     result.update(as_of=as_of.isoformat(), conflicting_vessel_reports=sorted(conflicts))
     return result

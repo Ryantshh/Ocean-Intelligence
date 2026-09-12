@@ -1,5 +1,8 @@
 # Verification and baseline comparison iteration
 
+Historical development record. Current UI/defaults are documented in the project
+README; the commands and benchmark evidence below describe this earlier iteration.
+
 The POC source was recovered from GitHub Desktop stash commit cc70685. The stash
 was not popped and the main application was not reverted. The original snapshot
 is archived at artifacts/baselines/pre-verification.tar.gz.
