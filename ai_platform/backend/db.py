@@ -163,4 +163,7 @@ async def fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     pool = await _get_pool()
     async with pool.acquire(timeout=TIMEOUT_SECONDS) as connection:
         records = await connection.fetch(sql, *params, timeout=TIMEOUT_SECONDS)
-    return [dict(record) for record in records]
+    return [
+        {column: json_safe(value) for column, value in record.items()}
+        for record in records
+    ]
