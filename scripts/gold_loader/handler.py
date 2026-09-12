@@ -47,7 +47,6 @@ ORDERS_COLUMNS = (
     "cargo_weight_min",
     "cargo_weight_max",
     "assigned",
-    "assigned_vessel_name",
     "embedding_source_hash",
 )
 

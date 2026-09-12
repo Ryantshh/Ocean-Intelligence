@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ai_platform.app.api.dashboard import router as dashboard_router
+from ai_platform.backend.db import close_pool
 from ai_platform.trader_override.trader_override import router as trader_override_router
 
 load_dotenv()
@@ -29,6 +30,18 @@ DASHBOARD_DIR = PACKAGE_ROOT / "dashboard"
 CHAINLIT_TARGET = str(PACKAGE_ROOT / "app" / "cl_app.py")
 
 app = FastAPI(title="Ocean Intelligence")
+
+
+@app.on_event("shutdown")
+async def _close_dashboard_pool() -> None:
+    """Release the dashboard's asyncpg pool so its connections don't sit
+    open against Supabase's session pooler across a `--reload` restart.
+
+    See ``ai_platform/backend/db.py``'s ``close_pool`` docstring -- skipping
+    this is what let repeated restarts during manual testing pile up
+    against the project-wide EMAXCONNSESSION cap.
+    """
+    await close_pool()
 
 
 @app.get("/health")

@@ -85,10 +85,12 @@ TIMEOUT_SECONDS = 30
 # A small shared pool bounds this module's own real connection count
 # instead -- concurrent callers queue for one of a few connections rather
 # than each opening a new one -- capped well under the project-wide limit
-# to leave room for Chainlit's own connections. Not explicitly closed on
-# process shutdown: there's no app-lifespan hook wired up for it, and an
-# abrupt process exit closing these sockets is unremarkable (Postgres
-# notices the disconnect and cleans up server-side either way).
+# to leave room for Chainlit's own connections. Closed explicitly on
+# process shutdown via close_pool() (wired into main.py's FastAPI shutdown
+# event) rather than left for Postgres to notice the dropped socket on its
+# own timeline -- confirmed live that skipping this let `--reload` restarts
+# during manual testing outpace that reaping and re-hit the same
+# EMAXCONNSESSION cap this pool exists to avoid.
 _POOL_MIN_SIZE = 1
 _POOL_MAX_SIZE = 6
 
@@ -140,6 +142,26 @@ async def _get_pool() -> asyncpg.Pool:
                     timeout=TIMEOUT_SECONDS,
                 )
     return _pool
+
+
+async def close_pool() -> None:
+    """Close the shared pool, releasing its connections back to Postgres.
+
+    Meant to run from a FastAPI shutdown event. Without it, a `--reload`
+    restart (or any process exit) leaves these sockets for Supabase's
+    session pooler to reap on its own schedule -- confirmed live that this
+    lets repeated restarts during manual testing outrun that reaping and
+    hit the project-wide EMAXCONNSESSION cap even though this pool alone
+    stays well under it.
+
+    Safe to call when no pool has been created yet (does nothing).
+    """
+    global _pool, _pool_lock, _pool_loop
+    if _pool is not None:
+        await _pool.close()
+    _pool = None
+    _pool_lock = None
+    _pool_loop = None
 
 
 async def fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:

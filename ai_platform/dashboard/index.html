@@ -29,6 +29,7 @@
         --open: #0f766e;
         --watchlist: #b45309;
         --fixed: #64748b;
+        --likely-fixed: #7c3aed;
         --stale: #b91c1c;
         /* Status palette (reserved, fixed across modes) -- see dataviz skill's
            references/palette.md. Used only for the supply/demand map's
@@ -65,6 +66,7 @@
           --open: #2dd4bf;
           --watchlist: #fbbf24;
           --fixed: #94a3b8;
+          --likely-fixed: #a78bfa;
           --stale: #f87171;
           --map-water: #1b2a33;
           --map-land: #33402f;
@@ -80,6 +82,7 @@
         --open: #2dd4bf;
         --watchlist: #fbbf24;
         --fixed: #94a3b8;
+        --likely-fixed: #a78bfa;
         --stale: #f87171;
         --map-water: #1b2a33;
         --map-land: #33402f;
@@ -176,7 +179,7 @@
       .status-tile-open .value { color: var(--open); }
       .status-tile-watchlist .value { color: var(--watchlist); }
       .status-tile-fixed .value { color: var(--fixed); }
-      .status-tile-stale .value { color: var(--stale); }
+      .status-tile-likely-fixed .value { color: var(--likely-fixed); }
 
       /* Summary panel: KPI tiles + heatmap + daily trends grouped together
          so the market shape is readable in one screen, without scrolling
@@ -207,7 +210,6 @@
         background: var(--bg); color: var(--fg); cursor: pointer;
       }
 
-      .removed-item { text-decoration: line-through; opacity: 0.75; }
       .field-diff { font-size: 0.8rem; }
       .field-diff .field-name { color: var(--muted); }
       .field-diff .field-old { text-decoration: line-through; color: var(--stale); opacity: 0.8; }
@@ -232,8 +234,7 @@
       .badge-open { background: color-mix(in srgb, var(--open) 18%, transparent); color: var(--open); }
       .badge-watchlist { background: color-mix(in srgb, var(--watchlist) 20%, transparent); color: var(--watchlist); }
       .badge-fixed { background: color-mix(in srgb, var(--fixed) 22%, transparent); color: var(--fixed); }
-      .flag { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 650; padding: 0.1rem 0.4rem; border-radius: 0.35rem; border: 1px solid currentColor; }
-      .flag-stale { color: var(--stale); }
+      .badge-likely-fixed { background: color-mix(in srgb, var(--likely-fixed) 18%, transparent); color: var(--likely-fixed); }
 
       .view-toggle { display: flex; gap: 0.4rem; }
       .view-toggle button {
@@ -518,10 +519,6 @@
       <section id="summary-section">
         <div class="section-head"><h2>Market Summary</h2></div>
         <div class="status-tiles" id="statusTiles">
-          <button type="button" class="status-tile" data-status="">
-            <span class="value" id="statusTileAll">—</span>
-            <span class="label">All vessels</span>
-          </button>
           <button type="button" class="status-tile status-tile-open" data-status="OPEN">
             <span class="value" id="statusTileOpen">—</span>
             <span class="label">Open</span>
@@ -534,9 +531,9 @@
             <span class="value" id="statusTileFixed">—</span>
             <span class="label">Fixed</span>
           </button>
-          <button type="button" class="status-tile status-tile-stale" id="flagTileStale">
-            <span class="value" id="statusTileStale">—</span>
-            <span class="label">Stale</span>
+          <button type="button" class="status-tile status-tile-likely-fixed" data-status="LIKELY FIXED" title="No row's window covers today, and this vessel hasn't been updated in 5+ days -- treated as probably fixed off-market, not a confirmed fixture.">
+            <span class="value" id="statusTileLikelyFixed">—</span>
+            <span class="label">Likely Fixed</span>
           </button>
         </div>
 
@@ -550,6 +547,10 @@
               </div>
             </div>
             <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply). Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Simulated as of today's real date minus one year, not today's actual date.</p>
+            <div id="regionMapFilterBanner" class="day-filter-banner hidden">
+              <span id="regionMapFilterLabel"></span>
+              <button type="button" id="regionMapFilterClear">Clear filter</button>
+            </div>
             <div id="regionsMapView" class="map-view-wrap">
               <div class="map-wrap" id="regionsMap"><p class="muted" style="padding:1rem;">Loading&hellip;</p></div>
             </div>
@@ -615,6 +616,7 @@
                 <option value="OPEN">Open</option>
                 <option value="ON SUBS">On Subs</option>
                 <option value="FIXED">Fixed</option>
+                <option value="LIKELY FIXED">Likely Fixed</option>
               </select>
             </label>
             <label>Region
@@ -626,9 +628,6 @@
                 <option value="eta">ETA</option>
                 <option value="open_date_end">Open window ending</option>
               </select>
-            </label>
-            <label class="toolbar-checkbox">
-              <input type="checkbox" id="vesselStaleOnly" /> Stale only
             </label>
           </div>
         </div>
@@ -908,14 +907,8 @@
       }
 
       function statusBadge(status) {
-        const cls = { OPEN: "badge-open", "ON SUBS": "badge-watchlist", FIXED: "badge-fixed" }[status] || "badge-fixed";
+        const cls = { OPEN: "badge-open", "ON SUBS": "badge-watchlist", FIXED: "badge-fixed", "LIKELY FIXED": "badge-likely-fixed" }[status] || "badge-fixed";
         return `<span class="badge ${cls}">${escapeHtml(status || "—")}</span>`;
-      }
-
-      function flags(row) {
-        return row.is_stale
-          ? '<span class="flag flag-stale" title="Not updated recently, or its open window has already lapsed">STALE</span>'
-          : "";
       }
 
       async function getJson(path) {
@@ -1080,9 +1073,9 @@
       function regionStatus(supply, demand) {
         if (demand === 0) return { key: "no-data", label: "No recent demand data", color: "var(--muted)" };
         const ratio = supply / demand;
-        if (ratio < 0.7) return { key: "tight", label: "Tight", color: "var(--status-good)" };
+        if (ratio < 0.7) return { key: "tight", label: "Tight", color: "var(--status-critical)" };
         if (ratio <= 1.5) return { key: "balanced", label: "Balanced", color: "var(--status-warning)" };
-        return { key: "oversupplied", label: "Oversupplied", color: "var(--status-critical)" };
+        return { key: "oversupplied", label: "Oversupplied", color: "var(--status-good)" };
       }
 
       function bubbleRadius(value, maxValue) {
@@ -1092,6 +1085,16 @@
       }
 
       let regionsCache = null;
+      // Clicking a map bubble filters the Daily Trends charts (client-side,
+      // reusing the region breakdown already fetched for their hover
+      // tooltips -- see renderDailyTrendsCharts) and the vessel/order
+      // trackers below (by writing straight into their existing Region
+      // text filters, the same substring match a trader typing would get)
+      // -- deliberately without scrolling the page, unlike the day-filter
+      // click-throughs elsewhere on this page, since the map sits above
+      // everything it affects and a trader watching the charts update
+      // shouldn't be yanked away from them.
+      let activeRegionFilter = null;
 
       function renderRegionsMap(rows) {
         const container = document.getElementById("regionsMap");
@@ -1110,13 +1113,15 @@
           const [x, y] = project(REGION_COORDS[r.region]);
           const radius = bubbleRadius(r.supply, maxSupply);
           const status = regionStatus(r.supply, r.demand);
+          const isActive = r.region === activeRegionFilter;
           const label = r.supply >= labelThreshold
             ? `<text class="map-bubble-label" x="${x}" y="${y + radius + 11}" text-anchor="middle">${escapeHtml(r.region)}</text>`
             : "";
+          const ariaLabel = `${escapeHtml(r.region)}: ${formatNumber(r.supply)} supply, ${formatNumber(r.demand)} demand, ${status.label}${isActive ? " -- filter active, click to clear" : " -- click to filter the charts and trackers below"}`;
           return `
             <g data-region="${escapeHtml(r.region)}" data-supply="${r.supply}" data-demand="${r.demand}" data-status="${status.label}">
-              <circle class="map-bubble" cx="${x}" cy="${y}" r="${radius}" fill="${status.color}" fill-opacity="0.82" stroke="var(--map-water)" stroke-width="2"></circle>
-              <circle class="map-bubble-hit" cx="${x}" cy="${y}" r="${Math.max(radius, 12)}" tabindex="0" role="button" aria-label="${escapeHtml(r.region)}: ${formatNumber(r.supply)} supply, ${formatNumber(r.demand)} demand, ${status.label}"></circle>
+              <circle class="map-bubble" cx="${x}" cy="${y}" r="${radius}" fill="${status.color}" fill-opacity="0.82" stroke="${isActive ? "var(--fg)" : "var(--map-water)"}" stroke-width="${isActive ? 3 : 2}"></circle>
+              <circle class="map-bubble-hit" cx="${x}" cy="${y}" r="${Math.max(radius, 12)}" tabindex="0" role="button" aria-label="${ariaLabel}"></circle>
               ${label}
             </g>
           `;
@@ -1130,9 +1135,9 @@
           </svg>
           <div class="hover-tooltip" id="mapTooltip"></div>
           <div class="map-legend">
-            <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Tight (demand &gt; supply)</span>
+            <span class="swatch"><span class="dot" style="background:var(--status-critical)"></span>Tight (demand &gt; supply)</span>
             <span class="swatch"><span class="dot" style="background:var(--status-warning)"></span>Balanced</span>
-            <span class="swatch"><span class="dot" style="background:var(--status-critical)"></span>Oversupplied (supply &gt; demand)</span>
+            <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Oversupplied (supply &gt; demand)</span>
             <span class="swatch"><span class="dot" style="background:var(--muted)"></span>No recent demand data</span>
             <span class="swatch">Bubble size = open vessels</span>
           </div>
@@ -1169,6 +1174,21 @@
           hit.addEventListener("focus", show);
           hit.addEventListener("pointerleave", hide);
           hit.addEventListener("blur", hide);
+          // Clicking the already-active region clears it (toggle) rather
+          // than re-applying the same filter -- the natural way to ask
+          // "show me everything again" without hunting for the separate
+          // Clear button.
+          const toggleRegionFilter = () => {
+            hideTooltip(tooltip);
+            applyRegionFilter(g.dataset.region === activeRegionFilter ? null : g.dataset.region);
+          };
+          hit.addEventListener("click", toggleRegionFilter);
+          hit.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              toggleRegionFilter();
+            }
+          });
         });
       }
 
@@ -1209,6 +1229,34 @@
         }
       }
 
+      // `region` is the exact zone string a bubble represents (e.g. "East
+      // Coast South America"), or null to clear. Plugging the exact name
+      // into the vessel/order trackers' existing Region text filters (a
+      // case-insensitive substring match) works cleanly here since the
+      // full name can't accidentally match an unrelated zone the way a
+      // short fragment might.
+      function applyRegionFilter(region) {
+        activeRegionFilter = region;
+        const banner = document.getElementById("regionMapFilterBanner");
+        if (region) {
+          document.getElementById("regionMapFilterLabel").textContent = `Filtered by region: ${region}`;
+          banner.classList.remove("hidden");
+        } else {
+          banner.classList.add("hidden");
+        }
+        if (regionsCache) renderRegionsMap(regionsCache);
+        renderDailyTrendsCharts();
+
+        resetDayFilterState();
+        document.getElementById("vesselRegion").value = region || "";
+        loadVessels();
+
+        resetOrderDayFilterState();
+        document.getElementById("orderRegion").value = region || "";
+        loadOrders();
+      }
+      document.getElementById("regionMapFilterClear").addEventListener("click", () => applyRegionFilter(null));
+
       document.querySelectorAll(".view-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           document.querySelectorAll(".view-btn").forEach((b) => b.classList.remove("active"));
@@ -1219,17 +1267,7 @@
         });
       });
 
-      // ---- summary panel: flag-count KPI tiles & daily trend charts --------
-      async function loadFlagCounts(isRefresh = false) {
-        try {
-          const counts = await getJson("/api/dashboard/vessels/flag-counts");
-          document.getElementById("statusTileStale").textContent = formatNumber(counts.stale);
-        } catch (error) {
-          if (isRefresh) throw error;
-          document.getElementById("statusTileStale").textContent = "—";
-        }
-      }
-
+      // ---- summary panel: daily trend charts --------------------------
       // Dependency-free bar chart, same inline-SVG approach as the regions
       // map -- one hue per panel (the panel title already names the
       // series, so no legend needed), a native <title> per bar as a
@@ -1323,6 +1361,30 @@
 
       let dailyTrendsRange = null;
       let dailyOrdersRange = null;
+      let dailyCountsCache = null;
+
+      // Narrows a fetched series to one region's own count per day, using
+      // the per-(day, region) breakdown already fetched for the hover
+      // tooltip (see daily_new_vessels_by_region_sql and friends) --
+      // reused here rather than re-fetching, so clicking a map bubble
+      // re-renders the charts instantly with no network round trip. A day
+      // with no activity in that region simply isn't in its `regions`
+      // array, hence the `?? 0` rather than assuming a match exists.
+      function seriesForActiveRegion(series) {
+        if (!activeRegionFilter) return series;
+        return series.map((d) => ({
+          ...d,
+          count: (d.regions || []).find((r) => r.region === activeRegionFilter)?.count ?? 0,
+        }));
+      }
+
+      function renderDailyTrendsCharts() {
+        if (!dailyCountsCache) return;
+        const data = dailyCountsCache;
+        renderMiniBarChart(document.getElementById("chartNewVessels"), seriesForActiveRegion(data.new_vessels), "var(--open)", "new_vessels");
+        renderMiniBarChart(document.getElementById("chartStatusChanges"), seriesForActiveRegion(data.status_changes), "var(--accent)", "status_changes");
+        renderMiniBarChart(document.getElementById("chartNewOrders"), seriesForActiveRegion(data.new_orders), "var(--fixed)", "new_orders");
+      }
 
       async function loadDailyTrends(isRefresh = false) {
         const ids = ["chartNewVessels", "chartStatusChanges", "chartNewOrders"];
@@ -1330,9 +1392,8 @@
           const data = await getJson("/api/dashboard/daily-counts?days=14");
           dailyTrendsRange = data.range;
           dailyOrdersRange = data.orders_range;
-          renderMiniBarChart(document.getElementById("chartNewVessels"), data.new_vessels, "var(--open)", "new_vessels");
-          renderMiniBarChart(document.getElementById("chartStatusChanges"), data.status_changes, "var(--accent)", "status_changes");
-          renderMiniBarChart(document.getElementById("chartNewOrders"), data.new_orders, "var(--fixed)", "new_orders");
+          dailyCountsCache = data;
+          renderDailyTrendsCharts();
         } catch (error) {
           if (isRefresh) throw error;
           ids.forEach((id) => {
@@ -1350,7 +1411,7 @@
         return `
           <tr>
             <td>${escapeHtml(row.vessel_id)}</td>
-            <td>${statusBadge(row.dashboard_status)}${flags(row)}</td>
+            <td>${statusBadge(row.dashboard_status)}</td>
             <td>${escapeHtml(row.parent_zone || "—")}</td>
             <td>${formatNumber(row.dwt)}</td>
             <td>${formatDate(row.open_date_start)} &ndash; ${formatDate(row.open_date_end)}</td>
@@ -1382,7 +1443,7 @@
           ? pageRows.map(vesselRow).join("")
           : hasActiveVesselFilter()
             ? '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>'
-            : '<tr><td colspan="7" class="muted">Choose a status, region, or stale filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
+            : '<tr><td colspan="7" class="muted">Choose a status or region filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
 
         const rangeLabel = filtered.length
           ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
@@ -1411,28 +1472,23 @@
       async function loadStatusCounts(isRefresh = false) {
         try {
           const counts = await getJson("/api/dashboard/vessels/status-counts");
-          const total = counts.OPEN + counts["ON SUBS"] + counts.FIXED;
-          document.getElementById("statusTileAll").textContent = formatNumber(total);
           document.getElementById("statusTileOpen").textContent = formatNumber(counts.OPEN);
           document.getElementById("statusTileWatchlist").textContent = formatNumber(counts["ON SUBS"]);
           document.getElementById("statusTileFixed").textContent = formatNumber(counts.FIXED);
+          document.getElementById("statusTileLikelyFixed").textContent = formatNumber(counts["LIKELY FIXED"]);
         } catch (error) {
           if (isRefresh) throw error;
-          // Only the four status tiles -- Stale is owned by loadFlagCounts()
-          // and shouldn't blank just because this call failed.
           document.querySelectorAll(".status-tile[data-status] .value").forEach((el) => { el.textContent = "—"; });
         }
       }
 
-      // The four status tiles ([data-status]) are one exclusive group; the
-      // Stale tile (below) is a separate, layerable filter and
-      // deliberately excluded from this selector/group.
+      // The five status tiles ([data-status]) are one exclusive group.
       function scrollToVessels() {
         document.getElementById("vessels-section").scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
       // Clicking a Daily Trends bar drills into the vessel tracker: rather
-      // than layering onto the status/region/sort/stale filters above (a
+      // than layering onto the status/region/sort filters above (a
       // day filter and e.g. a status filter both narrowing the same table
       // would be confusing to reason about together), it replaces them
       // outright -- those four controls are disabled while active, and
@@ -1440,12 +1496,12 @@
       // box stays enabled throughout and keeps narrowing whatever's
       // currently loaded, day-filtered or not.
       let activeDayFilter = null;
-      const DAY_FILTER_LABELS = { new_vessels: "first reported", status_changes: "with a status change" };
-      const DAY_FILTER_CONTROLS = ["vesselStatus", "vesselRegion", "vesselSort", "vesselStaleOnly"];
+      const DAY_FILTER_LABELS = { new_vessels: "declared open", status_changes: "with a status change" };
+      const DAY_FILTER_CONTROLS = ["vesselStatus", "vesselRegion", "vesselSort"];
 
       // The vessel tracker only ever shows something once the trader has
-      // deliberately narrowed it -- a day-filter, a status/region/stale
-      // filter, or a vessel ID search -- never the whole ~1000-vessel fleet
+      // deliberately narrowed it -- a day-filter, a status/region filter,
+      // or a vessel ID search -- never the whole ~1000-vessel fleet
       // unfiltered by default. Sort doesn't count: it reorders whatever's
       // already shown, it doesn't narrow anything.
       function hasActiveVesselFilter() {
@@ -1453,7 +1509,6 @@
           activeDayFilter ||
           document.getElementById("vesselStatus").value ||
           document.getElementById("vesselRegion").value.trim() ||
-          document.getElementById("vesselStaleOnly").checked ||
           document.getElementById("vesselSearch").value.trim()
         );
       }
@@ -1475,8 +1530,8 @@
       });
 
       // Any of these explicit filter shortcuts supersedes a day filter --
-      // clicking one is a clear signal to filter by status/staleness
-      // instead, not to combine with whatever day was last clicked.
+      // clicking one is a clear signal to filter by status instead, not
+      // to combine with whatever day was last clicked.
       document.querySelectorAll(".status-tile[data-status]").forEach((tile) => {
         tile.addEventListener("click", () => {
           resetDayFilterState();
@@ -1486,14 +1541,6 @@
           loadVessels();
           scrollToVessels();
         });
-      });
-      document.querySelector('.status-tile[data-status=""]').classList.add("active");
-
-      document.getElementById("flagTileStale").addEventListener("click", () => {
-        resetDayFilterState();
-        document.getElementById("vesselStaleOnly").checked = true;
-        loadVessels();
-        scrollToVessels();
       });
 
       async function loadVessels(isRefresh = false) {
@@ -1529,11 +1576,9 @@
           const status = document.getElementById("vesselStatus").value;
           const region = document.getElementById("vesselRegion").value.trim();
           const sort = document.getElementById("vesselSort").value;
-          const staleOnly = document.getElementById("vesselStaleOnly").checked;
           const params = new URLSearchParams({ sort });
           if (status) params.set("status", status);
           if (region) params.set("region", region);
-          if (staleOnly) params.set("stale", "true");
           url = `/api/dashboard/vessels?${params}`;
           banner.classList.add("hidden");
         }
@@ -1805,12 +1850,6 @@
             ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "new_as_of"],
             ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, "update_date"],
             ["Field changes", data.field_changes, fieldChangeRow, "update_date"],
-            [
-              "Removed",
-              data.vessels_no_longer_fresh,
-              (r) => `<li class="removed-item" title="Inferred from a reporting gap -- this vessel stopped appearing in recent reports. Nothing in this data marks a record as formally withdrawn, so treat this as an early warning to double-check, not a confirmed removal.">${escapeHtml(r.vessel_id)} &mdash; last seen ${formatDate(r.update_date)}</li>`,
-              "update_date",
-            ],
             ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, "date_received"],
           ];
           currentChangeGroups = groups;
@@ -1865,7 +1904,7 @@
         return `
           <tr>
             <td>${escapeHtml(row.vessel_id)}</td>
-            <td>${statusBadge(row.dashboard_status)}${flags(row)}</td>
+            <td>${statusBadge(row.dashboard_status)}</td>
             <td>${escapeHtml(row.parent_zone || "—")}</td>
             <td>${escapeHtml(row.open_area || "—")}</td>
             <td>${escapeHtml(row.destination || "—")}</td>
@@ -2000,8 +2039,6 @@
         clearTimeout(searchDebounce);
         searchDebounce = setTimeout(loadVessels, 350);
       });
-      document.getElementById("vesselStaleOnly").addEventListener("change", loadVessels);
-
       let currentChangeWindow = "dod";
       document.querySelectorAll(".window-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -2603,7 +2640,6 @@
         const named = [
           ["Regional map", loadRegions(true)],
           ["Status counts", loadStatusCounts(true)],
-          ["Flag counts", loadFlagCounts(true)],
           ["Daily trends", loadDailyTrends(true)],
           ["Change feed", loadChanges(currentChangeWindow, true)],
           ["Vessel tracker", loadVessels(true)],
@@ -2635,7 +2671,6 @@
       Promise.all([
         loadRegions(),
         loadStatusCounts(),
-        loadFlagCounts(),
         loadDailyTrends(),
         loadChanges(currentChangeWindow),
         loadVessels(),

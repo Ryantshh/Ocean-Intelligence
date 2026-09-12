@@ -47,7 +47,6 @@ fields, and 7 filterable orders columns give 9.
 | `cargo_type` | No | | comma-packed set |
 | `cargo_description` | No | | free prose |
 | `assigned` | No | | 100% null |
-| `assigned_vessel_name` | No | | 100% null |
 
 ## Notes
 

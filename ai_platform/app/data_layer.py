@@ -17,6 +17,8 @@ from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 from chainlit.data.storage_clients.base import BaseStorageClient
 from chainlit.data.storage_clients.s3 import S3StorageClient
 from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
 
@@ -104,8 +106,28 @@ def get_data_layer() -> BaseDataLayer:
             "CHAINLIT_DATABASE_URL must use the postgresql+asyncpg:// driver."
         )
 
-    return SQLAlchemyDataLayer(
+    data_layer = SQLAlchemyDataLayer(
         conninfo=conninfo,
         connect_args={"server_settings": {"search_path": get_schema_name()}},
         storage_provider=get_storage_client(),
     )
+
+    # SQLAlchemyDataLayer.__init__ builds its engine with create_async_engine's
+    # bare defaults -- pool_size=5, max_overflow=10, i.e. up to 15 real
+    # connections for chat persistence alone, which is Supabase's *entire*
+    # project-wide session-pooler cap (see ai_platform/backend/db.py's pool
+    # comment). Its constructor doesn't expose pool sizing, so the engine it
+    # just built (never having opened a connection yet -- engines are lazy)
+    # is swapped for a tighter one here instead. Confirmed live that using
+    # chat and the dashboard at once could otherwise exhaust the cap with
+    # "EMAXCONNSESSION ... max clients are limited to pool_size: 15".
+    data_layer.engine = create_async_engine(
+        conninfo,
+        connect_args={"server_settings": {"search_path": get_schema_name()}},
+        pool_size=3,
+        max_overflow=2,
+    )
+    data_layer.async_session = sessionmaker(
+        bind=data_layer.engine, expire_on_commit=False, class_=AsyncSession
+    )
+    return data_layer
