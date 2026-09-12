@@ -66,9 +66,17 @@ async def read_stats() -> dict[str, Any]:
         502 when the database cannot be reached or queried.
     """
     schema = get_schema_name()
+    # pool_size/max_overflow pinned small: this engine is built fresh per
+    # call and only ever needs one connection at a time. Left at
+    # create_async_engine's defaults (pool_size=5, max_overflow=10) it
+    # could itself claim up to 15 connections under concurrent hits --
+    # Supabase's entire project-wide session-pooler cap on its own. See
+    # ai_platform/backend/db.py's pool comment for that cap.
     engine = create_async_engine(
         get_engine_url(),
         connect_args={"server_settings": {"search_path": schema}},
+        pool_size=1,
+        max_overflow=0,
     )
     try:
         async with engine.connect() as connection:
@@ -127,13 +135,12 @@ async def list_vessels(
     status: dq.DashboardStatus | None = None,
     region: str | None = None,
     sort: dq.SortKey = "update_date",
-    stale: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Vessel tracker: current status per vessel, filterable by status/region.
 
     Parameters
     ----------
-    status : "FIXED", "OPEN", "ON SUBS", or None
+    status : "FIXED", "OPEN", "ON SUBS", "LIKELY FIXED", or None
         Exact match. Omit for every status.
     region : str or None
         Case-insensitive substring match against any one of a vessel's
@@ -141,16 +148,13 @@ async def list_vessels(
         "East Africa" and "Far East".
     sort : "eta", "update_date", or "open_date_end"
         Sort key; defaults to most recently updated first.
-    stale : bool or None
-        Restricts to (or excludes) ``is_stale`` rows. Backs the summary
-        panel's Stale KPI tile.
 
     Returns
     -------
     list of dict
         One row per vessel.
     """
-    sql, params = dq.vessels_sql(status, region, sort, stale=stale)
+    sql, params = dq.vessels_sql(status, region, sort)
     return await _run(sql, params)
 
 
@@ -248,22 +252,9 @@ async def orders_by_day(
     return await _run(sql, params)
 
 
-@router.get("/dashboard/vessels/flag-counts")
-async def vessel_flag_counts() -> dict[str, int]:
-    """Fleet-wide stale-vessel count, for the summary panel's KPI tile.
-
-    Returns
-    -------
-    dict
-        ``{"stale": n}``.
-    """
-    row = (await _run(*dq.vessel_flag_counts_sql()))[0]
-    return {"stale": row["stale"]}
-
-
 @router.get("/dashboard/vessels/status-counts")
 async def vessel_status_counts() -> dict[str, int]:
-    """Fleet-wide FIXED/OPEN/ON SUBS counts, for the tracker's summary tiles.
+    """Fleet-wide FIXED/OPEN/ON SUBS/LIKELY FIXED counts, for the tracker's summary tiles.
 
     A trader should see the shape of the market without opening the vessel
     table -- this backs that, independent of whatever status/region filter
@@ -272,12 +263,12 @@ async def vessel_status_counts() -> dict[str, int]:
     Returns
     -------
     dict
-        ``{"FIXED": n, "OPEN": n, "ON SUBS": n}`` -- always all three
-        keys, 0 for a status with no vessels right now rather than an
-        absent key.
+        ``{"FIXED": n, "OPEN": n, "ON SUBS": n, "LIKELY FIXED": n}`` --
+        always all four keys, 0 for a status with no vessels right now
+        rather than an absent key.
     """
     rows = await _run(*dq.status_counts_sql())
-    counts = {"FIXED": 0, "OPEN": 0, "ON SUBS": 0}
+    counts = {"FIXED": 0, "OPEN": 0, "ON SUBS": 0, "LIKELY FIXED": 0}
     counts.update({row["dashboard_status"]: row["vessel_count"] for row in rows})
     return counts
 
@@ -319,8 +310,14 @@ async def daily_counts(days: int = 14) -> dict[str, Any]:
         -- see :func:`ai_platform.backend.dashboard_queries.daily_new_vessels_by_region_sql`.
     """
     reference = (await _run(*dq.reference_times_sql()))[0]
-    tonnage_now = reference["tonnage_now"]
-    orders_now = reference["orders_now"]
+    # fetch_rows() coerces every datetime to an ISO string (json_safe) so
+    # the chat agent's CustomElement can json.dumps it directly -- fine for
+    # every other dashboard row, but these two specifically get arithmetic
+    # done on them below, so they're parsed straight back into real
+    # datetimes here rather than working around fetch_rows for just this
+    # one query.
+    tonnage_now = datetime.fromisoformat(reference["tonnage_now"])
+    orders_now = datetime.fromisoformat(reference["orders_now"])
 
     tonnage_since = dq.daily_range_start(tonnage_now, days)
     orders_since = dq.daily_range_start(orders_now, days)
@@ -430,14 +427,14 @@ async def ecsa_vessel_history(vessel_id: str) -> list[dict[str, Any]]:
 async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     """Day-on-day or week-on-week change feed.
 
-    ``vessels_no_longer_fresh`` is presented in the UI as "Removed" (per
-    the product spec) but is really only an inferred "stopped reporting
-    recently" signal -- nothing in the source data marks a record
-    withdrawn. See
-    ``ai_platform.backend.dashboard_queries.vessels_no_longer_fresh_sql``.
-    Whether "Removed" should exist as a concept at all is a separate,
-    still-open question with the sponsor -- kept as originally defined
-    until that's resolved, not dropped pre-emptively.
+    ``new_vessels`` and ``vessel_status_changes`` intentionally overlap:
+    ``vessel_status_changes`` is the complete transition log (any status
+    -> any status, including into 'OPEN'), and ``new_vessels`` separately
+    highlights the same into-'OPEN' events under their own heading (the
+    sponsor's "new vessel" -- a row explicitly declaring the vessel open,
+    for trader attention) -- a transition can and should appear under
+    both. See
+    ``ai_platform.backend.dashboard_queries.vessel_status_changes_sql``.
 
     ``field_changes`` covers everything *except* the FIXED/OPEN/ON SUBS
     transition (that's ``vessel_status_changes``, kept separate so the same
@@ -462,17 +459,19 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     dict
         ``window``, the two simulated reference instants and window starts
         (``tonnage_reference_now``, ``tonnage_since``, ``orders_reference_now``,
-        ``orders_since``), and five row lists: ``new_vessels``,
-        ``vessel_status_changes``, ``vessels_no_longer_fresh``,
-        ``field_changes``, ``new_orders``.
+        ``orders_since``), and four row lists: ``new_vessels``,
+        ``vessel_status_changes``, ``field_changes``, ``new_orders``.
     """
     reference = (await _run(*dq.reference_times_sql()))[0]
-    tonnage_now = reference["tonnage_now"]
-    orders_now = reference["orders_now"]
+    # See daily_counts()'s matching comment -- fetch_rows() JSON-stringifies
+    # datetimes for the chat agent's sake, so these two are parsed back
+    # into real datetimes here since window_start() below does arithmetic
+    # on them.
+    tonnage_now = datetime.fromisoformat(reference["tonnage_now"])
+    orders_now = datetime.fromisoformat(reference["orders_now"])
 
     tonnage_since = dq.window_start(window, now=tonnage_now)
     orders_since = dq.window_start(window, now=orders_now)
-    length = dq.window_length(window)
     # public.order_test / public.tonnage_test's timestamp columns are naive
     # (see dashboard_queries.py's window_start() docstring) -- tonnage_now/
     # orders_now are still the tz-aware values asyncpg decoded from
@@ -484,13 +483,11 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     (
         new_vessels,
         vessel_status_changes,
-        vessels_no_longer_fresh,
         field_changes,
         new_orders,
     ) = await asyncio.gather(
         _run(*dq.new_vessels_sql(tonnage_since, tonnage_until)),
         _run(*dq.vessel_status_changes_sql(tonnage_since)),
-        _run(*dq.vessels_no_longer_fresh_sql(tonnage_since, length)),
         _run(*dq.vessel_field_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.new_orders_sql(orders_since, orders_until)),
     )
@@ -502,7 +499,6 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         "orders_since": orders_since.isoformat(),
         "new_vessels": new_vessels,
         "vessel_status_changes": vessel_status_changes,
-        "vessels_no_longer_fresh": vessels_no_longer_fresh,
         "field_changes": field_changes,
         "new_orders": new_orders,
     }

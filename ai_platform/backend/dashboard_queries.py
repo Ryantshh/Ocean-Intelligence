@@ -27,8 +27,7 @@ resembling identifier or ORDER BY injection can reach the query even though
 placeholders can't parameterise identifiers.
 
 Every window here (:func:`new_vessels_sql`, :func:`vessel_status_changes_sql`,
-:func:`vessels_no_longer_fresh_sql`, :func:`vessel_field_changes_sql`,
-:func:`new_orders_sql`) takes a ``since``
+:func:`vessel_field_changes_sql`, :func:`new_orders_sql`) takes a ``since``
 computed by :func:`window_start`
 against one of :func:`reference_times_sql`'s two anchors, not real
 wall-clock time. "Now" is simulated as real wall-clock time minus one
@@ -45,7 +44,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
-DashboardStatus = Literal["FIXED", "OPEN", "ON SUBS"]
+DashboardStatus = Literal["FIXED", "OPEN", "ON SUBS", "LIKELY FIXED"]
 SortKey = Literal["eta", "update_date", "open_date_end"]
 OrderSortKey = Literal["date_received", "laycan_start"]
 
@@ -76,9 +75,14 @@ _WINDOW_LENGTHS: dict[ChangeWindow, timedelta] = {
 
 # public.order_test columns -- the core (non-embedding) columns it shares
 # with public."order" (see ai_platform/backend/tables/orders.py's
-# DISPLAY_COLUMNS), minus `assigned` / `assigned_vessel_name`, which are
-# 100% null (see README's "Data caveats"), and minus the embedding/
-# gold_loaded_at/embedding_source_hash columns unique to this source.
+# DISPLAY_COLUMNS), minus `assigned`, which is 100% null (see README's
+# "Data caveats"), and minus the embedding/gold_loaded_at/
+# embedding_source_hash columns unique to this source.
+# `assigned_vessel_name` had the same 100%-null problem and used to be
+# excluded here the same way -- it's since been dropped from order_test
+# entirely (confirmed 100% null across all 1,864 rows, and the pipeline
+# code that wrote it removed too), so there's nothing left to exclude it
+# from.
 # order_id is cast to text here for the same reason every dashboard view
 # casts it: an 18-digit bigint order_id survives Postgres and Python fine
 # (confirmed live, e.g. 728280593490835944) but is silently corrupted by
@@ -99,28 +103,30 @@ _ORDERS_COLUMNS_SAFE = (
     "cargo_description",
 )
 
-# A vessel becomes "newly open" on the day this event stream assigns it --
-# either the day a resolved OPEN segment begins (a fresh "open" declaration,
-# or a transition into OPEN as of that day), or the day right after a
-# resolved FIXED or ON SUBS segment's last day (its fixture/subs period has
-# just elapsed, so the vessel rolls into being open even before a fresh
-# report says so explicitly). Confirmed by the sponsor: "new vessel" does
-# NOT mean "first ever seen in the data" (an earlier, rejected definition
-# built on vessel_current_status.first_date_received) -- a re-report of an
-# already-known vessel must never count on its own; only entering the
-# open/available pool counts, the same way a shipbroker would use the
-# term. Shared by every query below that computes it (:func:`new_vessels_sql`,
+# A vessel becomes "newly open" on the day a resolved OPEN segment begins
+# in vessel_status_history -- i.e. a row was actually submitted declaring
+# it open, with that day as the start of its open window. Confirmed by the
+# sponsor: "new vessel" does NOT mean "first ever seen in the data" (an
+# earlier, rejected definition built on vessel_current_status.
+# first_date_received), and it does NOT mean "inferred open because an
+# older fixture's window lapsed" either (an earlier version of this event
+# stream also unioned in FIXED/ON-SUBS segments ending the day before --
+# removed: the sponsor was explicit that "new vessels" means a row
+# EXPLICITLY declaring the vessel open, not something inferred from
+# silence). Since every segment in vessel_status_history already comes
+# from a real reported row, this is also exactly the "became OPEN"
+# subset of what vessel_status_changes_sql tracks -- deliberately NOT
+# excluded from that query's own results: "new vessels" is a narrower,
+# separately-labeled highlight of the same underlying events, not a
+# mutually-exclusive category, so an into-OPEN transition is expected to
+# appear under both headings in the change feed. Shared by every query
+# below that computes it (:func:`new_vessels_sql`,
 # :func:`daily_new_vessels_sql`, :func:`daily_new_vessels_by_region_sql`,
 # and the "new_vessels" branch of :func:`vessels_on_day_sql`) so the
 # definition can't drift out of sync between the chart, its region
 # breakdown, the change feed, and the chart-click-to-filter endpoint.
-# Reads ``vessel_status_history`` (the already recency-resolved timeline),
-# not raw ``tonnage_test`` rows directly, so a superseded/overlapping row
-# can never spuriously trigger this on its own.
 _NEW_VESSEL_EVENTS_CTE = (
-    "SELECT vessel_id, open_date_start AS day FROM vessel_status_history WHERE status = 'OPEN' "
-    "UNION "
-    "SELECT vessel_id, open_date_end + interval '1 day' AS day FROM vessel_status_history WHERE status IN ('FIXED', 'ON SUBS')"
+    "SELECT vessel_id, open_date_start AS day FROM vessel_status_history WHERE status = 'OPEN'"
 )
 
 
@@ -147,22 +153,6 @@ def reference_times_sql() -> tuple[str, list]:
         "SELECT tonnage_reference_now() AS tonnage_now, orders_reference_now() AS orders_now",
         [],
     )
-
-
-def window_length(window: ChangeWindow) -> timedelta:
-    """Public accessor for a window key's length, for callers outside this module.
-
-    Parameters
-    ----------
-    window : "dod" or "wow"
-        Day-on-day or week-on-week.
-
-    Returns
-    -------
-    timedelta
-        Window length.
-    """
-    return _WINDOW_LENGTHS[window]
 
 
 def window_start(window: ChangeWindow, *, now: datetime | None = None) -> datetime:
@@ -197,14 +187,12 @@ def vessels_sql(
     status: DashboardStatus | None,
     region: str | None,
     sort: SortKey,
-    *,
-    stale: bool | None = None,
 ) -> tuple[str, list]:
     """Vessel tracker: current status, optionally filtered by status/region.
 
     Parameters
     ----------
-    status : "FIXED", "OPEN", "ON SUBS", or None
+    status : "FIXED", "OPEN", "ON SUBS", "LIKELY FIXED", or None
         Exact match against ``dashboard_status``.
     region : str or None
         Case-insensitive substring match against the exploded
@@ -215,10 +203,6 @@ def vessels_sql(
         should still find them.
     sort : "eta", "update_date", or "open_date_end"
         Column to sort by; whitelisted against ``_SORT_COLUMNS``.
-    stale : bool or None
-        ``True`` restricts to ``is_stale`` rows, ``False`` to non-stale,
-        ``None`` applies no filter. Backs the summary panel's Stale KPI
-        tile drilling down into the vessel table.
 
     Returns
     -------
@@ -235,8 +219,6 @@ def vessels_sql(
         clauses.append(
             f"EXISTS (SELECT 1 FROM unnest(parent_zones) AS z WHERE z ILIKE '%' || ${len(params)} || '%')"
         )
-    if stale is not None:
-        clauses.append("is_stale" if stale else "NOT is_stale")
     where_sql = " AND ".join(clauses) if clauses else "TRUE"
     order_sql = _SORT_COLUMNS[sort]
     sql = f"SELECT * FROM vessel_current_status WHERE {where_sql} ORDER BY {order_sql}"
@@ -307,31 +289,6 @@ def status_counts_sql() -> tuple[str, list]:
         currently) simply doesn't appear, callers should default it to 0.
     """
     return "SELECT * FROM vessel_status_counts", []
-
-
-def vessel_flag_counts_sql() -> tuple[str, list]:
-    """Fleet-wide stale-vessel count -- the summary panel's Stale KPI tile.
-
-    Kept separate from :func:`status_counts_sql` rather than merged into one
-    payload -- staleness is a flag a vessel can carry regardless of its
-    FIXED/OPEN/ON SUBS status (a FIXED vessel can still be stale), not
-    another value of the same ``dashboard_status`` dimension.
-
-    (There used to be a second flag here, conflicting reports -- removed:
-    once overlapping/disagreeing rows are resolved by recency, per
-    ``vessel_current_status``'s ``active_bookings`` CTE and
-    ``vessel_status_history``'s timeline, there's nothing left that's
-    still ambiguous, so nothing left to flag.)
-
-    Returns
-    -------
-    tuple
-        ``(sql, params)``; one row with a ``stale`` count.
-    """
-    return (
-        "SELECT COUNT(*) FILTER (WHERE is_stale) AS stale FROM vessel_current_status",
-        [],
-    )
 
 
 def daily_range_start(until: datetime, days: int) -> datetime:
@@ -409,7 +366,10 @@ def daily_status_changes_sql(since: datetime, until: datetime) -> tuple[str, lis
     ``status IS DISTINCT FROM prev_status`` is checked explicitly rather
     than assumed from adjacency alone (a reporting gap that returns to the
     same status isn't a change), and why a vessel's first-ever segment
-    (``is_first_segment``) is excluded.
+    (``is_first_segment``) is excluded. Does NOT exclude transitions into
+    'OPEN' -- those also count here, in addition to being separately
+    highlighted by :func:`daily_new_vessels_sql`'s own bar; the overlap
+    is intentional, see :func:`vessel_status_changes_sql`.
 
     Parameters
     ----------
@@ -536,6 +496,8 @@ def daily_new_vessels_by_region_sql(since: datetime, until: datetime) -> tuple[s
 def daily_status_changes_by_region_sql(since: datetime, until: datetime) -> tuple[str, list]:
     """Per-region breakdown of FIXED/OPEN/ON SUBS transitions, one row per (day, region).
 
+    Includes transitions into 'OPEN' -- see :func:`daily_status_changes_sql`.
+
     Parameters
     ----------
     since : datetime
@@ -658,8 +620,9 @@ def vessels_on_day_sql(
     ----------
     metric : "new_vessels" or "status_changes"
         Which bar was clicked. New Orders has no equivalent -- an order
-        isn't reliably linked to one vessel (see ``orders.py``'s
-        ``assigned``/``assigned_vessel_name`` caveat) -- so it isn't a
+        isn't reliably linked to one vessel (``order_test.assigned`` is
+        100% null, and the equally-null ``assigned_vessel_name`` column
+        has since been dropped from the table entirely) -- so it isn't a
         valid value here; callers should simply not offer it.
     day : date
         The calendar day the clicked bar represents.
@@ -833,7 +796,7 @@ def new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
 
 
 def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
-    """Status transitions (e.g. On Subs -> Open) within the window.
+    """Status transitions (e.g. On Subs -> Fixed) within the window.
 
     ``vessel_status_history`` no longer stores ``prev_status`` directly, so
     it's recomputed here via ``LAG`` ordered by ``open_date_start`` -- the
@@ -846,9 +809,17 @@ def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
     rather than assumed from the segment boundary alone.
 
     Also excludes a vessel's first-ever segment (``is_first_segment``) --
-    that's a new arrival, reported separately by :func:`new_vessels_sql`,
-    not a change (its ``prev_status`` is NULL, which is already "distinct"
-    from anything, so this exclusion isn't implied by the check above).
+    it has no prior segment to have changed *from*, so it's not itself a
+    status change (its ``prev_status`` is NULL, which is already
+    "distinct" from anything, so this exclusion isn't implied by the
+    check above).
+
+    Does NOT exclude transitions into 'OPEN' -- this is deliberately the
+    complete, unrestricted transition log (any status -> any status).
+    :func:`new_vessels_sql` reports the same into-OPEN events too, under
+    its own narrower "new vessel" heading -- that's an intentional
+    overlap, not a duplicate to avoid: "new vessels" is a spotlighted
+    subset of this list, not a mutually-exclusive category.
 
     Parameters
     ----------
@@ -872,52 +843,6 @@ def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
             "ORDER BY update_date DESC"
         ),
         [since],
-    )
-
-
-def vessels_no_longer_fresh_sql(since: datetime, window_len: timedelta) -> tuple[str, list]:
-    """Vessels that reported inside the *previous* equivalent window but not this one.
-
-    Presented in the UI as "Removed" per the product spec's acceptance
-    criteria ("removed records are shown ... rather than silently
-    disappearing"). Underneath, this is still only an inferred "went
-    quiet" signal, not a real deletion -- nothing in this data model
-    records a record being withdrawn. A vessel here had a report in
-    [``since`` - ``window_len``, ``since``) but none in [``since``, now),
-    so its current freshness state changed during this window even though
-    its latest row is unchanged.
-
-    Re-added after briefly being removed: its "removed" framing was
-    questioned as not matching the actual product definition, but that
-    question is still pending clarification with the sponsor -- kept as
-    originally defined until that's resolved, not deleted pre-emptively.
-
-    Parameters
-    ----------
-    since : datetime
-        Window start.
-    window_len : timedelta
-        Length of the window being compared (from :func:`window_length`), so
-        the "previous window" comparison spans the same duration.
-
-    Returns
-    -------
-    tuple
-        ``(sql, params)``.
-    """
-    previous_start = since - window_len
-    return (
-        (
-            "SELECT v.* FROM vessel_current_status v "
-            "WHERE v.update_date < $1 "
-            "AND EXISTS ("
-            "  SELECT 1 FROM public.tonnage_test t"
-            "  WHERE t.vessel_id = v.vessel_id"
-            "  AND t.update_date >= $2 AND t.update_date < $1"
-            ") "
-            "ORDER BY v.update_date DESC"
-        ),
-        [since, previous_start],
     )
 
 

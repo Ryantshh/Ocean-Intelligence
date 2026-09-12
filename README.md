@@ -127,7 +127,7 @@ Teal is a Lambda doing real work, blue is a data read/write, amber is a routing 
 
 **Vessel-to-order links are synthetic.** The tonnage source contains no Order ID column, and no relationship between vessels and orders exists in the source data. `assign_order_ids` generates this relationship artificially, assigning each vessel an `order_id` from the orders pool solely to permit the two tables to be joined. These are not real Cargill fixtures, and any feature presenting them as genuine vessel matches is displaying fabricated data.
 
-**Two required columns contain no data.** `assigned` and `assigned_vessel_name` are 100% null; `commercial_status` is 79.2% null. These are deficiencies in the source workbooks rather than pipeline defects, and both affect core deliverables — vessel-order matching and US-2.2 respectively.
+**A required column contains no data.** `assigned` is 100% null; `commercial_status` is 79.2% null. These are deficiencies in the source workbooks rather than pipeline defects, and both affect core deliverables — vessel-order matching and US-2.2 respectively. (`assigned_vessel_name` had the same 100%-null problem and has since been dropped from `order_test` entirely, along with the pipeline code that wrote it — it was never populated by any source workbook.)
 
 **Date coverage differs.** Tonnage extends to 2026-04-21, orders only to 2026-01-06. Time-based joins will produce a three-month period containing vessels but no orders.
 
@@ -167,7 +167,6 @@ One row per enquiry. 1,864 rows, 1,864 distinct `order_id`.
 | `cargo_weight_min` | Cargo Weight Min | Minimum cargo quantity offered, metric tons | filter |
 | `cargo_weight_max` | Cargo Weight Max | Maximum cargo quantity offered, metric tons | filter |
 | `assigned` | Assigned (T/F) | Whether assigned to a vessel | unused, 100% null |
-| `assigned_vessel_name` | Assigned Vessel Name | Vessel assigned to this order | unused, 100% null |
 | `embedding_source_hash` | — | Pipeline: detects when text changed and needs re-embedding | unused |
 | `gold_loaded_at` | — | Pipeline: when the row was written | unused |
 

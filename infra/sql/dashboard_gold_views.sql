@@ -147,8 +147,10 @@ WITH ranked AS (
   -- function 0) has no "current status" to show at all under this
   -- simulation and correctly disappears from this view, the same way a
   -- vessel with zero real-world reports would. A null update_date is kept
-  -- (it's unknown, not future) -- is_stale below already treats it as
-  -- automatically stale.
+  -- (it's unknown, not future) -- dashboard_status below already treats a
+  -- null update_date as failing the "heard from recently" check, so a
+  -- vessel with no covering row and no known update_date lands on
+  -- LIKELY FIXED automatically, same as one that's gone stale.
   WHERE t.update_date IS NULL OR t.update_date < tonnage_reference_now()
 ),
 -- A vessel is "new" the day its very first row was ever added, not the day
@@ -188,6 +190,40 @@ first_seen AS (
 -- 'ON SUBS') and is not anymore. Ties on update_date (an identical
 -- timestamp) fall back to preferring FIXED, then ON SUBS, purely for a
 -- deterministic result -- not expected to matter in practice.
+--
+-- Revised again after further sponsor consultation: OPEN used to be the
+-- unconditional default whenever nothing said FIXED/ON SUBS -- including
+-- a vessel with NO row covering today at all. That's no longer assumed
+-- to hold forever. A vessel with no covering row is now only kept as
+-- OPEN if it's still been heard from recently (updated within the last 5
+-- days); past that silence it's reclassified LIKELY FIXED -- a distinct
+-- status, not folded into FIXED, so a trader can tell a confirmed
+-- fixture from an inferred one. This is also what replaces the old
+-- separate is_stale flag: a vessel whose latest row's open_date_end
+-- lapsed 5+ days ago reads as LIKELY FIXED here rather than carrying a
+-- second, overlapping "stale" signal alongside its status.
+--
+-- Bug fix, found live: the containment check used to be plain
+-- `tonnage_reference_now() BETWEEN open_date_start AND open_date_end`.
+-- open_date_start/open_date_end are `timestamp` columns stored at exact
+-- midnight, so for a single-day window (open_date_start = open_date_end,
+-- confirmed live as 79% of all rows -- 8,754 of 11,102) that BETWEEN only
+-- covers the *instant* of midnight, not the calendar day: the moment
+-- tonnage_reference_now() ticks past 00:00:00, the row stops "covering
+-- today" even though today hasn't ended. This made active_bookings fail
+-- to find a covering row for the overwhelming majority of vessels on
+-- most days (confirmed live: e.g. VESSEL 0043's and VESSEL 0809's
+-- identically-shaped today-covering rows both independently evaluated
+-- covers_today = false), silently inflating LIKELY FIXED far beyond what
+-- 5-days-of-silence should produce -- most "LIKELY FIXED" vessels were
+-- really just falling through a broken containment check, not genuinely
+-- unheard-from. Fixed the same way every other date-range comparison in
+-- this file already treats a window's end date -- as covering through
+-- the end of that calendar day, i.e. up to (but excluding) midnight the
+-- day after -- consistent with vessel_status_history's own breakpoint
+-- sweep below, which was never affected by this bug since it compares
+-- date ranges to date ranges, never a timestamp-with-time-of-day "now"
+-- to a bare date.
 active_bookings AS (
   SELECT DISTINCT ON (vessel_id)
     vessel_id,
@@ -196,7 +232,8 @@ active_bookings AS (
   WHERE open_date_start IS NOT NULL
     AND open_date_end IS NOT NULL
     AND (update_date IS NULL OR update_date < tonnage_reference_now())
-    AND tonnage_reference_now() BETWEEN open_date_start AND open_date_end
+    AND tonnage_reference_now() >= open_date_start
+    AND tonnage_reference_now() < open_date_end + interval '1 day'
   ORDER BY vessel_id, update_date DESC NULLS LAST, (commercial_status = 'FIXED') DESC, (commercial_status = 'ON SUBS') DESC
 )
 SELECT
@@ -222,18 +259,13 @@ SELECT
   CASE
     WHEN ab.commercial_status = 'FIXED'   THEN 'FIXED'
     WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'        -- confirmed by sponsor: on-subs occupies the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED
-    ELSE 'OPEN'                                                 -- no row's window covers today, or the most recent covering row has no fixture -- see active_bookings above; this is NOT the latest row's raw status, see raw_commercial_status
+    WHEN ab.vessel_id IS NOT NULL         THEN 'OPEN'           -- a row's window covers today with no fixture -- an explicit, current "open" declaration, regardless of recency
+    WHEN r.update_date IS NOT NULL AND r.update_date >= (tonnage_reference_now() - interval '5 days')
+                                           THEN 'OPEN'           -- no row covers today, but this vessel's still been heard from recently -- not yet silent long enough to assume otherwise
+    ELSE 'LIKELY FIXED'                                          -- no row covers today, and nothing's been heard from this vessel in 5+ days -- sponsor-confirmed: this long a silence is treated as probably fixed off-market, not still open indefinitely
   END                                        AS dashboard_status,
   tonnage_reference_now() - r.update_date     AS age_since_update,
   (r.open_date_end IS NOT NULL AND r.open_date_end < tonnage_reference_now())  AS open_window_lapsed,
-  -- Confirmed by sponsor: staleness is specifically about the vessel's
-  -- latest row's own open_date_end being more than 5 days behind today --
-  -- not update_date recency, and not "any lapse at all" the way
-  -- open_window_lapsed above is. Deliberately still anchored to the same
-  -- single latest row (`r`) as every other column here, not the
-  -- containment-selected row dashboard_status uses above -- these two are
-  -- allowed to disagree by design, not an unreconciled inconsistency.
-  (r.open_date_end IS NOT NULL AND r.open_date_end < (tonnage_reference_now() - interval '5 days'))  AS is_stale,
   fs.first_seen_date                         AS first_date_received  -- the vessel's true earliest-ever report, see first_seen above, not the latest row's own value
 FROM ranked r
 LEFT JOIN first_seen fs
