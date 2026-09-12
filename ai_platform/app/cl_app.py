@@ -25,7 +25,7 @@ from ai_platform.backend.context import (
     usable_tokens,
 )
 from ai_platform.backend.graph import graph
-from ai_platform.backend.llm import stream_chat
+from ai_platform.backend.llm import reset_provider, stream_chat, use_qwen
 from ai_platform.backend.tables import resolve_table
 
 __all__ = ["get_data_layer"]
@@ -262,7 +262,7 @@ async def refresh_gauge(
     await gauge.send(for_id=target, persist=False)
 
 
-async def run_agent(question: str) -> None:
+async def run_agent(question: str, qwen_profile: str | None = None) -> None:
     """Run the retrieval graph and render everything it produces.
 
     The graph never imports chainlit; it emits tagged payloads on LangGraph's
@@ -290,82 +290,71 @@ async def run_agent(question: str) -> None:
     """
     history = agent_history()
     reply = root_message()
-    events = graph.astream(
-        {"question": question, "history": history},
-        stream_mode=["updates", "custom"],
-    ).__aiter__()
+    provider_token = use_qwen(qwen_profile)
+    try:
+        events = graph.astream(
+            {"question": question, "history": history},
+            stream_mode=["updates", "custom"],
+        ).__aiter__()
 
-    compaction_step: cl.Step | None = None
-    tokens_spent = 0
+        compaction_step: cl.Step | None = None
+        tokens_spent = 0
 
-    async def drain_until(wait_for: set[str]) -> dict[str, Any]:
-        """Consume events until one of the named nodes reports."""
-        nonlocal tokens_spent
-        async for mode, payload in events:
+        async def drain_until(wait_for: set[str]) -> dict[str, Any]:
+            """Consume events until one of the named nodes reports."""
+            nonlocal tokens_spent
+            async for mode, payload in events:
             # mid-run text: whichever node is streaming right now
-            if mode == "custom":
-                streamed = cast("dict[str, str]", payload)
-                if "answer" in streamed:
-                    await reply.stream_token(streamed["answer"])
-                elif "compact" in streamed and compaction_step is not None:
-                    await compaction_step.stream_token(streamed["compact"])
-                continue
+                if mode == "custom":
+                    streamed = cast("dict[str, str]", payload)
+                    if "answer" in streamed:
+                        await reply.stream_token(streamed["answer"])
+                    elif "compact" in streamed and compaction_step is not None:
+                        await compaction_step.stream_token(streamed["compact"])
+                    continue
 
             # a node finished, so record its cost whether or not it was the one awaited
-            node, returned_update = next(
-                iter(cast("dict[str, dict[str, Any] | None]", payload).items())
-            )
-            node_output = returned_update or {}
-            tokens_spent += sum(node_output.get("tokens", {}).values())
-            if node in wait_for:
-                return node_output
-        return {}
+                node, returned_update = next(iter(cast("dict[str, dict[str, Any] | None]", payload).items()))
+                node_output = returned_update or {}
+                tokens_spent += sum(node_output.get("tokens", {}).values())
+                if node in wait_for:
+                    return node_output
+            return {}
 
-    # compaction first, so extraction reads the shortened history
-    if should_compact(history):
-        async with cl.Step(name=STEP_COMPACTING) as step:
-            compaction_step = step
-            compaction = await drain_until({"compact"})
-        compaction_step = None
-        if "history" in compaction:
-            cl.user_session.set(
-                COMPACTION_SESSION_KEY,
-                {
-                    "history": compaction["history"],
-                    "raw_count": len(cl.chat_context.to_openai()) - 1,
-                },
-            )
+        # compaction first, so extraction reads the shortened history
+        if should_compact(history):
+            async with cl.Step(name=STEP_COMPACTING) as step:
+                compaction_step = step
+                compaction = await drain_until({"compact"})
+            compaction_step = None
+            if "history" in compaction:
+                cl.user_session.set(COMPACTION_SESSION_KEY, {"history": compaction["history"], "raw_count": len(cl.chat_context.to_openai()) - 1})
 
-    async with cl.Step(name=STEP_READING):
-        extraction = await drain_until({"extract_filters"})
+        async with cl.Step(name=STEP_READING):
+            extraction = await drain_until({"extract_filters"})
 
-    answered_without_query = bool(
-        extraction.get("clarifying_question") or extraction.get("error")
-    )
-    results_element_name = ""
-    if not answered_without_query:
-        # drained only so the spinner appears; build_query reads the vectors off the state
-        if any(extraction.get("semantic", {}).values()):
-            async with cl.Step(name=STEP_EMBEDDING):
-                await drain_until({"embed"})
-        async with cl.Step(name=STEP_RETRIEVING):
-            query_result = await drain_until({"narrow"})
-        rows = query_result.get("rows")
-        if rows:
-            results_element_name = RESULTS_ELEMENT
-            table = cl.CustomElement(
-                name=RESULTS_ELEMENT,
-                props=results_props(extraction.get("target", ""), rows),
-                display="side",
-            )
-            reply.elements = cast("list[Any]", [table])
+        answered_without_query = bool(
+            extraction.get("clarifying_question") or extraction.get("error"))
+        results_element_name = ""
+        if not answered_without_query:
+            if any(extraction.get("semantic", {}).values()):
+                async with cl.Step(name=STEP_EMBEDDING):
+                    await drain_until({"embed"})
+            async with cl.Step(name=STEP_RETRIEVING):
+                query_result = await drain_until({"narrow"})
+            rows = query_result.get("rows")
+            if rows:
+                results_element_name = RESULTS_ELEMENT
+                reply.elements = cast("list[Any]", [cl.CustomElement(name=RESULTS_ELEMENT, props=results_props(extraction.get("target", ""), rows), display="side")])
 
     # nothing named, so this drains the reply being written
-    await drain_until(set())
-    if results_element_name:
-        await reply.stream_token(f"\n\n{results_element_name}")
-    await reply.send()
-    await refresh_gauge(agent_history(), tokens_spent, anchor=reply.id)
+        await drain_until(set())
+        if results_element_name:
+            await reply.stream_token(f"\n\n{results_element_name}")
+        await reply.send()
+        await refresh_gauge(agent_history(), tokens_spent, anchor=reply.id)
+    finally:
+        reset_provider(provider_token)
 
 
 def root_message(content: str = "") -> cl.Message:
@@ -538,11 +527,27 @@ async def handle_message(message: cl.Message) -> None:
     profile = cl.user_session.get("chat_profile")
     if profile in local_qwen.PROFILES:
         try:
+            await run_agent(message.content, qwen_profile=profile)
+        except (TimeoutError, RuntimeError, ValueError, OSError) as exc:
+            _logger = __import__("logging").getLogger(__name__)
+            _logger.exception("Qwen graph run failed")
+            await cl.Message(
+                content=f"The local model could not complete this request: {exc}"
+            ).send()
+        return
+        try:
             async with cl.Step(name="Checking freight records locally"):
+                # Use the same context policy as the main graph: older history
+                # is compacted by the worker, while the recent window remains
+                # verbatim. Keep the transport bounded for Qwen's smaller
+                # context window without silently changing the recent turns.
+                qwen_history = cl.chat_context.to_openai()[:-1]
+                if len(qwen_history) > 20:
+                    qwen_history = qwen_history[-20:]
                 result = await local_qwen.answer(
                     profile,
                     message.content,
-                    cl.chat_context.to_openai()[:-1],
+                    qwen_history,
                     cl.user_session.get("qwen_state"),
                     working_date(),
                 )

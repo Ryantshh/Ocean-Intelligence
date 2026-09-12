@@ -61,3 +61,36 @@ async def answer(profile, question, history, state, as_of):
                 await _process.wait()
             _process = None
             raise
+
+
+async def generate(profile, messages, schema=None):
+    """Generate one completion for the shared LangGraph model provider."""
+    if profile not in PROFILES:
+        raise ValueError("Unknown Qwen profile")
+    async with _lock:
+        try:
+            global _process
+            if _process is None or _process.returncode is not None:
+                python = ROOT / "freight-ai-poc/.venv/bin/python"
+                worker = ROOT / "freight-ai-poc/scripts/chat_worker.py"
+                if not python.exists():
+                    raise RuntimeError("Install the local POC environment before selecting Qwen.")
+                _process = await asyncio.create_subprocess_exec(
+                    str(python), str(worker), cwd=ROOT,
+                    stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL, limit=2**22,
+                )
+            payload = {"op": "generate", "model": PROFILES[profile], "messages": messages}
+            if schema:
+                payload["schema"] = schema.get("json_schema", {}).get("schema", schema)
+            _process.stdin.write((json.dumps(payload) + "\n").encode())
+            await _process.stdin.drain()
+            response = json.loads(await asyncio.wait_for(_process.stdout.readline(), timeout=300))
+            if not response["ok"]:
+                raise RuntimeError(response["error"])
+            return response["result"]["content"]
+        except (OSError, ValueError) as exc:
+            if _process is not None and _process.returncode is None:
+                _process.kill(); await _process.wait()
+            _process = None
+            raise RuntimeError("The local worker stopped unexpectedly. Please retry.") from exc
