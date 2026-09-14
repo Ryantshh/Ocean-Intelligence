@@ -11,7 +11,7 @@ import os
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -130,13 +130,27 @@ async def _run(sql: str, params: list[Any]) -> list[dict[str, Any]]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+# Page-size cap applies even to a direct/unfiltered API call (curl, a test
+# script, another tool) -- the frontend always passes its own page size,
+# but nothing server-side previously stopped a caller from requesting the
+# whole ~1,000-vessel table (or ~1,500-order table) in one unpaginated
+# SELECT *, which is exactly the shape that turned out to be expensive
+# when exercised repeatedly (dashboard reloads, endpoint sweeps, ad-hoc
+# verification queries) -- see dashboard_gold_views.sql's egress notes.
+DEFAULT_PAGE_SIZE = 15
+MAX_PAGE_SIZE = 200
+
+
 @router.get("/dashboard/vessels")
 async def list_vessels(
     status: dq.DashboardStatus | None = None,
     region: str | None = None,
     sort: dq.SortKey = "update_date",
-) -> list[dict[str, Any]]:
-    """Vessel tracker: current status per vessel, filterable by status/region.
+    search: str | None = None,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    """Vessel tracker: current status per vessel, filterable and paginated.
 
     Parameters
     ----------
@@ -146,16 +160,29 @@ async def list_vessels(
         Case-insensitive substring match against any one of a vessel's
         (possibly several) parent zones -- e.g. "east" matches both
         "East Africa" and "Far East".
+    search : str or None
+        Case-insensitive substring match against ``vessel_id``.
     sort : "eta", "update_date", or "open_date_end"
         Sort key; defaults to most recently updated first.
+    limit : int
+        Rows per page, 1-200. Defaults to the dashboard's own page size.
+    offset : int
+        Rows to skip before the page starts.
 
     Returns
     -------
-    list of dict
-        One row per vessel.
+    dict
+        ``{"rows": [...], "total": N}`` -- ``rows`` is this page, ``total``
+        is the count of every row matching ``status``/``region``/``search``
+        (before paging), so the caller can render a "1-15 of N" pager
+        without a second request.
     """
-    sql, params = dq.vessels_sql(status, region, sort)
-    return await _run(sql, params)
+    sql, params = dq.vessels_sql(status, region, sort, search, limit, offset)
+    rows = await _run(sql, params)
+    total = rows[0]["total_count"] if rows else 0
+    for row in rows:
+        del row["total_count"]
+    return {"rows": rows, "total": total}
 
 
 @router.get("/dashboard/vessels/by-day")
@@ -201,23 +228,36 @@ async def vessels_by_day(
 async def list_orders(
     region: str | None = None,
     sort: dq.OrderSortKey = "date_received",
-) -> list[dict[str, Any]]:
-    """Order tracker: non-future orders, filterable by region.
+    search: str | None = None,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    """Order tracker: non-future orders, filterable and paginated.
 
     Parameters
     ----------
     region : str or None
         Case-insensitive substring match against ``load_zone``.
+    search : str or None
+        Case-insensitive substring match against ``order_id``.
     sort : "date_received" or "laycan_start"
         Sort key; defaults to most recently received first.
+    limit : int
+        Rows per page, 1-200. Defaults to the dashboard's own page size.
+    offset : int
+        Rows to skip before the page starts.
 
     Returns
     -------
-    list of dict
-        One row per order.
+    dict
+        ``{"rows": [...], "total": N}``, same shape as :func:`list_vessels`.
     """
-    sql, params = dq.orders_sql(region, sort)
-    return await _run(sql, params)
+    sql, params = dq.orders_sql(region, sort, search, limit, offset)
+    rows = await _run(sql, params)
+    total = rows[0]["total_count"] if rows else 0
+    for row in rows:
+        del row["total_count"]
+    return {"rows": rows, "total": total}
 
 
 @router.get("/dashboard/orders/by-day")

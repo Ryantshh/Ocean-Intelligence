@@ -1406,6 +1406,7 @@
       const VESSELS_PAGE_SIZE = 15;
       let vesselsFetched = [];
       let vesselsPage = 0;
+      let vesselsTotal = 0;
 
       function vesselRow(row) {
         return `
@@ -1421,23 +1422,37 @@
         `;
       }
 
-      // Vessel ID search runs client-side over the already-fetched,
-      // status/region-filtered set (fetched once per server-side filter
-      // change) -- instant as-you-type filtering with no per-keystroke
-      // request, then sliced to one page so a 1000+-row result never all
-      // lands in the DOM at once.
+      // Day-filter results (clicking a Daily Trends bar) are small and
+      // fetched whole in one shot -- vessel ID search and paging over them
+      // stay client-side, same as before. Everything else (the normal
+      // status/region/search filter path) is now paginated server-side:
+      // vesselsFetched is exactly the current page and vesselsTotal is the
+      // true matching count, both already computed by the server, so
+      // there's nothing left to filter or slice here -- doing so again
+      // would be redundant at best and wrong at worst (slicing an
+      // already-15-row page by a nonzero page offset would return nothing).
       function renderVesselsTable() {
         const tbody = document.querySelector("#vesselsTable tbody");
         const pager = document.getElementById("vesselsPager");
         const search = document.getElementById("vesselSearch").value.trim().toLowerCase();
-        const filtered = search
-          ? vesselsFetched.filter((r) => r.vessel_id.toLowerCase().includes(search))
-          : vesselsFetched;
 
-        const pageCount = Math.max(1, Math.ceil(filtered.length / VESSELS_PAGE_SIZE));
-        vesselsPage = Math.min(vesselsPage, pageCount - 1);
+        let pageRows, total;
+        if (activeDayFilter) {
+          const filtered = search
+            ? vesselsFetched.filter((r) => r.vessel_id.toLowerCase().includes(search))
+            : vesselsFetched;
+          total = filtered.length;
+          const dayPageCount = Math.max(1, Math.ceil(total / VESSELS_PAGE_SIZE));
+          vesselsPage = Math.min(vesselsPage, dayPageCount - 1);
+          const dayStart = vesselsPage * VESSELS_PAGE_SIZE;
+          pageRows = filtered.slice(dayStart, dayStart + VESSELS_PAGE_SIZE);
+        } else {
+          total = vesselsTotal;
+          pageRows = vesselsFetched;
+        }
+
+        const pageCount = Math.max(1, Math.ceil(total / VESSELS_PAGE_SIZE));
         const start = vesselsPage * VESSELS_PAGE_SIZE;
-        const pageRows = filtered.slice(start, start + VESSELS_PAGE_SIZE);
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(vesselRow).join("")
@@ -1445,8 +1460,8 @@
             ? '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>'
             : '<tr><td colspan="7" class="muted">Choose a status or region filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
 
-        const rangeLabel = filtered.length
-          ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+        const rangeLabel = total
+          ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, total)} of ${formatNumber(total)}`
           : "0 of 0";
         pager.innerHTML = `
           <span>${rangeLabel}</span>
@@ -1456,13 +1471,17 @@
             <button type="button" id="vesselsNext" ${vesselsPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
           </div>
         `;
+        // A day-filter's full result set is already in memory (see above),
+        // so paging through it is a free re-render. The normal path only
+        // ever holds one page in memory, so paging through it needs a
+        // fresh server request for the newly-requested page.
         document.getElementById("vesselsPrev").addEventListener("click", () => {
           vesselsPage -= 1;
-          renderVesselsTable();
+          if (activeDayFilter) renderVesselsTable(); else loadVessels(false, true);
         });
         document.getElementById("vesselsNext").addEventListener("click", () => {
           vesselsPage += 1;
-          renderVesselsTable();
+          if (activeDayFilter) renderVesselsTable(); else loadVessels(false, true);
         });
       }
 
@@ -1543,14 +1562,21 @@
         });
       });
 
-      async function loadVessels(isRefresh = false) {
+      // isPageNav distinguishes a deliberate Previous/Next click (keep
+      // whatever page the trader is on) from every other call -- a filter,
+      // sort, or search change, or the initial load -- which is a new
+      // query and has no reason to preserve a page number from before.
+      // isRefresh (the hourly auto-refresh) also keeps the current page.
+      async function loadVessels(isRefresh = false, isPageNav = false) {
         const tbody = document.querySelector("#vesselsTable tbody");
         const banner = document.getElementById("vesselDayFilterBanner");
+        if (!isRefresh && !isPageNav) vesselsPage = 0;
         // Nothing to fetch, and nothing should show, until the trader
         // applies some filter -- see hasActiveVesselFilter().
         if (!hasActiveVesselFilter()) {
           banner.classList.add("hidden");
           vesselsFetched = [];
+          vesselsTotal = 0;
           vesselsPage = 0;
           renderVesselsTable();
           return;
@@ -1576,15 +1602,26 @@
           const status = document.getElementById("vesselStatus").value;
           const region = document.getElementById("vesselRegion").value.trim();
           const sort = document.getElementById("vesselSort").value;
-          const params = new URLSearchParams({ sort });
+          const search = document.getElementById("vesselSearch").value.trim();
+          const params = new URLSearchParams({
+            sort,
+            limit: String(VESSELS_PAGE_SIZE),
+            offset: String(vesselsPage * VESSELS_PAGE_SIZE),
+          });
           if (status) params.set("status", status);
           if (region) params.set("region", region);
+          if (search) params.set("search", search);
           url = `/api/dashboard/vessels?${params}`;
           banner.classList.add("hidden");
         }
         try {
-          vesselsFetched = await getJson(url);
-          vesselsPage = 0;
+          if (activeDayFilter) {
+            vesselsFetched = await getJson(url);
+          } else {
+            const data = await getJson(url);
+            vesselsFetched = data.rows;
+            vesselsTotal = data.total;
+          }
           renderVesselsTable();
         } catch (error) {
           if (isRefresh) throw error;
@@ -1601,6 +1638,7 @@
       const ORDERS_PAGE_SIZE = 15;
       let ordersFetched = [];
       let ordersPage = 0;
+      let ordersTotal = 0;
       let activeOrderDayFilter = null;
       const ORDER_DAY_FILTER_CONTROLS = ["orderRegion", "orderSort"];
 
@@ -1657,18 +1695,32 @@
         `;
       }
 
+      // See renderVesselsTable()'s comment -- same split between a
+      // fully-in-memory day-filter result (client-side search/paging) and
+      // the normal path, where ordersFetched is already exactly one
+      // server-paginated page and ordersTotal the true matching count.
       function renderOrdersTable() {
         const tbody = document.querySelector("#ordersTable tbody");
         const pager = document.getElementById("ordersPager");
         const search = document.getElementById("orderSearch").value.trim().toLowerCase();
-        const filtered = search
-          ? ordersFetched.filter((r) => r.order_id.toLowerCase().includes(search))
-          : ordersFetched;
 
-        const pageCount = Math.max(1, Math.ceil(filtered.length / ORDERS_PAGE_SIZE));
-        ordersPage = Math.min(ordersPage, pageCount - 1);
+        let pageRows, total;
+        if (activeOrderDayFilter) {
+          const filtered = search
+            ? ordersFetched.filter((r) => r.order_id.toLowerCase().includes(search))
+            : ordersFetched;
+          total = filtered.length;
+          const dayPageCount = Math.max(1, Math.ceil(total / ORDERS_PAGE_SIZE));
+          ordersPage = Math.min(ordersPage, dayPageCount - 1);
+          const dayStart = ordersPage * ORDERS_PAGE_SIZE;
+          pageRows = filtered.slice(dayStart, dayStart + ORDERS_PAGE_SIZE);
+        } else {
+          total = ordersTotal;
+          pageRows = ordersFetched;
+        }
+
+        const pageCount = Math.max(1, Math.ceil(total / ORDERS_PAGE_SIZE));
         const start = ordersPage * ORDERS_PAGE_SIZE;
-        const pageRows = filtered.slice(start, start + ORDERS_PAGE_SIZE);
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(orderRow).join("")
@@ -1676,8 +1728,8 @@
             ? '<tr><td colspan="7" class="muted">No orders match these filters.</td></tr>'
             : '<tr><td colspan="7" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
 
-        const rangeLabel = filtered.length
-          ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+        const rangeLabel = total
+          ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, total)} of ${formatNumber(total)}`
           : "0 of 0";
         pager.innerHTML = `
           <span>${rangeLabel}</span>
@@ -1689,22 +1741,24 @@
         `;
         document.getElementById("ordersPrev").addEventListener("click", () => {
           ordersPage -= 1;
-          renderOrdersTable();
+          if (activeOrderDayFilter) renderOrdersTable(); else loadOrders(false, true);
         });
         document.getElementById("ordersNext").addEventListener("click", () => {
           ordersPage += 1;
-          renderOrdersTable();
+          if (activeOrderDayFilter) renderOrdersTable(); else loadOrders(false, true);
         });
       }
 
-      async function loadOrders(isRefresh = false) {
+      async function loadOrders(isRefresh = false, isPageNav = false) {
         const tbody = document.querySelector("#ordersTable tbody");
         const banner = document.getElementById("orderDayFilterBanner");
+        if (!isRefresh && !isPageNav) ordersPage = 0;
         // Nothing to fetch, and nothing should show, until the trader
         // applies some filter -- see hasActiveOrderFilter().
         if (!hasActiveOrderFilter()) {
           banner.classList.add("hidden");
           ordersFetched = [];
+          ordersTotal = 0;
           ordersPage = 0;
           renderOrdersTable();
           return;
@@ -1725,14 +1779,25 @@
         } else {
           const region = document.getElementById("orderRegion").value.trim();
           const sort = document.getElementById("orderSort").value;
-          const params = new URLSearchParams({ sort });
+          const search = document.getElementById("orderSearch").value.trim();
+          const params = new URLSearchParams({
+            sort,
+            limit: String(ORDERS_PAGE_SIZE),
+            offset: String(ordersPage * ORDERS_PAGE_SIZE),
+          });
           if (region) params.set("region", region);
+          if (search) params.set("search", search);
           url = `/api/dashboard/orders?${params}`;
           banner.classList.add("hidden");
         }
         try {
-          ordersFetched = await getJson(url);
-          ordersPage = 0;
+          if (activeOrderDayFilter) {
+            ordersFetched = await getJson(url);
+          } else {
+            const data = await getJson(url);
+            ordersFetched = data.rows;
+            ordersTotal = data.total;
+          }
           renderOrdersTable();
         } catch (error) {
           if (isRefresh) throw error;

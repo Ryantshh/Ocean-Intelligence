@@ -187,8 +187,11 @@ def vessels_sql(
     status: DashboardStatus | None,
     region: str | None,
     sort: SortKey,
+    search: str | None,
+    limit: int,
+    offset: int,
 ) -> tuple[str, list]:
-    """Vessel tracker: current status, optionally filtered by status/region.
+    """Vessel tracker: current status, optionally filtered by status/region/search.
 
     Parameters
     ----------
@@ -201,13 +204,27 @@ def vessels_sql(
         "Far East" -- not an exact match, since the raw zone labels
         (e.g. "Far East") are exact-cased and a trader typing "far east"
         should still find them.
+    search : str or None
+        Case-insensitive substring match against ``vessel_id``. Applied
+        server-side (not client-side over an already-fetched page) so a
+        search always sees the complete matching set before paging, never
+        just whatever page happened to be loaded already.
     sort : "eta", "update_date", or "open_date_end"
         Column to sort by; whitelisted against ``_SORT_COLUMNS``.
+    limit, offset : int
+        Page bounds. ``vessel_id`` is appended to the ``ORDER BY`` as a
+        tie-breaker -- the primary sort columns are never unique, and
+        without a deterministic full ordering ``LIMIT``/``OFFSET`` can
+        skip or repeat a row across pages whenever two rows tie on it.
 
     Returns
     -------
     tuple
         ``(sql, params)`` for :func:`ai_platform.backend.db.fetch_rows`.
+        Every returned row carries an extra ``total_count`` column -- the
+        count of every row matching the filters, before ``LIMIT`` --
+        computed in the same query via ``count(*) OVER()`` so the caller
+        gets the true total for its pager without a second round trip.
     """
     clauses: list[str] = []
     params: list[object] = []
@@ -219,14 +236,31 @@ def vessels_sql(
         clauses.append(
             f"EXISTS (SELECT 1 FROM unnest(parent_zones) AS z WHERE z ILIKE '%' || ${len(params)} || '%')"
         )
+    if search is not None:
+        params.append(search)
+        clauses.append(f"vessel_id ILIKE '%' || ${len(params)} || '%'")
     where_sql = " AND ".join(clauses) if clauses else "TRUE"
     order_sql = _SORT_COLUMNS[sort]
-    sql = f"SELECT * FROM vessel_current_status WHERE {where_sql} ORDER BY {order_sql}"
+    params.append(limit)
+    limit_param = len(params)
+    params.append(offset)
+    offset_param = len(params)
+    sql = (
+        f"SELECT *, count(*) OVER() AS total_count FROM vessel_current_status "
+        f"WHERE {where_sql} ORDER BY {order_sql}, vessel_id "
+        f"LIMIT ${limit_param} OFFSET ${offset_param}"
+    )
     return sql, params
 
 
-def orders_sql(region: str | None, sort: OrderSortKey) -> tuple[str, list]:
-    """Order tracker: non-future orders, optionally filtered by region.
+def orders_sql(
+    region: str | None,
+    sort: OrderSortKey,
+    search: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[str, list]:
+    """Order tracker: non-future orders, optionally filtered by region/search.
 
     Reads ``public.order_test`` directly (no view covers orders, same as
     :func:`new_orders_sql`), calling ``orders_reference_now()`` inline in
@@ -243,23 +277,43 @@ def orders_sql(region: str | None, sort: OrderSortKey) -> tuple[str, list]:
         vessel's ``parent_zone``), so "east" matches both "East Africa"
         and "Far East" the same way :func:`vessels_sql`'s region filter
         does.
+    search : str or None
+        Case-insensitive substring match against ``order_id`` (cast to
+        text -- the column is ``bigint``). Applied server-side for the
+        same reason as :func:`vessels_sql`'s ``search``.
     sort : "date_received" or "laycan_start"
         Column to sort by; whitelisted against ``_ORDER_SORT_COLUMNS``.
+    limit, offset : int
+        Page bounds. ``order_id`` is appended to the ``ORDER BY`` as a
+        tie-breaker, same rationale as :func:`vessels_sql`.
 
     Returns
     -------
     tuple
         ``(sql, params)`` for :func:`ai_platform.backend.db.fetch_rows`.
+        Every returned row carries an extra ``total_count`` column, same
+        as :func:`vessels_sql`.
     """
     clauses: list[str] = ["date_received < orders_reference_now()"]
     params: list[object] = []
     if region is not None:
         params.append(region)
         clauses.append(f"load_zone ILIKE '%' || ${len(params)} || '%'")
+    if search is not None:
+        params.append(search)
+        clauses.append(f"order_id::text ILIKE '%' || ${len(params)} || '%'")
     where_sql = " AND ".join(clauses)
     order_sql = _ORDER_SORT_COLUMNS[sort]
     columns = ", ".join(_ORDERS_COLUMNS_SAFE)
-    sql = f"SELECT {columns} FROM public.order_test WHERE {where_sql} ORDER BY {order_sql}"
+    params.append(limit)
+    limit_param = len(params)
+    params.append(offset)
+    offset_param = len(params)
+    sql = (
+        f"SELECT {columns}, count(*) OVER() AS total_count FROM public.order_test "
+        f"WHERE {where_sql} ORDER BY {order_sql}, order_id "
+        f"LIMIT ${limit_param} OFFSET ${offset_param}"
+    )
     return sql, params
 
 
