@@ -451,34 +451,27 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     Parameters
     ----------
     window : "dod" or "wow"
-        Day-on-day (last 24h) or week-on-week (last 7d), each measured from
-        the simulated "now".
+        Day-on-day since the previous weekday at the same time, or
+        week-on-week over the seven completed UTC days before simulated today.
 
     Returns
     -------
     dict
-        ``window``, the two simulated reference instants and window starts
-        (``tonnage_reference_now``, ``tonnage_since``, ``orders_reference_now``,
-        ``orders_since``), and four row lists: ``new_vessels``,
+        ``window``, the two simulated reference instants and window bounds
+        (``tonnage_reference_now``, ``tonnage_since``, ``tonnage_until``, ``orders_reference_now``,
+        ``orders_since``, ``orders_until``), and four row lists: ``new_vessels``,
         ``vessel_status_changes``, ``field_changes``, ``new_orders``.
     """
     reference = (await _run(*dq.reference_times_sql()))[0]
     # See daily_counts()'s matching comment -- fetch_rows() JSON-stringifies
     # datetimes for the chat agent's sake, so these two are parsed back
-    # into real datetimes here since window_start() below does arithmetic
+    # into real datetimes here since change_window_bounds() below does arithmetic
     # on them.
     tonnage_now = datetime.fromisoformat(reference["tonnage_now"])
     orders_now = datetime.fromisoformat(reference["orders_now"])
 
-    tonnage_since = dq.window_start(window, now=tonnage_now)
-    orders_since = dq.window_start(window, now=orders_now)
-    # public.order_test / public.tonnage_test's timestamp columns are naive
-    # (see dashboard_queries.py's window_start() docstring) -- tonnage_now/
-    # orders_now are still the tz-aware values asyncpg decoded from
-    # timestamptz, so both have to be stripped the same way window_start()
-    # strips `since` before they can bind as `until` bounds below.
-    tonnage_until = tonnage_now.replace(tzinfo=None)
-    orders_until = orders_now.replace(tzinfo=None)
+    tonnage_since, tonnage_until = dq.change_window_bounds(window, now=tonnage_now)
+    orders_since, orders_until = dq.change_window_bounds(window, now=orders_now)
 
     (
         new_vessels,
@@ -487,7 +480,7 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         new_orders,
     ) = await asyncio.gather(
         _run(*dq.new_vessels_sql(tonnage_since, tonnage_until)),
-        _run(*dq.vessel_status_changes_sql(tonnage_since)),
+        _run(*dq.vessel_status_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.vessel_field_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.new_orders_sql(orders_since, orders_until)),
     )
@@ -495,8 +488,10 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         "window": window,
         "tonnage_reference_now": tonnage_now.isoformat(),
         "tonnage_since": tonnage_since.isoformat(),
+        "tonnage_until": tonnage_until.isoformat(),
         "orders_reference_now": orders_now.isoformat(),
         "orders_since": orders_since.isoformat(),
+        "orders_until": orders_until.isoformat(),
         "new_vessels": new_vessels,
         "vessel_status_changes": vessel_status_changes,
         "field_changes": field_changes,

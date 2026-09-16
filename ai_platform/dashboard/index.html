@@ -590,8 +590,8 @@
         <div class="section-head">
           <h2>Change Feed</h2>
           <div class="toolbar">
-            <button type="button" class="window-btn active" data-window="dod">Day-on-day</button>
-            <button type="button" class="window-btn" data-window="wow">Week-on-week</button>
+            <button type="button" class="window-btn active" data-window="dod" title="Since the previous working day; Monday compares to Friday">Day-on-day</button>
+            <button type="button" class="window-btn" data-window="wow" title="Seven completed days, ending yesterday">Week-on-week</button>
           </div>
         </div>
         <div id="changeFeed"><p class="muted">Loading&hellip;</p></div>
@@ -1841,6 +1841,19 @@
         if (event.key === "Escape") closeChangeGroupModal();
       });
 
+      function changeWindowLabel(window_, since, until) {
+        // API bounds are naive UTC; explicitly parse and display them in UTC.
+        const start = new Date(`${since}Z`);
+        const end = new Date(`${until}Z`);
+        const options = { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" };
+        if (window_ === "wow") {
+          const lastDay = new Date(end.getTime() - 86400000);
+          return `Seven completed days: ${start.toLocaleDateString("en-GB", options)} through ${lastDay.toLocaleDateString("en-GB", options)} (UTC)`;
+        }
+        const withTime = { ...options, hour: "2-digit", minute: "2-digit", hour12: false };
+        return `Since previous working day: ${start.toLocaleString("en-GB", withTime)} to ${end.toLocaleString("en-GB", withTime)} (UTC)`;
+      }
+
       async function loadChanges(window_, isRefresh = false) {
         const el = document.getElementById("changeFeed");
         if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
@@ -1855,7 +1868,10 @@
           currentChangeGroups = groups;
           el.innerHTML = `
             <p class="muted" style="margin-top:0;">
-              Simulated as of ${formatDate(data.tonnage_reference_now)} &mdash; today's real date minus one year, not today's actual date.
+              ${escapeHtml(changeWindowLabel(window_, data.tonnage_since, data.tonnage_until))}<br>
+              ${data.orders_since !== data.tonnage_since || data.orders_until !== data.tonnage_until
+                ? `Orders — ${escapeHtml(changeWindowLabel(window_, data.orders_since, data.orders_until))}<br>` : ""}
+              Simulated as of ${escapeHtml(data.tonnage_reference_now.slice(0, 10))} (UTC) &mdash; today's real date minus one year, not today's actual date.
             </p>
             <div class="change-groups">
               ${groups.map(([title, rows, render, dateField], i) => `
