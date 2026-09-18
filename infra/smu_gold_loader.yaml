@@ -63,7 +63,11 @@ Parameters:
       Lambda layer, since it has no compiled/platform-specific dependencies.
 
 Resources:
-  # --------------------------------------------- file-level dedup state -----
+  # ------------------------------------------------ row-level dedup state ----
+  # One item per silver order/tonnage row (source_key = "order#<order_id>" /
+  # "tonnage#<tonnage_row_key>"), storing that row's content hash -- see
+  # scripts/gold_loader/run_tracker.py. Lets the loader diff against gold
+  # without ever running a SELECT against Supabase.
   GoldProcessedHashTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -110,8 +114,8 @@ Resources:
                   - !Sub arn:aws:s3:::${SilverBucketName}/*
               - Effect: Allow
                 Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
                 Resource:
                   - !GetAtt GoldProcessedHashTable.Arn
 
