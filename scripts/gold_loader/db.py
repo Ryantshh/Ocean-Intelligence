@@ -11,10 +11,13 @@ package doesn't need a platform-matched compiled wheel -- this loader's
 invocations are batchy (once per Glue run), not latency sensitive like
 ai_platform's FastAPI reads, so pg8000's synchronous, single-connection-per-
 call model is a fine trade for simpler packaging.
+
+Write-only by design: this module has no SELECT helper. Figuring out which
+rows are new or changed happens against DynamoDB, in handler.py's
+_select_changed()/_select_stale() (see run_tracker.py) -- never by reading
+gold back from Supabase.
 """
 
-from datetime import date, datetime
-from decimal import Decimal
 from typing import Any
 from urllib.parse import urlparse
 
@@ -42,76 +45,6 @@ def connect(dsn: str):
     )
 
 
-def fetch_existing(connection, table: str, pk_column: str, columns: tuple[str, ...]) -> dict[Any, dict[str, Any]]:
-    """Return {pk_value: {column: value, ...}} for every column in `columns`.
-
-    `columns` is every core column plus embedding_source_hash plus the
-    embedding columns -- handler.py uses this both to skip re-embedding rows
-    whose embeddable fields haven't changed (embedding_source_hash) and to
-    skip re-upserting rows that haven't changed at all (a full comparison
-    against every other column).
-    """
-    select_columns = [pk_column, *columns]
-    cursor = connection.cursor()
-    cursor.execute(f"SELECT {', '.join(select_columns)} FROM public.{table}")
-    existing = {}
-    for record in cursor.fetchall():
-        row = dict(zip(select_columns, record))
-        existing[row[pk_column]] = row
-    cursor.close()
-    return existing
-
-
-def _values_equal(new_value, old_value) -> bool:
-    """Compare a raw silver-JSON value against its stored Postgres value.
-
-    The two sides arrive in different shapes for the same logical value --
-    e.g. an ISO timestamp string vs. a datetime, or an int/str vs. a
-    Decimal -- so a plain `==` would report a change on every row, every
-    run. Values are coerced to the type Postgres already returned before
-    comparing.
-    """
-    if new_value is None or old_value is None:
-        return new_value == old_value
-    if isinstance(old_value, (datetime, date)):
-        try:
-            parsed = datetime.fromisoformat(str(new_value))
-        except ValueError:
-            return str(old_value) == str(new_value)
-        return old_value == parsed or old_value == parsed.date()
-    if isinstance(old_value, Decimal):
-        try:
-            return old_value == Decimal(str(new_value))
-        except (ValueError, ArithmeticError):
-            return str(old_value) == str(new_value)
-    return str(old_value) == str(new_value)
-
-
-def select_changed(rows: list[dict[str, Any]], pk_field: str, existing: dict, compare_columns: tuple[str, ...]) -> list[dict[str, Any]]:
-    """Drop rows that are identical to what's already stored.
-
-    This -- not a SQL-side WHERE guard -- is what keeps upsert() from
-    rewriting the whole table every run: glue_transform.py republishes the
-    entire silver dataset on every Glue run, not a delta, so without this
-    filter every row (including the vast majority that didn't change) would
-    get re-sent to Postgres. Comparing here in Python instead of in SQL
-    matters because these tables carry vector(512) TOAST columns -- doing
-    the comparison server-side means Postgres has to detoast and compare
-    them for every row, every run, which was slow enough to push a full run
-    past the Lambda timeout. `compare_columns` should be the core
-    (non-embedding) columns, including embedding_source_hash: a row whose
-    embeddable text changed has a different hash and is caught here too, so
-    the caller's re-embedding logic never needs to consider a row this
-    function drops.
-    """
-    changed = []
-    for row in rows:
-        prior = existing.get(row[pk_field])
-        if prior is None or any(not _values_equal(row.get(col), prior.get(col)) for col in compare_columns):
-            changed.append(row)
-    return changed
-
-
 def estimate_upload_size_bytes(
     rows: list[dict[str, Any]],
     columns: tuple[str, ...],
@@ -136,10 +69,10 @@ def estimate_upload_size_bytes(
 
 
 def _vector_literal(value):
-    """pgvector text format. Accepts either a fresh list[float] (from a new
-    Cohere call) or a value already in text form (as reused rows carry
-    forward from fetch_existing(), whatever shape pg8000 hands back for an
-    unrecognized column OID)."""
+    """pgvector text format. Accepts either a fresh list[float] (the only
+    shape attach_embeddings() ever produces) or a value already in text
+    form, defensively -- whatever shape pg8000 would hand back for an
+    unrecognized column OID, if a string ever did reach here."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -164,11 +97,13 @@ def upsert(
     assignments = ", ".join(f"{col} = EXCLUDED.{col}" for col in all_columns if col != pk_column)
     # No WHERE guard here on purpose: `rows` is expected to already be
     # filtered down to genuinely new/changed rows by the caller, via
-    # select_changed() above. An earlier version of this guard lived here as
-    # a SQL `WHERE (t.*) IS DISTINCT FROM (EXCLUDED.*)` clause, but comparing
-    # the vector(512) TOAST columns server-side for every row, every run, was
-    # slow enough to push a full run past the Lambda timeout -- filtering in
-    # Python means Postgres only ever sees rows that actually need writing.
+    # handler.py's _select_changed()/_select_stale() (diffed against
+    # DynamoDB, not Postgres -- see run_tracker.py). An earlier version of
+    # this guard lived here as a SQL `WHERE (t.*) IS DISTINCT FROM
+    # (EXCLUDED.*)` clause, but comparing the vector(512) TOAST columns
+    # server-side for every row, every run, was slow enough to push a full
+    # run past the Lambda timeout -- filtering before this call means
+    # Postgres only ever sees rows that actually need writing.
     sql = (
         f"INSERT INTO public.{table} ({column_list}) VALUES ({placeholder_list}) "
         f"ON CONFLICT ({pk_column}) DO UPDATE SET {assignments}"
