@@ -20,7 +20,7 @@ flowchart LR
 
     pg[("Supabase Postgres<br/><small>order_test · tonnage_test</small>")]:::store
 
-    broker([Chartering desk]):::edge --> chat["Chainlit<br/><small>/chat</small>"]:::work
+    trader([Trader on the chartering desk]):::edge --> chat["Chainlit<br/><small>/chat</small>"]:::work
     chat <--> agent["LangGraph agent<br/><small>Groq · Cohere</small>"]:::work
     agent <--> pg
 
