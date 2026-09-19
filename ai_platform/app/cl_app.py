@@ -146,9 +146,9 @@ def agent_history() -> list[dict[str, str]]:
 def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the props for the results table element.
 
-    Column choice, null substitution and the word for a row all come from the
-    table module, so the UI carries no knowledge of what the columns mean. Values
-    arrive JSON-safe from ``fetch_rows``, so nothing is coerced here.
+    Column choice and the word for a row both come from the table module, so the
+    UI carries no knowledge of what the columns mean. Values arrive JSON-safe from
+    ``fetch_rows``, so nothing is coerced here.
 
     Rows go as arrays of values rather than dicts. Aligned to ``columns`` they
     drop the repeated key on every field, which matters at several thousand rows.
@@ -167,16 +167,9 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """
     spec = resolve_table(target)
     columns = list(spec.display_columns)
-    defaults = spec.display_defaults
     return {
         "columns": columns,
-        "rows": [
-            [
-                value if (value := row.get(column)) is not None else defaults.get(column)
-                for column in columns
-            ]
-            for row in rows
-        ],
+        "rows": [[row.get(column) for column in columns] for row in rows],
         "noun": spec.display_noun,
     }
 

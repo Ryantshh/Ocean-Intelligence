@@ -7,7 +7,7 @@ bad extraction returns the wrong rows rather than executing anything.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
@@ -96,7 +96,7 @@ class EqualitySpec:
         Database column.
     expression : str or None
         Optional SQL wrapping the column, with ``{column}`` as placeholder.
-        Used for ``COALESCE(commercial_status, 'AVAILABLE')``.
+        Used to fold a null ``commercial_status`` into ``OPEN`` before comparing.
     """
 
     field: str
@@ -114,6 +114,7 @@ class StatementBuilder:
         columns: Sequence[str],
         latest_key: str | None = None,
         latest_order: str = "",
+        column_expressions: Mapping[str, str] | None = None,
     ) -> None:
         """Start an empty statement for one table.
 
@@ -132,13 +133,16 @@ class StatementBuilder:
         latest_order : str
             ORDER BY deciding which report is newest, applied within ``latest_key``.
             Required when ``latest_key`` is set.
+        column_expressions : Mapping of str to str, optional
+            SQL selected in place of a column, aliased back to its name. Applied
+            after the newest-per-entity step, so dedup still reads stored values.
         """
-        # the three lists are appended in step, so placeholder numbering cannot drift
         self.table = table
         self.order_by = order_by
         self.columns = tuple(columns)
         self.latest_key = latest_key
         self.latest_order = latest_order
+        self.column_expressions = dict(column_expressions or {})
         self.include_history = False
         self.exhaustive = False
         self.horizon: str = ""
@@ -244,7 +248,7 @@ class StatementBuilder:
             )
 
     def set_horizon(self, column: str, cutoff: date) -> None:
-        """Hide rows stamped after a cutoff.
+        """Hide rows stamped on or after a cutoff.
 
         Applied inside the newest-per-entity subquery when there is one, so the
         dedup picks the newest row that is not in the future rather than dropping
@@ -256,13 +260,14 @@ class StatementBuilder:
         column : str
             Timestamp column. Comes from this package, never from the model.
         cutoff : date
-            Latest date a row may carry and still be returned.
+            First date a row may carry and be excluded. Pass the day after the
+            working date so rows stamped anywhere within it are kept.
 
         Returns
         -------
         None
         """
-        self.horizon = f"{column} <= {self.bind_parameter(cutoff)}"
+        self.horizon = f"{column} < {self.bind_parameter(cutoff)}"
 
     def order_by_similarity(self, column: str, query_vector: Sequence[float]) -> None:
         """Order results by distance from a query vector.
@@ -314,15 +319,19 @@ class StatementBuilder:
         tuple
             ``(sql, params)`` ready for asyncpg.
         """
-        selected_columns = ", ".join(f'"{column}"' for column in self.columns)
+        raw_columns = ", ".join(f'"{column}"' for column in self.columns)
+        selected_columns = ", ".join(
+            f'{self.column_expressions[column]} AS "{column}"'
+            if column in self.column_expressions
+            else f'"{column}"'
+            for column in self.columns
+        )
 
         if self.latest_key and not self.include_history:
-            # embedding columns ride through the CTE so the outer ORDER BY can see
-            # them, but stay out of the outer select: 512 floats a row, never read
             carried = ", ".join(
                 f'"{column}"' for column, _ in self.similarity_terms
             )
-            cte_columns = f"{selected_columns}, {carried}" if carried else selected_columns
+            cte_columns = f"{raw_columns}, {carried}" if carried else raw_columns
             cutoff = f"WHERE {self.horizon} " if self.horizon else ""
             source = (
                 f"(SELECT DISTINCT ON (\"{self.latest_key}\") {cte_columns} "
@@ -355,7 +364,7 @@ class StatementBuilder:
         sql = (
             f"WITH ranked AS (SELECT {selected_columns}, {distance_expression} "
             f"AS distance FROM {source} WHERE {where_clause} AND {ceiling}) "
-            f"SELECT {selected_columns} FROM ranked "
+            f"SELECT {raw_columns} FROM ranked "
             f"WHERE distance <= (SELECT min(distance) FROM ranked) * {DISTANCE_TOLERANCE} "
             f"ORDER BY distance"
             + ("" if self.exhaustive else f" LIMIT {MAX_RANKED_ROWS}")

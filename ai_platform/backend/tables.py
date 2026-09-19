@@ -20,23 +20,26 @@ puts stale records above fresh ones.
 reports stamped with the same ``update_date`` and differing in open area, and the
 report received later is the newer information.
 
-Tonnage substitutes ``AVAILABLE`` for a null ``commercial_status`` before display.
-A null means unfixed, which is 79% of the fleet, so left alone the column reads
-empty for four rows in five and looks like missing data rather than the most
-important thing on it.
+Tonnage reads ``commercial_status`` through ``STATUS_EXPRESSION`` in both the
+select list and the status filter, so a vessel has exactly three statuses: FIXED,
+ON SUBS and OPEN. A null means unfixed, which is 79% of the fleet, and any value
+outside the first two reads as OPEN.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_platform.backend.clock import working_date
 from ai_platform.backend.sql import EqualitySpec, MatchSpec, RangeSpec, StatementBuilder
+
+STATUS_EXPRESSION = "CASE WHEN {column} IN ('FIXED', 'ON SUBS') THEN {column} ELSE 'OPEN' END"
+"""Folds ``commercial_status`` to the three values a vessel can have."""
 
 
 class OrderSearch(BaseModel):
@@ -148,8 +151,8 @@ class VesselSearch(BaseModel):
     ballast_laden: Literal["LADEN", "BALLAST"] | None = Field(
         default=None, description="sailing empty or with cargo"
     )
-    commercial_status: Literal["FIXED", "ON SUBS", "AVAILABLE"] | None = Field(
-        default=None, description="fixture status; unfixed vessels are AVAILABLE"
+    commercial_status: Literal["FIXED", "ON SUBS", "OPEN"] | None = Field(
+        default=None, description="fixture status; unfixed vessels are OPEN"
     )
     include_history: bool | None = Field(
         default=None,
@@ -192,8 +195,6 @@ class TableSpec:
         them.
     display_noun : str
         What a row is called, for the results panel label.
-    display_defaults : dict of str to str
-        Values substituted for nulls before display.
     semantic_columns : tuple of str
         Free-text columns carrying a ``{name}_embedding`` vector alongside them,
         searched by meaning. Only prose belongs here; names go in ``matches``.
@@ -206,6 +207,11 @@ class TableSpec:
         Attribute on the filter model holding an exact-match id list. The column
         it matches is the same name without the plural: ``order_ids`` to
         ``order_id``.
+    horizon_column : str
+        Timestamp column the future cutoff applies to: when a row arrived, not
+        when it was last edited.
+    column_expressions : dict of str to str
+        SQL selected in place of a display column, aliased back to its name.
     equalities : tuple of EqualitySpec
         Exact matches this table offers. Empty for tables with none.
     latest_key : str or None
@@ -222,7 +228,8 @@ class TableSpec:
     semantic_columns: tuple[str, ...]
     ranges: tuple[RangeSpec, ...]
     id_field: str
-    display_defaults: dict[str, str] = field(default_factory=dict)
+    horizon_column: str
+    column_expressions: dict[str, str] = field(default_factory=dict)
     matches: tuple[MatchSpec, ...] = ()
     equalities: tuple[EqualitySpec, ...] = ()
     latest_key: str | None = None
@@ -263,11 +270,13 @@ class TableSpec:
             self.display_columns,
             self.latest_key,
             self.latest_order,
+            self.column_expressions,
         )
         builder.include_history = getattr(filters, "include_history", False)
         builder.exhaustive = getattr(filters, "exhaustive", False)
         if not getattr(filters, "include_future", False):
-            builder.set_horizon("update_date", working_date())
+            first_excluded_day = working_date() + timedelta(days=1)
+            builder.set_horizon(self.horizon_column, first_excluded_day)
 
         # exact comparisons first: these decide which rows are eligible at all
         identifiers = getattr(filters, self.id_field)
@@ -327,6 +336,7 @@ ORDERS = TableSpec(
         RangeSpec("weight_max", "cargo_weight_max", "<="),
     ),
     id_field="order_ids",
+    horizon_column="date_received",
 )
 
 
@@ -352,7 +362,9 @@ TONNAGE = TableSpec(
         "order_id",
     ),
     display_noun="vessels",
-    display_defaults={"commercial_status": "AVAILABLE"},
+    column_expressions={
+        "commercial_status": STATUS_EXPRESSION.format(column='"commercial_status"')
+    },
     semantic_columns=(),
     matches=(
         MatchSpec("parent_zone", "parent_zone", "exact"),
@@ -373,13 +385,12 @@ TONNAGE = TableSpec(
     ),
     equalities=(
         EqualitySpec("ballast_laden", "ballast_laden"),
-        EqualitySpec(
-            "commercial_status", "commercial_status", "COALESCE({column}, 'AVAILABLE')"
-        ),
+        EqualitySpec("commercial_status", "commercial_status", STATUS_EXPRESSION),
     ),
     id_field="vessel_ids",
+    horizon_column="update_date",
     latest_key="vessel_id",
-    latest_order="update_date DESC, first_date_received DESC",
+    latest_order="update_date DESC NULLS LAST, first_date_received DESC NULLS LAST",
 )
 
 
