@@ -33,3 +33,10 @@ a[href*="chainlit.io"] + * {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Chainlit opens the sidebar with every side element of the thread. Results.jsx
+   renders only the newest, and an older one's empty wrapper would otherwise take
+   a share of the column and a gap. */
+#side-view-content > .side-custom:empty {
+  display: none;
+}

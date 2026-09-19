@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, cast
 
 import chainlit as cl
@@ -330,6 +331,10 @@ async def _render_node_message(
     the reply its link, and pushed straight into the sidebar under a fresh key, so
     the panel swaps to the newest rows rather than keeping the last set open.
 
+    Chainlit reopens the sidebar with every side element of the thread whenever
+    the element list changes. The ``seq`` prop is what lets ``Results.jsx`` render
+    only the newest of them.
+
     Parameters
     ----------
     message : Any
@@ -370,7 +375,10 @@ async def _render_node_message(
     if not sets:
         return ""
 
-    panel = cl.CustomElement(name=RESULTS_ELEMENT, props={"sets": sets}, display="side")
+    shown_at_ms = int(time.time() * 1000)
+    panel = cl.CustomElement(
+        name=RESULTS_ELEMENT, props={"sets": sets, "seq": shown_at_ms}, display="side"
+    )
     reply.elements = cast("list[Any]", [panel])
     await cl.ElementSidebar.set_title(RESULTS_ELEMENT)
     await cl.ElementSidebar.set_elements(

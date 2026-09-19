@@ -4,6 +4,28 @@ const PAGE_SIZE = 12;
 const SELECTION_CAP = 25;
 const PAGE_WINDOW = 2;
 const BLANK = "(blank)";
+const EXPORT_URL = "/api/export/xlsx";
+const CHANGE_EVENT = "oi-results-change";
+
+// Chainlit reopens the sidebar with every side element of the thread at once, so
+// several panels can be mounted together. They find each other through window
+// because each one is evaluated in its own sandbox and shares no module scope.
+function mountedPanels() {
+  if (!window.__oiResults) window.__oiResults = { panels: new Map(), mounts: 0 };
+  return window.__oiResults;
+}
+
+function isNewestPanel(id) {
+  const { panels } = mountedPanels();
+  const mine = panels.get(id);
+  if (!mine) return false;
+  return [...panels.values()].every(
+    (other) =>
+      other === mine ||
+      other.seq < mine.seq ||
+      (other.seq === mine.seq && other.order < mine.order),
+  );
+}
 
 function isBlank(value) {
   return value === null || value === undefined || value === "";
@@ -73,6 +95,7 @@ function Table({ columns, rows, noun }) {
   const [selected, setSelected] = useState(() => new Set());
   const [page, setPage] = useState(0);
   const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
   const [openColumn, setOpenColumn] = useState(null);
   const [menuAt, setMenuAt] = useState(null);
   const [search, setSearch] = useState("");
@@ -205,6 +228,42 @@ function Table({ columns, rows, noun }) {
       setNotice("Could not reach the message box — copied, paste with Ctrl+V");
     } catch {
       setNotice("Could not reach the message box or the clipboard");
+    }
+  };
+
+  const downloadExcel = async () => {
+    if (busy) return;
+    const indexes = selected.size ? [...selected].sort((x, y) => x - y) : ordered;
+    if (!indexes.length) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const response = await fetch(EXPORT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          columns,
+          rows: indexes.map((index) => rows[index]),
+          noun,
+        }),
+      });
+      if (!response.ok) throw new Error(`export failed with ${response.status}`);
+      const named = /filename="([^"]+)"/.exec(
+        response.headers.get("Content-Disposition") ?? "",
+      );
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = named ? named[1] : `${noun}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setNotice(`${indexes.length.toLocaleString()} ${noun} downloaded`);
+    } catch {
+      setNotice("Could not build the Excel file — try again");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -405,6 +464,20 @@ function Table({ columns, rows, noun }) {
           color: hsl(var(--primary-foreground));
           cursor: pointer;
         }
+        .oi-t-download {
+          margin-left: auto;
+          padding: 0.35rem 0.75rem;
+          font: inherit;
+          font-size: 0.75rem;
+          font-weight: 500;
+          border-radius: 0.4rem;
+          border: 1px solid hsl(var(--border));
+          background: transparent;
+          color: hsl(var(--foreground));
+          cursor: pointer;
+        }
+        .oi-t-download:hover:not(:disabled) { background: hsl(var(--muted)); }
+        .oi-t-download:disabled { opacity: 0.5; cursor: not-allowed; }
         .oi-t-send:hover:not(:disabled) { filter: brightness(1.08); }
         .oi-t-send:disabled {
           opacity: 0.5;
@@ -567,6 +640,18 @@ function Table({ columns, rows, noun }) {
           {selected.size ? ` · ${selected.size} selected` : ""}
         </span>
         <button
+          className="oi-t-download"
+          disabled={busy || !ordered.length}
+          onClick={downloadExcel}
+          title={
+            selected.size
+              ? "Download the selected rows as an Excel file"
+              : "Download every row matching the current filters as an Excel file"
+          }
+        >
+          {busy ? "Preparing…" : "Download Excel"}
+        </button>
+        <button
           className="oi-t-send"
           disabled={!selected.size || overCap}
           onClick={sendSelected}
@@ -609,9 +694,30 @@ function Table({ columns, rows, noun }) {
 
 export default function Results() {
   const sets = (props.sets ?? []).filter((set) => (set.rows ?? []).length);
+  const seq = Number(props.seq) || 0;
   const [tab, setTab] = useState(0);
+  const [panelId, setPanelId] = useState(null);
+  const [, setChanges] = useState(0);
 
-  if (!sets.length) return null;
+  useEffect(() => {
+    const store = mountedPanels();
+    store.mounts += 1;
+    const id = store.mounts;
+    store.panels.set(id, { seq, order: id });
+    const onChange = () => setChanges((count) => count + 1);
+    window.addEventListener(CHANGE_EVENT, onChange);
+    setPanelId(id);
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+    return () => {
+      store.panels.delete(id);
+      window.removeEventListener(CHANGE_EVENT, onChange);
+      window.dispatchEvent(new Event(CHANGE_EVENT));
+    };
+  }, [seq]);
+
+  // an older panel mounted beside a newer one renders nothing; mounted alone,
+  // as when its message link is clicked, it is the newest and shows
+  if (!sets.length || !isNewestPanel(panelId)) return null;
 
   const active = sets[Math.min(tab, sets.length - 1)];
   return (
