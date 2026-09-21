@@ -50,6 +50,10 @@
         --diff-order-id: #3b82f6;
         --diff-open-date-start: #a855f7;
         --diff-open-date-end: #ec4899;
+        --diff-laycan-start: #3b82f6;
+        --diff-laycan-end: #14b8a6;
+        --diff-cargo-weight-min: #eab308;
+        --diff-cargo-weight-max: #f97316;
       }
       /* OS-level dark preference applies unless the toggle button below has
          stamped an explicit choice onto <html data-theme="...">; :not([data-theme="light"])
@@ -391,6 +395,7 @@
       form.override-form button:hover:not(:disabled) { filter: brightness(1.08); }
       form.override-form button:disabled { opacity: 0.6; cursor: default; }
       .form-hint { font-size: 0.78rem; color: var(--muted); margin: -0.4rem 0 0; }
+      .field-hint { font-size: 0.72rem; color: var(--muted); font-weight: 400; }
       .form-message { font-size: 0.85rem; padding: 0.5rem 0.7rem; border-radius: 0.5rem; display: none; }
       .form-message.visible { display: block; }
       .form-message.success { color: var(--open); background: color-mix(in srgb, var(--open) 14%, transparent); }
@@ -400,8 +405,8 @@
       .form-section-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0.4rem 0 -0.2rem; }
 
       .record-empty { color: var(--muted); font-size: 0.85rem; padding: 1rem; }
-      #overrides-section td.value-unavailable { color: var(--muted); font-style: italic; }
-      #overrides-section td.diff-cell { background: color-mix(in srgb, var(--accent) 20%, transparent); font-weight: 600; }
+      #overrides-section td.value-unavailable, #order-overrides-section td.value-unavailable { color: var(--muted); font-style: italic; }
+      #overrides-section td.diff-cell, #order-overrides-section td.diff-cell { background: color-mix(in srgb, var(--accent) 20%, transparent); font-weight: 600; }
       form.override-form .field-changed {
         border-color: var(--field-diff-color, var(--accent)) !important;
         /* Same 24%-over-transparent mix displayValue() uses on the matching
@@ -416,12 +421,14 @@
       /* Any row can be the override baseline -- not just the newest -- so
          the highlight follows whichever row is selected (.selected-row),
          not always the first row. */
-      #currentRecordTable tbody tr { cursor: pointer; }
-      #currentRecordTable tbody tr.selected-row td { font-weight: 600; }
-      #currentRecordTable tbody tr.selected-row td:not(.diff-cell) {
+      #currentRecordTable tbody tr, #orderCurrentRecordTable tbody tr { cursor: pointer; }
+      #currentRecordTable tbody tr.selected-row td, #orderCurrentRecordTable tbody tr.selected-row td { font-weight: 600; }
+      #currentRecordTable tbody tr.selected-row td:not(.diff-cell),
+      #orderCurrentRecordTable tbody tr.selected-row td:not(.diff-cell) {
         background: color-mix(in srgb, var(--accent) 10%, var(--card));
       }
-      #currentRecordTable tbody tr:not(.selected-row):hover td:not(.diff-cell) {
+      #currentRecordTable tbody tr:not(.selected-row):hover td:not(.diff-cell),
+      #orderCurrentRecordTable tbody tr:not(.selected-row):hover td:not(.diff-cell) {
         background: color-mix(in srgb, var(--accent) 5%, var(--bg));
       }
       .record-section-gap { margin-top: 1.5rem; }
@@ -429,7 +436,31 @@
          rows) before it scrolls -- see the .record-panel comment above. */
       .table-wrap.scroll-capped { max-height: 26rem; overflow-y: auto; }
       .table-wrap.scroll-capped thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
-      #overrides-section .table-wrap table { min-width: max-content; }
+      #overrides-section .table-wrap table, #order-overrides-section .table-wrap table { min-width: max-content; }
+      .field-disabled-hint { font-size: 0.72rem; color: var(--muted); margin: -0.55rem 0 0; }
+
+      /* Compact info callout -- a couple of "here's how this works" facts
+         that don't belong as a section heading's own <p class="sub"> (too
+         prominent/plain) or the big gradient .overrides-intro banner (too
+         loud for two sentences). Sits just above the table it explains. */
+      .info-bulletin {
+        display: flex; flex-direction: column; gap: 0.4rem;
+        background: color-mix(in srgb, var(--accent) 7%, var(--card));
+        border: 1px solid var(--border); border-left: 3px solid var(--accent);
+        border-radius: 0.5rem; padding: 0.65rem 0.9rem; margin: 0.6rem 0 1.1rem;
+      }
+      .info-bulletin p {
+        margin: 0; font-size: 0.8rem; line-height: 1.5; color: var(--fg);
+        padding-left: 1.1rem; position: relative;
+      }
+      .info-bulletin p::before {
+        content: "\2022"; position: absolute; left: 0.15rem; color: var(--accent); font-weight: 700;
+      }
+      .info-bulletin strong { color: var(--accent); font-weight: 600; }
+      .info-bulletin code {
+        font-size: 0.85em; background: color-mix(in srgb, var(--fg) 9%, transparent);
+        padding: 0.05rem 0.32rem; border-radius: 0.3rem;
+      }
       /* Audit Trail status coloring -- distinct from the Dashboard tab's
          OPEN/ON SUBS/FIXED badges (.badge-open/-watchlist/-fixed above),
          since this covers all 12 raw override_status values a trader can
@@ -437,18 +468,20 @@
          3-way derived dashboard_status. Default (no modifier) stays the
          neutral card/border look for statuses that are neither good nor
          bad news for the vessel's tonnage. */
-      #auditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
+      #auditTable thead th, #orderAuditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
       #auditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
       #auditTable .badge-good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); border-color: transparent; }
       #auditTable .badge-bad { background: color-mix(in srgb, var(--status-critical) 18%, transparent); color: var(--status-critical); border-color: transparent; }
       #auditTable .badge-caution { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: color-mix(in srgb, var(--status-warning) 70%, var(--fg) 30%); border-color: transparent; }
-      #auditTable .audit-diff-muted { color: var(--muted); }
-      #auditTable .audit-diff-arrow { color: var(--muted); margin: 0 0.35em; }
-      #auditTable .audit-diff-new { color: #16a34a; font-weight: 600; }
+      #auditTable .audit-diff-muted, #orderAuditTable .audit-diff-muted { color: var(--muted); }
+      #auditTable .audit-diff-arrow, #orderAuditTable .audit-diff-arrow { color: var(--muted); margin: 0 0.35em; }
+      #auditTable .audit-diff-new, #orderAuditTable .audit-diff-new { color: #16a34a; font-weight: 600; }
       @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) #auditTable .audit-diff-new { color: #4ade80; }
+        :root:not([data-theme="light"]) #auditTable .audit-diff-new,
+        :root:not([data-theme="light"]) #orderAuditTable .audit-diff-new { color: #4ade80; }
       }
-      :root[data-theme="dark"] #auditTable .audit-diff-new { color: #4ade80; }
+      :root[data-theme="dark"] #auditTable .audit-diff-new,
+      :root[data-theme="dark"] #orderAuditTable .audit-diff-new { color: #4ade80; }
 
       /* Circle loading spinner, used in place of a bare "Loading..." string
          while the record panel / audit trail fetch. */
@@ -512,7 +545,8 @@
 
       <nav class="tabs">
         <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button type="button" class="tab-btn" data-tab="overrides">Trader Overrides</button>
+        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage Status Override</button>
+        <button type="button" class="tab-btn" data-tab="order-overrides">Order Status Override</button>
       </nav>
 
       <div id="tab-dashboard" class="tab-panel">
@@ -700,18 +734,8 @@
       </section>
       </div>
 
-      <div id="tab-overrides" class="tab-panel hidden">
+      <div id="tab-tonnage-overrides" class="tab-panel hidden">
       <section id="overrides-section">
-        <div class="overrides-intro">
-          <h2>Trader Overrides</h2>
-          <p class="sub">
-            Record what you've heard privately (broker, chat) on a vessel before it
-            reaches Shipfix. Replaces the selected record with a copy carrying your
-            edits, so it takes precedence immediately -- the Dashboard tab always
-            shows a vessel's newest report. Every submission is also logged in the
-            Audit Trail below.
-          </p>
-        </div>
         <div class="override-layout">
           <div class="form-panel">
             <h3>Enter a Status Update</h3>
@@ -736,26 +760,19 @@
                   <option value="" disabled selected>Select a status</option>
                 </select>
               </label>
-              <div class="field-row">
-                <label>Open area
-                  <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
-                </label>
-                <label>Order assignment
-                  <input id="ovOrderAssignment" type="text" maxlength="64" placeholder="e.g. order id" />
-                </label>
-              </div>
+              <label>Open area
+                <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
+              </label>
               <div class="field-row">
                 <label>Open date start
                   <input id="ovOpenDateStart" type="date" />
+                  <span class="field-hint" id="ovOpenDateStartHint"></span>
                 </label>
                 <label>Open date end
                   <input id="ovOpenDateEnd" type="date" />
+                  <span class="field-hint" id="ovOpenDateEndHint"></span>
                 </label>
               </div>
-              <p class="form-hint">
-                Enter real calendar dates &mdash; they're saved one year earlier to
-                line up with the Dashboard's simulated clock.
-              </p>
 
               <p class="form-section-label">Attribution</p>
               <label class="field-required">Entered by
@@ -772,6 +789,16 @@
               Every reported position on file for the selected vessel, newest first.
               Click a row to compare your update against that trip instead of the newest one --
               submitting always adds a new report rather than editing the row you clicked.
+            </p>
+            <p class="sub" style="margin-bottom:0.5rem; font-size:0.78rem;">
+              This table leaves out <code>order_id</code> on purpose. Every
+              <code>tonnage_test</code> row carries one -- the order the Shipfix
+              pipeline has provisionally matched this vessel's report against --
+              but it's an order-side attribute surfaced on the vessel record, not
+              something this tonnage form edits, so it's hidden here rather than
+              shown as a plain, uneditable number. It isn't editable from the
+              Order Status Override tab either yet -- that tab only covers an
+              order's own laycan window for now.
             </p>
             <input
               type="text" id="currentRecordSearch" class="record-search"
@@ -799,17 +826,140 @@
 
         <div class="drilldown-head" style="margin-top:2.5rem;">
           <h2>Audit Trail</h2>
-          <p class="sub" style="margin:0.15rem 0 0;">
+        </div>
+        <div class="info-bulletin">
+          <p>
             Every status update submitted through this form, newest first --
             scoped to trader submissions only, not every position report.
+            Each row's <strong>When</strong> column is that submission's
+            <code>created_at</code> timestamp.
+          </p>
+          <p>
+            5 days after a vessel's most recent update with no further
+            submission, the Dashboard tab reclassifies it
+            <strong>LIKELY FIXED</strong> on its own -- checked live on
+            every dashboard load, not a once-daily schedule, so it's never
+            more than one page load stale.
           </p>
         </div>
         <div class="table-wrap"><table id="auditTable">
           <thead><tr>
             <th>Vessel</th><th>Commercial Status</th><th>Open area</th><th>Open window</th>
-            <th>Order assignment</th><th>Entered by</th><th>When</th>
+            <th>Entered by</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="6"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+        </table></div>
+      </section>
+      </div>
+
+      <div id="tab-order-overrides" class="tab-panel hidden">
+      <section id="order-overrides-section">
+        <div class="override-layout">
+          <div class="form-panel">
+            <h3>Enter a Laycan Update</h3>
+            <p class="sub" style="margin-bottom:1rem;">
+              Only Order and Entered by are required -- fill in whatever else
+              you actually have fresh word on.
+            </p>
+            <form class="override-form" id="orderOverrideForm">
+              <label class="field-required">Order
+                <div class="combobox" id="ooOrderCombobox">
+                  <input
+                    type="text" id="ooOrderInput" placeholder="Type to search an order&hellip;"
+                    autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                    aria-controls="ooOrderList" required
+                  />
+                  <input type="hidden" id="ooOrder" />
+                  <ul class="combobox-list hidden" id="ooOrderList" role="listbox"></ul>
+                </div>
+              </label>
+              <div class="field-row">
+                <label>Laycan start
+                  <input id="ooLaycanStart" type="date" />
+                </label>
+                <label>Laycan end
+                  <input id="ooLaycanEnd" type="date" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Cargo weight min (mt)
+                  <input id="ooCargoWeightMin" type="number" min="0" step="1" placeholder="e.g. 150000" />
+                </label>
+                <label>Cargo weight max (mt)
+                  <input id="ooCargoWeightMax" type="number" min="0" step="1" placeholder="e.g. 180000" />
+                </label>
+              </div>
+              <p class="form-hint">
+                Standing in for "quantity" -- order_test has no single quantity
+                column, only these two.
+              </p>
+
+              <label>Customer name
+                <input id="ooCustomerName" type="text" maxlength="200" placeholder="e.g. Account 142" disabled />
+              </label>
+              <p class="field-disabled-hint">
+                order_test has no customer_name column yet -- disabled until
+                that schema decision is made, so nothing typed here is silently
+                lost.
+              </p>
+
+              <p class="form-section-label">Attribution</p>
+              <label class="field-required">Entered by
+                <input id="ooEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
+              </label>
+              <button type="submit" id="ooSubmit">Submit Update</button>
+              <div class="form-message" id="ooMessage"></div>
+            </form>
+          </div>
+
+          <div class="record-panel">
+            <h3>Current Record</h3>
+            <p class="sub" style="margin-bottom:0.5rem;">
+              The order's own record on file. order_id is unique per order --
+              unlike a vessel's position-report history, there's only ever one
+              row here.
+            </p>
+            <div class="table-wrap"><table id="orderCurrentRecordTable">
+              <thead><tr></tr></thead>
+              <tbody><tr><td class="record-empty">Select an order to see its current record.</td></tr></tbody>
+            </table></div>
+
+            <div class="record-section-gap">
+              <h3>New Record</h3>
+              <p class="sub" style="margin-bottom:0.75rem;">
+                What this order will look like once this update is saved &mdash;
+                updates live as you fill in the form.
+              </p>
+              <div class="table-wrap"><table id="orderNewRecordTable">
+                <thead><tr></tr></thead>
+                <tbody><tr><td class="record-empty">Select an order first.</td></tr></tbody>
+              </table></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="drilldown-head" style="margin-top:2.5rem;">
+          <h2>Audit Trail</h2>
+        </div>
+        <div class="info-bulletin">
+          <p>
+            Every update submitted through this form, newest first -- scoped
+            to trader submissions only, not every order on file. Each row's
+            <strong>When</strong> column is that submission's
+            <code>created_at</code> timestamp.
+          </p>
+          <p>
+            <strong>Customer name</strong> is logged here even though it
+            isn't written to the order's own record yet -- see the note
+            above the form.
+          </p>
+        </div>
+        <div class="table-wrap"><table id="orderAuditTable">
+          <thead><tr>
+            <th>Order</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
+            <th>Customer name</th><th>Entered by</th><th>When</th>
+          </tr></thead>
+          <tbody><tr><td colspan="6"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -883,7 +1033,9 @@
           document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
           btn.classList.add("active");
           document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
-          document.querySelector("main").classList.toggle("wide", btn.dataset.tab === "overrides");
+          document.querySelector("main").classList.toggle(
+            "wide", btn.dataset.tab === "tonnage-overrides" || btn.dataset.tab === "order-overrides"
+          );
         });
       });
 
@@ -2068,6 +2220,53 @@
       // ---- trader status override ------------------------------------------
       const OVERRIDE_STATUSES = ["AVAILABLE", "ON SUBS", "FIXED"];
 
+      // Open date start/end are bounded against the trader's real calendar
+      // today, not the Dashboard's simulated clock -- toSimulatedDate() only
+      // shifts a date back a year once the trader has already picked it, so
+      // these bounds are computed against an ordinary `new Date()`. Ranges
+      // per product: open date start can reach up to 5 days into the past
+      // (a trader logging a booking window that already started); open date
+      // end is capped to a 30-day-from-today window (no unbounded/past end
+      // dates). Both are enforced twice: the <input>'s min/max (blocks most
+      // browsers' native date picker from offering an out-of-range date) and
+      // an explicit check in the submit handler below (min/max alone doesn't
+      // stop a typed-in or pasted date in every browser).
+      const pad2 = (n) => String(n).padStart(2, "0");
+      const toDateInputValue = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      const addDays = (d, days) => {
+        const copy = new Date(d);
+        copy.setDate(copy.getDate() + days);
+        return copy;
+      };
+
+      const OPEN_DATE_START_MIN = toDateInputValue(addDays(new Date(), -5));
+      const OPEN_DATE_END_MIN = toDateInputValue(new Date());
+      const OPEN_DATE_END_MAX = toDateInputValue(addDays(new Date(), 30));
+
+      // A bare "YYYY-MM-DD" run through formatDate()'s `new Date(value)`
+      // parses as UTC midnight, which rolls back a day once re-displayed in
+      // a negative-UTC-offset timezone -- formatDate is fine for the
+      // datetime strings the rest of the page shows, but wrong here, so
+      // these bounds are formatted directly off their own y/m/d instead.
+      function formatDateInputValue(value) {
+        const [year, month, day] = value.split("-").map(Number);
+        return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+          year: "numeric", month: "short", day: "numeric",
+        });
+      }
+
+      function applyOpenDateBounds() {
+        const startInput = document.getElementById("ovOpenDateStart");
+        const endInput = document.getElementById("ovOpenDateEnd");
+        startInput.min = OPEN_DATE_START_MIN;
+        endInput.min = OPEN_DATE_END_MIN;
+        endInput.max = OPEN_DATE_END_MAX;
+        document.getElementById("ovOpenDateStartHint").innerHTML =
+          `Up to 5 days in the past (from <strong>${escapeHtml(formatDateInputValue(OPEN_DATE_START_MIN))}</strong>).`;
+        document.getElementById("ovOpenDateEndHint").innerHTML =
+          `Within 30 days of today (<strong>${escapeHtml(formatDateInputValue(OPEN_DATE_END_MIN))}</strong>–<strong>${escapeHtml(formatDateInputValue(OPEN_DATE_END_MAX))}</strong>).`;
+      }
+
       function populateStatusOptions() {
         const select = document.getElementById("ovStatus");
         select.innerHTML =
@@ -2132,17 +2331,13 @@
         return `${String(year - 1).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       }
 
-      // Every tonnage_test column vessel_history_sql selects is shown --
-      // nothing the backend fetches is dropped, so the frontend column set
-      // always tallies with what's actually queried. Order is NOT Supabase's
-      // ordinal position: the 5 columns a trader override actually writes
-      // (overridable: true) are pulled to the front, right after the
-      // vessel_id identifier, so what this form submits is visible without
-      // scrolling; the remaining read-only/context columns follow in their
-      // real Supabase order. "Order assignment" writes into order_id itself
-      // (there's no separate tonnage_test column for it), so that's one
-      // column here, not two -- ovOrderAssignment overrides order_id
-      // directly, same shape every other overridable field here already has.
+      // Every tonnage_test column vessel_history_sql selects is shown,
+      // except order_id -- deliberately left out of this table; see the
+      // explanatory note above the Current Record panel in the HTML.
+      // Order is NOT Supabase's ordinal position: the overridable fields
+      // are pulled to the front, right after the vessel_id identifier, so
+      // what this form submits is visible without scrolling; the remaining
+      // read-only/context columns follow in their real Supabase order.
       const RECORD_COLUMNS = [
         { key: "vessel_id", label: "vessel id" },
         { key: "commercial_status", label: "commercial status", overridable: true, inputId: "ovStatus",
@@ -2151,9 +2346,6 @@
         { key: "open_area", label: "open area", overridable: true, inputId: "ovOpenArea",
           formValue: () => document.getElementById("ovOpenArea").value.trim() || null,
           diffColor: "var(--diff-open-area)" },
-        { key: "order_id", label: "order id", overridable: true, inputId: "ovOrderAssignment",
-          formValue: () => document.getElementById("ovOrderAssignment").value.trim() || null,
-          diffColor: "var(--diff-order-id)" },
         { key: "open_date_start", label: "open date start", overridable: true, fmt: formatDate, inputId: "ovOpenDateStart",
           formValue: () => toSimulatedDate(document.getElementById("ovOpenDateStart").value) || null,
           normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-open-date-start)" },
@@ -2435,7 +2627,7 @@
       // Live diff: any change to an overridable field re-renders both
       // record tables so the highlight/New Record value stays in sync as
       // the trader types, without waiting for form submission.
-      ["ovStatus", "ovOpenArea", "ovOpenDateStart", "ovOpenDateEnd", "ovOrderAssignment"].forEach((id) => {
+      ["ovStatus", "ovOpenArea", "ovOpenDateStart", "ovOpenDateEnd"].forEach((id) => {
         document.getElementById(id).addEventListener("input", renderRecordTables);
         document.getElementById(id).addEventListener("change", renderRecordTables);
       });
@@ -2502,16 +2694,24 @@
         return `${oldBadge}${AUDIT_ARROW}${newBadge}`;
       }
 
+      // Generalized so both the Tonnage tab's open_date_start/end and the
+      // Order tab's laycan_start/end (and its cargo_weight_min/max, via
+      // formatNumber) can share one range-diff renderer instead of two
+      // near-identical copies.
+      function auditRangeDiff(row, oldStartKey, oldEndKey, startKey, endKey, fmt = formatDate) {
+        const oldRange = row[oldStartKey] || row[oldEndKey]
+          ? `${fmt(row[oldStartKey])} – ${fmt(row[oldEndKey])}`
+          : null;
+        const newRange = row[startKey] || row[endKey]
+          ? `${fmt(row[startKey])} – ${fmt(row[endKey])}`
+          : null;
+        const newSide = auditNew(newRange ?? "Null");
+        if (oldRange === newRange) return newSide;
+        return `${oldRange ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
+      }
+
       function auditWindowDiff(row) {
-        const oldWindow = row.old_open_date_start || row.old_open_date_end
-          ? `${formatDate(row.old_open_date_start)} – ${formatDate(row.old_open_date_end)}`
-          : null;
-        const newWindow = row.open_date_start || row.open_date_end
-          ? `${formatDate(row.open_date_start)} – ${formatDate(row.open_date_end)}`
-          : null;
-        const newSide = auditNew(newWindow ?? "Null");
-        if (oldWindow === newWindow) return newSide;
-        return `${oldWindow ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
+        return auditRangeDiff(row, "old_open_date_start", "old_open_date_end", "open_date_start", "open_date_end");
       }
 
       function auditRow(row) {
@@ -2521,7 +2721,6 @@
             <td>${auditStatusDiff(row)}</td>
             <td>${auditDiffText(row.old_open_area, row.open_area)}</td>
             <td>${auditWindowDiff(row)}</td>
-            <td>${auditDiffText(row.old_order_assignment, row.order_assignment)}</td>
             <td>${escapeHtml(row.entered_by)}</td>
             <td>${formatDate(row.created_at)}</td>
           </tr>
@@ -2534,10 +2733,10 @@
           const rows = await getJson("/api/trader-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(auditRow).join("")
-            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="6" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="6" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 
@@ -2556,7 +2755,6 @@
         const openArea = document.getElementById("ovOpenArea").value.trim();
         const openDateStart = document.getElementById("ovOpenDateStart").value;
         const openDateEnd = document.getElementById("ovOpenDateEnd").value;
-        const orderAssignment = document.getElementById("ovOrderAssignment").value.trim();
 
         if (!vesselId) {
           showFormMessage("error", "Select a vessel from the list.");
@@ -2569,6 +2767,20 @@
         }
         if (openDateStart && openDateEnd && openDateEnd < openDateStart) {
           showFormMessage("error", "Open date end cannot be earlier than open date start.");
+          return;
+        }
+        // The <input>'s min/max (applyOpenDateBounds) blocks most browsers'
+        // native date picker, but not every browser enforces it against a
+        // typed or pasted value -- checked again here as the real guard.
+        if (openDateStart && openDateStart < OPEN_DATE_START_MIN) {
+          showFormMessage("error", `Open date start cannot be earlier than ${formatDateInputValue(OPEN_DATE_START_MIN)}.`);
+          return;
+        }
+        if (openDateEnd && (openDateEnd < OPEN_DATE_END_MIN || openDateEnd > OPEN_DATE_END_MAX)) {
+          showFormMessage(
+            "error",
+            `Open date end must fall within 30 days of today (${formatDateInputValue(OPEN_DATE_END_MIN)}–${formatDateInputValue(OPEN_DATE_END_MAX)}).`
+          );
           return;
         }
         // The submission replaces whichever Current Record row is
@@ -2590,7 +2802,6 @@
             open_area: openArea || null,
             open_date_start: toSimulatedDate(openDateStart),
             open_date_end: toSimulatedDate(openDateEnd),
-            order_assignment: orderAssignment || null,
           });
           showFormMessage("success", `Replaced the selected record for ${vesselId}.`);
           document.getElementById("overrideForm").reset();
@@ -2613,10 +2824,312 @@
       });
 
       populateStatusOptions();
+      applyOpenDateBounds();
       renderTableHeaders();
       renderRecordTables();
       loadVesselOptions();
       loadAudit();
+
+      // ---- order status override --------------------------------------------
+      // order_id is unique per row in order_test (confirmed live -- no
+      // duplicates), unlike tonnage_test's vessel_id, so there's no reporting
+      // history to page through here: one order, one record. Only laycan_start/
+      // laycan_end are actually written by this form -- customer_name/quantity
+      // have no matching order_test column yet (see order_override_queries.py),
+      // so they're rendered disabled above rather than silently discarded.
+      const ORDER_SUGGESTION_LIMIT = 30;
+      let ordersCache = [];
+      let orderActiveIndex = -1;
+      let currentOrder = null; // the single selected order's record, or null
+
+      const orderInput = () => document.getElementById("ooOrderInput");
+      const orderHidden = () => document.getElementById("ooOrder");
+      const orderList = () => document.getElementById("ooOrderList");
+
+      function orderLabel(o) {
+        const route = [o.load_port, o.discharge_port].filter(Boolean).join(" → ");
+        return route ? `${o.order_id} — ${route}` : o.order_id;
+      }
+
+      function closeOrderList() {
+        orderList().classList.add("hidden");
+        orderInput().setAttribute("aria-expanded", "false");
+        orderActiveIndex = -1;
+      }
+
+      const ORDER_RECORD_COLUMNS = [
+        { key: "order_id", label: "order id" },
+        { key: "cargo_type", label: "cargo type" },
+        { key: "load_port", label: "load port" },
+        { key: "discharge_port", label: "discharge port" },
+        { key: "laycan_start", label: "laycan start", overridable: true, fmt: formatDate, inputId: "ooLaycanStart",
+          formValue: () => toSimulatedDate(document.getElementById("ooLaycanStart").value) || null,
+          normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-laycan-start)" },
+        { key: "laycan_end", label: "laycan end", overridable: true, fmt: formatDate, inputId: "ooLaycanEnd",
+          formValue: () => toSimulatedDate(document.getElementById("ooLaycanEnd").value) || null,
+          normalize: dateOnly, formIsDateOnly: true, diffColor: "var(--diff-laycan-end)" },
+        // Standing in for "quantity" -- order_test has no single quantity
+        // column (see order_override_queries.py). Compared as numbers, not
+        // strings: the raw value comes back as a JS number, the form's as a
+        // string, so a numeric normalize is required or an unchanged value
+        // would misreport as "changed" on every keystroke-free render.
+        { key: "cargo_weight_min", label: "cargo weight min", overridable: true, fmt: formatNumber, inputId: "ooCargoWeightMin",
+          formValue: () => { const v = document.getElementById("ooCargoWeightMin").value; return v === "" ? null : v; },
+          normalize: (v) => (v === null || v === undefined || v === "" ? "" : Number(v)),
+          diffColor: "var(--diff-cargo-weight-min)" },
+        { key: "cargo_weight_max", label: "cargo weight max", overridable: true, fmt: formatNumber, inputId: "ooCargoWeightMax",
+          formValue: () => { const v = document.getElementById("ooCargoWeightMax").value; return v === "" ? null : v; },
+          normalize: (v) => (v === null || v === undefined || v === "" ? "" : Number(v)),
+          diffColor: "var(--diff-cargo-weight-max)" },
+        { key: "date_received", label: "date received", fmt: formatDate },
+        { key: "update_date", label: "update date", fmt: formatDate },
+        { key: "assigned", label: "assigned" },
+      ];
+
+      function renderOrderTableHeaders() {
+        const headerHtml = ORDER_RECORD_COLUMNS.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+        document.querySelector("#orderCurrentRecordTable thead tr").innerHTML = headerHtml;
+        document.querySelector("#orderNewRecordTable thead tr").innerHTML = headerHtml;
+      }
+
+      function renderOrderRecordTables() {
+        const currentBody = document.querySelector("#orderCurrentRecordTable tbody");
+        const newBody = document.querySelector("#orderNewRecordTable tbody");
+        const colCount = ORDER_RECORD_COLUMNS.length;
+
+        if (!currentOrder) {
+          currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order to see its current record.</td></tr>`;
+          newBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order first.</td></tr>`;
+          ORDER_RECORD_COLUMNS.forEach((column) => {
+            if (column.inputId) document.getElementById(column.inputId).classList.remove("field-changed");
+          });
+          return;
+        }
+
+        const currentCells = ORDER_RECORD_COLUMNS.map((column) => {
+          const raw = currentOrder[column.key];
+          const changed = column.overridable && isFieldChanged(column, raw);
+          if (column.inputId) {
+            const inputEl = document.getElementById(column.inputId);
+            inputEl.classList.toggle("field-changed", changed);
+            if (column.diffColor) inputEl.style.setProperty("--field-diff-color", column.diffColor);
+          }
+          return displayValue(raw, column.fmt, changed, column.diffColor);
+        }).join("");
+        currentBody.innerHTML = `<tr class="selected-row" data-index="0">${currentCells}</tr>`;
+
+        const newCells = ORDER_RECORD_COLUMNS.map((column) => {
+          const raw = currentOrder[column.key];
+          const formValue = column.overridable ? column.formValue() : null;
+          const touched = formValue !== null;
+          const changed = touched && isFieldChanged(column, raw);
+          const effective = touched ? formValue : raw;
+          const fmt = column.formIsDateOnly && touched ? null : column.fmt;
+          return displayValue(effective, fmt, changed, column.diffColor);
+        }).join("");
+        newBody.innerHTML = `<tr>${newCells}</tr>`;
+      }
+
+      async function loadOrderRecordPanel(orderId) {
+        const currentBody = document.querySelector("#orderCurrentRecordTable tbody");
+        const newBody = document.querySelector("#orderNewRecordTable tbody");
+        const colCount = ORDER_RECORD_COLUMNS.length;
+        const loadingRow = `<tr><td class="record-empty" colspan="${colCount}"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr>`;
+        currentBody.innerHTML = loadingRow;
+        newBody.innerHTML = loadingRow;
+        try {
+          currentOrder = await getJson(`/api/order-override/orders/${encodeURIComponent(orderId)}`);
+          renderOrderRecordTables();
+        } catch (error) {
+          currentOrder = null;
+          const msg = `<tr><td class="error" colspan="${colCount}">Could not load current record: ${escapeHtml(error.message)}</td></tr>`;
+          currentBody.innerHTML = msg;
+          newBody.innerHTML = msg;
+        }
+      }
+
+      function selectOrder(o) {
+        orderHidden().value = o.order_id;
+        orderInput().value = orderLabel(o);
+        closeOrderList();
+        loadOrderRecordPanel(o.order_id);
+      }
+
+      function renderOrderSuggestions(query) {
+        const list = orderList();
+        const q = query.trim().toLowerCase();
+        const matches = (
+          q
+            ? ordersCache.filter((o) =>
+                [o.order_id, o.cargo_type, o.load_port, o.discharge_port]
+                  .some((v) => v && String(v).toLowerCase().includes(q))
+              )
+            : ordersCache
+        ).slice(0, ORDER_SUGGESTION_LIMIT);
+
+        orderActiveIndex = -1;
+        if (!matches.length) {
+          list.innerHTML = `<li class="combobox-empty">No orders match "${escapeHtml(query)}"</li>`;
+        } else {
+          list.innerHTML = matches.map((o, i) => `
+            <li class="combobox-option" role="option" data-index="${i}">
+              <span>${escapeHtml(orderLabel(o))}</span>
+            </li>
+          `).join("");
+          list.querySelectorAll(".combobox-option").forEach((el, i) => {
+            el.addEventListener("mousedown", (event) => {
+              event.preventDefault();
+              selectOrder(matches[i]);
+            });
+          });
+        }
+        list.classList.remove("hidden");
+        orderInput().setAttribute("aria-expanded", "true");
+        list._matches = matches;
+      }
+
+      function moveOrderActive(delta) {
+        const list = orderList();
+        const options = list.querySelectorAll(".combobox-option");
+        if (!options.length) return;
+        orderActiveIndex = (orderActiveIndex + delta + options.length) % options.length;
+        options.forEach((el, i) => el.classList.toggle("active", i === orderActiveIndex));
+        options[orderActiveIndex].scrollIntoView({ block: "nearest" });
+      }
+
+      orderInput().addEventListener("input", () => {
+        orderHidden().value = "";
+        renderOrderSuggestions(orderInput().value);
+      });
+      orderInput().addEventListener("focus", () => {
+        const query = orderHidden().value ? "" : orderInput().value;
+        renderOrderSuggestions(query);
+      });
+      orderInput().addEventListener("blur", closeOrderList);
+      orderInput().addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (orderList().classList.contains("hidden")) renderOrderSuggestions(orderInput().value);
+          moveOrderActive(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveOrderActive(-1);
+        } else if (event.key === "Enter") {
+          if (orderActiveIndex >= 0 && orderList()._matches) {
+            event.preventDefault();
+            selectOrder(orderList()._matches[orderActiveIndex]);
+          }
+        } else if (event.key === "Escape") {
+          closeOrderList();
+        }
+      });
+
+      ["ooLaycanStart", "ooLaycanEnd", "ooCargoWeightMin", "ooCargoWeightMax"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", renderOrderRecordTables);
+        document.getElementById(id).addEventListener("change", renderOrderRecordTables);
+      });
+
+      async function loadOrderOptions() {
+        try {
+          ordersCache = await getJson("/api/order-override/orders");
+          orderInput().placeholder = ordersCache.length
+            ? "Type to search an order…"
+            : "No orders available";
+        } catch (error) {
+          orderInput().placeholder = "Could not load orders";
+        }
+      }
+
+      function showOrderFormMessage(kind, text) {
+        const el = document.getElementById("ooMessage");
+        el.className = `form-message visible ${kind}`;
+        el.textContent = text;
+      }
+
+      document.getElementById("orderOverrideForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const submitBtn = document.getElementById("ooSubmit");
+        const orderId = document.getElementById("ooOrder").value;
+        const enteredBy = document.getElementById("ooEnteredBy").value.trim();
+        const laycanStart = document.getElementById("ooLaycanStart").value;
+        const laycanEnd = document.getElementById("ooLaycanEnd").value;
+        const cargoWeightMinRaw = document.getElementById("ooCargoWeightMin").value;
+        const cargoWeightMaxRaw = document.getElementById("ooCargoWeightMax").value;
+        const cargoWeightMin = cargoWeightMinRaw === "" ? null : Number(cargoWeightMinRaw);
+        const cargoWeightMax = cargoWeightMaxRaw === "" ? null : Number(cargoWeightMaxRaw);
+
+        if (!orderId) {
+          showOrderFormMessage("error", "Select an order from the list.");
+          orderInput().focus();
+          return;
+        }
+        if (!enteredBy) {
+          showOrderFormMessage("error", "Entered by is required.");
+          return;
+        }
+        if (laycanStart && laycanEnd && laycanEnd < laycanStart) {
+          showOrderFormMessage("error", "Laycan end cannot be earlier than laycan start.");
+          return;
+        }
+        if (cargoWeightMin !== null && cargoWeightMax !== null && cargoWeightMax < cargoWeightMin) {
+          showOrderFormMessage("error", "Cargo weight max cannot be less than cargo weight min.");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        try {
+          await postJson("/api/order-override", {
+            order_id: orderId,
+            entered_by: enteredBy,
+            laycan_start: toSimulatedDate(laycanStart),
+            laycan_end: toSimulatedDate(laycanEnd),
+            cargo_weight_min: cargoWeightMin,
+            cargo_weight_max: cargoWeightMax,
+            customer_name: document.getElementById("ooCustomerName").value.trim() || null,
+          });
+          showOrderFormMessage("success", `Updated the record for order ${orderId}.`);
+          document.getElementById("orderOverrideForm").reset();
+          await Promise.all([loadOrderRecordPanel(orderId), loadOrderOptions(), loadOrderAudit()]);
+          const submitted = ordersCache.find((o) => o.order_id === orderId);
+          orderHidden().value = orderId;
+          orderInput().value = submitted ? orderLabel(submitted) : orderId;
+        } catch (error) {
+          showOrderFormMessage("error", `Could not save update: ${error.message}`);
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      function orderAuditRow(row) {
+        return `
+          <tr>
+            <td>${escapeHtml(row.order_id)}</td>
+            <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end")}</td>
+            <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber)}</td>
+            <td>${row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
+            <td>${escapeHtml(row.entered_by)}</td>
+            <td>${formatDate(row.created_at)}</td>
+          </tr>
+        `;
+      }
+
+      async function loadOrderAudit(isRefresh = false) {
+        const tbody = document.querySelector("#orderAuditTable tbody");
+        try {
+          const rows = await getJson("/api/order-override/audit");
+          tbody.innerHTML = rows.length
+            ? rows.map(orderAuditRow).join("")
+            : '<tr><td colspan="6" class="muted">No updates submitted yet.</td></tr>';
+        } catch (error) {
+          if (isRefresh) throw error;
+          tbody.innerHTML = `<tr><td colspan="6" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+        }
+      }
+
+      renderOrderTableHeaders();
+      renderOrderRecordTables();
+      loadOrderOptions();
+      loadOrderAudit();
 
       // ---- auto-refresh, last-updated timestamp, stale-data indication ----
       // Traders want the dashboard current without a manual reload; an

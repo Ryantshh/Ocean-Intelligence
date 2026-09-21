@@ -23,6 +23,7 @@ empty instead of erroring.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -31,6 +32,27 @@ from pydantic import BaseModel, Field
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.trader_override import trader_override_queries as toq
+
+
+def _to_timestamp(value: str | None) -> datetime | None:
+    """Undo ``ai_platform.backend.db.json_safe``'s date/datetime -> ISO
+    string conversion, ahead of a query (:func:`trader_override_queries.
+    insert_audit_sql`) that ``::timestamp``-casts its date parameters.
+
+    Every row this module reads comes back through ``fetch_rows``, which
+    runs each value through ``json_safe`` so the dashboard's own JSON
+    responses don't choke on a bare ``datetime`` -- but that means
+    ``new_row``/``snapshot`` below already hold plain ISO strings for
+    ``open_date_start``/``open_date_end``, not the ``date``/``datetime``
+    objects asyncpg requires for a ``::timestamp``-cast parameter (same
+    trap ``trader_override_queries._parse_date`` exists to avoid on the
+    inbound side, from the HTML date inputs). Passing the string straight
+    through raised on every submission where either date was non-null --
+    silently, since the caller only catches ``HTTPException`` and logs a
+    generic warning -- which is why the Audit Trail table went missing
+    entries for any override that actually had an open date on file.
+    """
+    return datetime.fromisoformat(value) if value else None
 
 router = APIRouter(prefix="/api/trader-override", tags=["trader-override"])
 logger = get_logger("trader_override")
@@ -217,25 +239,29 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
                 new_row["commercial_status"],
                 body.entered_by,
                 open_area=new_row["open_area"],
-                open_date_start=new_row["open_date_start"],
-                open_date_end=new_row["open_date_end"],
+                open_date_start=_to_timestamp(new_row["open_date_start"]),
+                open_date_end=_to_timestamp(new_row["open_date_end"]),
                 order_assignment=new_row["order_id"],
                 old_override_status=snapshot["commercial_status"],
                 old_open_area=snapshot["open_area"],
-                old_open_date_start=snapshot["open_date_start"],
-                old_open_date_end=snapshot["open_date_end"],
+                old_open_date_start=_to_timestamp(snapshot["open_date_start"]),
+                old_open_date_end=_to_timestamp(snapshot["open_date_end"]),
                 old_order_assignment=snapshot["order_id"],
             )
         )
-    except HTTPException:
+    except HTTPException as exc:
         # trader_override_audit is a log, not the source of truth -- the
         # tonnage_test insert above already committed, so a missing/broken
         # audit table (e.g. its setup SQL was never applied) must not fail
         # the submission itself, only the Audit Trail table's own read.
+        # exc.detail is logged (not just swallowed) since _run() folds every
+        # failure reason -- missing table, bad value, whatever -- into the
+        # same generic HTTPException, and a bare warning with no detail is
+        # exactly what let the _to_timestamp bug above go unnoticed.
         logger.warning(
-            "trader_override_audit insert failed for vessel_id=%r; "
+            "trader_override_audit insert failed for vessel_id=%r (%s); "
             "tonnage_test insert already committed, continuing",
-            body.vessel_id,
+            body.vessel_id, exc.detail,
         )
 
     return rows[0]
