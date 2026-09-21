@@ -422,16 +422,18 @@ def transform_orders(df: DataFrame) -> DataFrame:
         select_or_null(df, "cargo_weight_min", ["Cargo Weight Min", "Cargo Weight Min.1", "cargo_weight_min"]),
         select_or_null(df, "cargo_weight_max", ["Cargo Weight Max", "Cargo Weight Max.1", "cargo_weight_max"]),
         select_or_null(df, "assigned", ["Assigned", "Assigned (T/F)", "assigned"]),
-        select_or_null(df, "assigned_vessel_name", ["Assigned Vessel Name", "Assigned Vessel", "assigned_vessel_name"]),
     )
     return with_stable_order_id(selected)
 
 
 def with_stable_order_id(df: DataFrame) -> DataFrame:
-    # Deliberately excludes "assigned" / "assigned_vessel_name": those fields
-    # change *after* an order is created (e.g. a cargo gets fixed to a vessel).
-    # If they were part of the hash, that update would mint a brand-new
-    # order_id instead of updating the existing record on merge.
+    # Deliberately excludes "assigned": that field changes *after* an order
+    # is created (e.g. a cargo gets fixed to a vessel). If it were part of
+    # the hash, that update would mint a brand-new order_id instead of
+    # updating the existing record on merge. ("assigned_vessel_name" was
+    # the other field this used to apply to, before the column itself was
+    # dropped entirely -- confirmed 100% null across every row, and no
+    # longer part of the schema at all.)
     key_columns = [
         "laycan_start",
         "laycan_end",

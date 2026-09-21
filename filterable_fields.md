@@ -1,67 +1,91 @@
 # Filterable fields
 
-What the agent can narrow on in SQL, and what it cannot. Anything not filterable still appears
-in the results panel, which has a filter dropdown per column.
+What the agent can narrow on in SQL, and what it cannot. The source of truth is
+`ai_platform/backend/tables.py`: the `OrderSearch` and `VesselSearch` models hold the filter
+fields, and the `ORDERS` and `TONNAGE` specs map each one to a column. Anything not filterable
+still appears in the results panel, which has a filter dropdown per column.
 
-Date and size fields take two bounds each, so 9 filterable tonnage columns give 13 filter
-fields, and 7 filterable orders columns give 9.
+How a field matches:
 
-## tonnage_test
-
-9 of 17 columns filterable.
-
-| Column | Filterable | Filter field | Why not |
-|---|---|---|---|
-| `vessel_id` | Yes | `vessel_ids`, exact, list | |
-| `open_date_start` / `open_date_end` | Yes | `open_from` / `open_to` | |
-| `eta` | Yes | `eta_from` / `eta_to` | |
-| `update_date` | Yes | `updated_from` / `updated_to` | |
-| `first_date_received` | Yes | `received_from` / `received_to` | |
-| `dwt` | Yes | `dwt_min` / `dwt_max` | |
-| `ballast_laden` | Yes | one of LADEN, BALLAST | |
-| `commercial_status` | Yes | one of FIXED, ON SUBS, AVAILABLE | |
-| `parent_zone` | No | | comma-packed set |
-| `open_area` | No | | comma-packed set |
-| `destination` | No | | open-ended text |
-| `ship_size` | No | | Capesize on every row |
-| `ship_type` | No | | Bulk Carrier on 99.8% |
-| `vessel_status` | No | | free text |
-| `order_id` | No | | matches zero rows in `orders` |
-| `assignment` | No | | 100% null |
+- **range** — `_from` is on or after, `_to` is on or before; `_min` is at least, `_max` is at most.
+- **exact, per element** — the stored cell is split on `", "` and each piece must equal the value,
+  so `West Africa, East Coast South America` matches a search for either zone.
+- **prefix, per element** — each piece must start with the value, so `IRON ORE` also finds
+  `IRON ORE PELLETS`.
+- **contains, per element** — each piece must contain the value, case-insensitive, so `Itaguai`
+  finds `Itaguai / Sepetiba`.
+- **by meaning** — the text is embedded with Cohere and ranked by vector distance. Capped at the
+  closest fifty unless `exhaustive` is set.
 
 ## order_test
 
-7 of 15 columns filterable.
+All 13 displayed columns are filterable.
 
-| Column | Filterable | Filter field | Why not |
-|---|---|---|---|
-| `order_id` | Yes | `order_ids`, exact, list | |
-| `laycan_start` / `laycan_end` | Yes | `laycan_from` / `laycan_to` | |
-| `date_received` | Yes | `received_from` / `received_to` | |
-| `update_date` | Yes | `updated_from` / `updated_to` | |
-| `cargo_weight_min` / `cargo_weight_max` | Yes | `weight_min` / `weight_max` | |
-| `load_zone` | No | | comma-packed set |
-| `discharge_parent_zone` | No | | comma-packed set |
-| `load_port` | No | | comma-packed set |
-| `discharge_port` | No | | comma-packed set |
-| `cargo_type` | No | | comma-packed set |
-| `cargo_description` | No | | free prose |
-| `assigned` | No | | 100% null |
-| `assigned_vessel_name` | No | | 100% null |
+| Column | Filter field | Match |
+|---|---|---|
+| `order_id` | `order_ids` | exact, list |
+| `laycan_start` | `laycan_start_from` / `laycan_start_to` | range |
+| `laycan_end` | `laycan_end_from` / `laycan_end_to` | range |
+| `date_received` | `received_from` / `received_to` | range |
+| `update_date` | `updated_from` / `updated_to` | range |
+| `cargo_weight_min` | `weight_min` | range, at least |
+| `cargo_weight_max` | `weight_max` | range, at most |
+| `load_zone` | `load_zone` | exact, per element |
+| `discharge_parent_zone` | `discharge_parent_zone` | exact, per element |
+| `cargo_type` | `cargo_type` | prefix, per element |
+| `load_port` | `load_port` | contains, per element |
+| `discharge_port` | `discharge_port` | contains, per element |
+| `cargo_description` | `cargo_description` | by meaning |
 
-## Notes
+Not selected at all: `assigned` (100% null) and the pipeline columns `embedding_source_hash`,
+`gold_loaded_at` and the `*_embedding` vectors.
 
-**Ranges compare against the opposite column** so an overlapping window matches rather than
-only a contained one. `laycan_from` compares to `laycan_end`, `open_from` to `open_date_end`,
-`weight_min` to `cargo_weight_max`.
+## tonnage_test
 
-**Comma-packed sets hold several values in one varchar.** Neither `=` nor `LIKE` is correct on
-them: `=` drops multi-valued rows, and `LIKE '%Asia%'` matches "South East Asia". These are the
-fields the gold layer embeds — ten `vector(512)` columns across the two tables — and they become
-reachable through dense retrieval rather than SQL filtering.
+11 of 16 displayed columns are filterable.
 
-**Every condition ANDs.** There is no OR and no negation, and the two enum fields take a single
-value while the id fields take a list.
+| Column | Filter field | Match |
+|---|---|---|
+| `vessel_id` | `vessel_ids` | exact, list |
+| `open_date_start` | `open_start_from` / `open_start_to` | range |
+| `open_date_end` | `open_end_from` / `open_end_to` | range |
+| `update_date` | `updated_from` / `updated_to` | range |
+| `first_date_received` | `received_from` / `received_to` | range |
+| `dwt` | `dwt_min` / `dwt_max` | range |
+| `ballast_laden` | `ballast_laden` | exact, one of LADEN, BALLAST |
+| `commercial_status` | `commercial_status` | exact, one of FIXED, ON SUBS, OPEN |
+| `parent_zone` | `parent_zone` | exact, per element |
+| `vessel_status` | `vessel_status` | exact, per element |
+| `open_area` | `open_area` | contains, per element |
 
-Definitions live in `RANGES` and `EQUALITIES` in `ai_platform/backend/tables/orders.py` and
-`tonnage.py`. Change those and this file goes stale.
+`commercial_status` is folded before it is compared or shown: FIXED and ON SUBS pass through,
+and anything else, including null, reads as OPEN.
+
+Displayed but not filterable:
+
+| Column | Why not |
+|---|---|
+| `destination` | AIS free text typed by the crew |
+| `eta` | AIS estimate for that destination, not the open window |
+| `ship_size` | Capesize on every row |
+| `ship_type` | Bulk Carrier on 99.8% |
+| `order_id` | synthetic link, see Data caveats in the README |
+
+Nothing on vessels is searched by meaning.
+
+## Flags
+
+| Flag | Table | Effect |
+|---|---|---|
+| `include_future` | both | lifts the future cutoff |
+| `include_history` | vessels | returns every report instead of the newest per vessel |
+| `exhaustive` | cargoes | returns every `cargo_description` match instead of the closest fifty |
+
+## Rules applied to every search
+
+- **Future cutoff.** Rows stamped after the working date are hidden: `date_received` for orders,
+  `update_date` for tonnage. The working date is the real date minus one calendar year.
+- **Newest report per vessel.** Tonnage keeps one row per `vessel_id`, the newest `update_date`
+  then the newest `first_date_received`, nulls last. Every vessel filter is judged on that row.
+- **Ordering.** Both tables sort by `update_date` descending, except a `cargo_description`
+  search, which sorts by distance.

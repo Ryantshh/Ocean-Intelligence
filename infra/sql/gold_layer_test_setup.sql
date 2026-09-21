@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS public.order_test (
     cargo_weight_min NUMERIC,
     cargo_weight_max NUMERIC,
     assigned TEXT,
-    assigned_vessel_name TEXT,
     cargo_type_embedding vector(512),
     discharge_port_embedding vector(512),
     cargo_description_embedding vector(512),

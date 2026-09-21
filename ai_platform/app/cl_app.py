@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, cast
 
 import chainlit as cl
@@ -146,9 +147,9 @@ def agent_history() -> list[dict[str, str]]:
 def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the props for the results table element.
 
-    Column choice, null substitution and the word for a row all come from the
-    table module, so the UI carries no knowledge of what the columns mean. Values
-    arrive JSON-safe from ``fetch_rows``, so nothing is coerced here.
+    Column choice and the word for a row both come from the table module, so the
+    UI carries no knowledge of what the columns mean. Values arrive JSON-safe from
+    ``fetch_rows``, so nothing is coerced here.
 
     Rows go as arrays of values rather than dicts. Aligned to ``columns`` they
     drop the repeated key on every field, which matters at several thousand rows.
@@ -167,16 +168,9 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """
     spec = resolve_table(target)
     columns = list(spec.display_columns)
-    defaults = spec.display_defaults
     return {
         "columns": columns,
-        "rows": [
-            [
-                value if (value := row.get(column)) is not None else defaults.get(column)
-                for column in columns
-            ]
-            for row in rows
-        ],
+        "rows": [[row.get(column) for column in columns] for row in rows],
         "noun": spec.display_noun,
     }
 
@@ -337,6 +331,10 @@ async def _render_node_message(
     the reply its link, and pushed straight into the sidebar under a fresh key, so
     the panel swaps to the newest rows rather than keeping the last set open.
 
+    Chainlit reopens the sidebar with every side element of the thread whenever
+    the element list changes. The ``seq`` prop is what lets ``Results.jsx`` render
+    only the newest of them.
+
     Parameters
     ----------
     message : Any
@@ -377,7 +375,10 @@ async def _render_node_message(
     if not sets:
         return ""
 
-    panel = cl.CustomElement(name=RESULTS_ELEMENT, props={"sets": sets}, display="side")
+    shown_at_ms = int(time.time() * 1000)
+    panel = cl.CustomElement(
+        name=RESULTS_ELEMENT, props={"sets": sets, "seq": shown_at_ms}, display="side"
+    )
     reply.elements = cast("list[Any]", [panel])
     await cl.ElementSidebar.set_title(RESULTS_ELEMENT)
     await cl.ElementSidebar.set_elements(
