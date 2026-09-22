@@ -100,22 +100,26 @@ _ORDERS_COLUMNS_SAFE = (
 
 # A vessel becomes "newly open" on the day a resolved OPEN segment begins
 # in vessel_status_history -- i.e. a row was actually submitted declaring
-# it open, with that day as the start of its open window. Confirmed by the
-# sponsor: "new vessel" does NOT mean "first ever seen in the data" (an
-# earlier, rejected definition built on vessel_current_status.
-# first_date_received), and it does NOT mean "inferred open because an
-# older fixture's window lapsed" either (an earlier version of this event
-# stream also unioned in FIXED/ON-SUBS segments ending the day before --
-# removed: the sponsor was explicit that "new vessels" means a row
-# EXPLICITLY declaring the vessel open, not something inferred from
-# silence). Since every segment in vessel_status_history already comes
-# from a real reported row, this is also exactly the "became OPEN"
-# subset of what vessel_status_changes_sql tracks -- deliberately NOT
-# excluded from that query's own results: "new vessels" is a narrower,
-# separately-labeled highlight of the same underlying events, not a
-# mutually-exclusive category, so an into-OPEN transition is expected to
-# appear under both headings in the change feed. Shared by every query
-# below that computes it (:func:`new_vessels_sql`,
+# it open, with that day as the start of its open window. This does NOT
+# mean "first ever seen in the data" (an earlier, rejected definition
+# built on vessel_current_status.first_date_received). Since every segment
+# in vessel_status_history comes from a real reported row, this is also
+# exactly the "became OPEN" subset of what vessel_status_changes_sql
+# tracks -- deliberately NOT excluded from that query's own results:
+# "new vessels" is a narrower, separately-labeled highlight of the same
+# underlying events, not a mutually-exclusive category, so an into-OPEN
+# transition is expected to appear under both headings in the change feed.
+#
+# A second branch used to be unioned in here, counting vessels that rolled
+# into "presumed open" via the 5-day recency fallback. Removed because it
+# read vessel_current_status -- a snapshot describing only *now* -- while
+# plotting each result on a *past* day, so a bar's height changed as the
+# clock advanced rather than as information arrived: a vessel entered on
+# the day its window lapsed and then silently vanished from that same past
+# day once it aged past 5 days. Charts built on this CTE are historical,
+# so every term in it has to be an as-of-that-day fact.
+#
+# Shared by every query below that computes it (:func:`new_vessels_sql`,
 # :func:`daily_new_vessels_sql`, :func:`daily_new_vessels_by_region_sql`,
 # and the "new_vessels" branch of :func:`vessels_on_day_sql`) so the
 # definition can't drift out of sync between the chart, its region
