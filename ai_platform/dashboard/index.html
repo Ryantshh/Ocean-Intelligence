@@ -1845,9 +1845,13 @@
         if (!rows.length) return '<p class="muted" style="font-size:0.8rem;">None in this window.</p>';
         const shown = limit ? rows.slice(0, limit) : rows;
         let html = "";
-        for (const [day, dayRows] of groupByDay(shown, dateField)) {
-          html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
-          html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
+        if (dateField) {
+          for (const [day, dayRows] of groupByDay(shown, dateField)) {
+            html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
+            html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
+          }
+        } else {
+          html += `<ul>${shown.map(renderItem).join("")}</ul>`;
         }
         if (limit && rows.length > shown.length) {
           html += `<p class="muted" style="font-size:0.75rem;">+${formatNumber(rows.length - shown.length)} more not shown</p>`;
@@ -1924,11 +1928,20 @@
         if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
         try {
           const data = await getJson(`/api/dashboard/changes?window=${window_}`);
+          // Day-on-day reads as one move since the last working day, so its
+          // entries are listed flat (dateField null) rather than bucketed by
+          // date. Week-on-week spans seven days, where the per-day split is
+          // the point. The bucketing was also actively misleading on DoD:
+          // "New vessels" is dated by open_date_start -- the day a vessel
+          // comes open, not the day anyone reported it -- so a Monday window
+          // reaching back over a weekend showed "Saturday (24)" on a day
+          // when zero reports were actually submitted.
+          const byDay = window_ === "wow";
           const groups = [
-            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "new_as_of"],
-            ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, "update_date"],
-            ["Field changes", data.field_changes, fieldChangeRow, "update_date"],
-            ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, "date_received"],
+            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, byDay ? "new_as_of" : null],
+            ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, byDay ? "update_date" : null],
+            ["Field changes", data.field_changes, fieldChangeRow, byDay ? "update_date" : null],
+            ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
           ];
           currentChangeGroups = groups;
           el.innerHTML = `
