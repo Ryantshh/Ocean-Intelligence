@@ -434,7 +434,7 @@
          OPEN/ON SUBS/FIXED badges (.badge-open/-watchlist/-fixed above),
          since this covers all 12 raw override_status values a trader can
          submit (OVERRIDE_STATUSES in trader_override_queries.py), not the
-         3-way derived dashboard_status. Default (no modifier) stays the
+         4-way derived dashboard_status. Default (no modifier) stays the
          neutral card/border look for statuses that are neither good nor
          bad news for the vessel's tonnage. */
       #auditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
@@ -527,11 +527,11 @@
             <span class="value" id="statusTileWatchlist">—</span>
             <span class="label">On Subs</span>
           </button>
-          <button type="button" class="status-tile status-tile-fixed" data-status="FIXED">
+          <button type="button" class="status-tile status-tile-fixed" data-status="FIXED" title="Under a fixture right now: a report whose open window covers today says fixed, and the vessel has been heard from within 5 days. A fixture reported for a future window reads as Open until that window starts, so this count is small by design.">
             <span class="value" id="statusTileFixed">—</span>
             <span class="label">Fixed</span>
           </button>
-          <button type="button" class="status-tile status-tile-likely-fixed" data-status="LIKELY FIXED" title="No row's window covers today, and this vessel hasn't been updated in 5+ days -- treated as probably fixed off-market, not a confirmed fixture.">
+          <button type="button" class="status-tile status-tile-likely-fixed" data-status="LIKELY FIXED" title="Nothing heard about this vessel in 5+ days -- treated as probably fixed off-market rather than still open, whatever its last reported window still claims. Not a confirmed fixture.">
             <span class="value" id="statusTileLikelyFixed">—</span>
             <span class="label">Likely Fixed</span>
           </button>
