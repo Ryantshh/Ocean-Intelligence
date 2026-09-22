@@ -100,22 +100,26 @@ _ORDERS_COLUMNS_SAFE = (
 
 # A vessel becomes "newly open" on the day a resolved OPEN segment begins
 # in vessel_status_history -- i.e. a row was actually submitted declaring
-# it open, with that day as the start of its open window. Confirmed by the
-# sponsor: "new vessel" does NOT mean "first ever seen in the data" (an
-# earlier, rejected definition built on vessel_current_status.
-# first_date_received), and it does NOT mean "inferred open because an
-# older fixture's window lapsed" either (an earlier version of this event
-# stream also unioned in FIXED/ON-SUBS segments ending the day before --
-# removed: the sponsor was explicit that "new vessels" means a row
-# EXPLICITLY declaring the vessel open, not something inferred from
-# silence). Since every segment in vessel_status_history already comes
-# from a real reported row, this is also exactly the "became OPEN"
-# subset of what vessel_status_changes_sql tracks -- deliberately NOT
-# excluded from that query's own results: "new vessels" is a narrower,
-# separately-labeled highlight of the same underlying events, not a
-# mutually-exclusive category, so an into-OPEN transition is expected to
-# appear under both headings in the change feed. Shared by every query
-# below that computes it (:func:`new_vessels_sql`,
+# it open, with that day as the start of its open window. This does NOT
+# mean "first ever seen in the data" (an earlier, rejected definition
+# built on vessel_current_status.first_date_received). Since every segment
+# in vessel_status_history comes from a real reported row, this is also
+# exactly the "became OPEN" subset of what vessel_status_changes_sql
+# tracks -- deliberately NOT excluded from that query's own results:
+# "new vessels" is a narrower, separately-labeled highlight of the same
+# underlying events, not a mutually-exclusive category, so an into-OPEN
+# transition is expected to appear under both headings in the change feed.
+#
+# A second branch used to be unioned in here, counting vessels that rolled
+# into "presumed open" via the 5-day recency fallback. Removed because it
+# read vessel_current_status -- a snapshot describing only *now* -- while
+# plotting each result on a *past* day, so a bar's height changed as the
+# clock advanced rather than as information arrived: a vessel entered on
+# the day its window lapsed and then silently vanished from that same past
+# day once it aged past 5 days. Charts built on this CTE are historical,
+# so every term in it has to be an as-of-that-day fact.
+#
+# Shared by every query below that computes it (:func:`new_vessels_sql`,
 # :func:`daily_new_vessels_sql`, :func:`daily_new_vessels_by_region_sql`,
 # and the "new_vessels" branch of :func:`vessels_on_day_sql`) so the
 # definition can't drift out of sync between the chart, its region
@@ -206,8 +210,11 @@ def vessels_sql(
     status: DashboardStatus | None,
     region: str | None,
     sort: SortKey,
+    search: str | None,
+    limit: int,
+    offset: int,
 ) -> tuple[str, list]:
-    """Vessel tracker: current status, optionally filtered by status/region.
+    """Vessel tracker: current status, optionally filtered by status/region/search.
 
     Parameters
     ----------
@@ -220,13 +227,27 @@ def vessels_sql(
         "Far East" -- not an exact match, since the raw zone labels
         (e.g. "Far East") are exact-cased and a trader typing "far east"
         should still find them.
+    search : str or None
+        Case-insensitive substring match against ``vessel_id``. Applied
+        server-side (not client-side over an already-fetched page) so a
+        search always sees the complete matching set before paging, never
+        just whatever page happened to be loaded already.
     sort : "eta", "update_date", or "open_date_end"
         Column to sort by; whitelisted against ``_SORT_COLUMNS``.
+    limit, offset : int
+        Page bounds. ``vessel_id`` is appended to the ``ORDER BY`` as a
+        tie-breaker -- the primary sort columns are never unique, and
+        without a deterministic full ordering ``LIMIT``/``OFFSET`` can
+        skip or repeat a row across pages whenever two rows tie on it.
 
     Returns
     -------
     tuple
         ``(sql, params)`` for :func:`ai_platform.backend.db.fetch_rows`.
+        Every returned row carries an extra ``total_count`` column -- the
+        count of every row matching the filters, before ``LIMIT`` --
+        computed in the same query via ``count(*) OVER()`` so the caller
+        gets the true total for its pager without a second round trip.
     """
     clauses: list[str] = []
     params: list[object] = []
@@ -238,14 +259,31 @@ def vessels_sql(
         clauses.append(
             f"EXISTS (SELECT 1 FROM unnest(parent_zones) AS z WHERE z ILIKE '%' || ${len(params)} || '%')"
         )
+    if search is not None:
+        params.append(search)
+        clauses.append(f"vessel_id ILIKE '%' || ${len(params)} || '%'")
     where_sql = " AND ".join(clauses) if clauses else "TRUE"
     order_sql = _SORT_COLUMNS[sort]
-    sql = f"SELECT * FROM vessel_current_status WHERE {where_sql} ORDER BY {order_sql}"
+    params.append(limit)
+    limit_param = len(params)
+    params.append(offset)
+    offset_param = len(params)
+    sql = (
+        f"SELECT *, count(*) OVER() AS total_count FROM vessel_current_status "
+        f"WHERE {where_sql} ORDER BY {order_sql}, vessel_id "
+        f"LIMIT ${limit_param} OFFSET ${offset_param}"
+    )
     return sql, params
 
 
-def orders_sql(region: str | None, sort: OrderSortKey) -> tuple[str, list]:
-    """Order tracker: non-future orders, optionally filtered by region.
+def orders_sql(
+    region: str | None,
+    sort: OrderSortKey,
+    search: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[str, list]:
+    """Order tracker: non-future orders, optionally filtered by region/search.
 
     Reads ``public.order_test`` directly (no view covers orders, same as
     :func:`new_orders_sql`), calling ``orders_reference_now()`` inline in
@@ -262,23 +300,43 @@ def orders_sql(region: str | None, sort: OrderSortKey) -> tuple[str, list]:
         vessel's ``parent_zone``), so "east" matches both "East Africa"
         and "Far East" the same way :func:`vessels_sql`'s region filter
         does.
+    search : str or None
+        Case-insensitive substring match against ``order_id`` (cast to
+        text -- the column is ``bigint``). Applied server-side for the
+        same reason as :func:`vessels_sql`'s ``search``.
     sort : "date_received" or "laycan_start"
         Column to sort by; whitelisted against ``_ORDER_SORT_COLUMNS``.
+    limit, offset : int
+        Page bounds. ``order_id`` is appended to the ``ORDER BY`` as a
+        tie-breaker, same rationale as :func:`vessels_sql`.
 
     Returns
     -------
     tuple
         ``(sql, params)`` for :func:`ai_platform.backend.db.fetch_rows`.
+        Every returned row carries an extra ``total_count`` column, same
+        as :func:`vessels_sql`.
     """
     clauses: list[str] = ["date_received < orders_reference_now()"]
     params: list[object] = []
     if region is not None:
         params.append(region)
         clauses.append(f"load_zone ILIKE '%' || ${len(params)} || '%'")
+    if search is not None:
+        params.append(search)
+        clauses.append(f"order_id::text ILIKE '%' || ${len(params)} || '%'")
     where_sql = " AND ".join(clauses)
     order_sql = _ORDER_SORT_COLUMNS[sort]
     columns = ", ".join(_ORDERS_COLUMNS_SAFE)
-    sql = f"SELECT {columns} FROM public.order_test WHERE {where_sql} ORDER BY {order_sql}"
+    params.append(limit)
+    limit_param = len(params)
+    params.append(offset)
+    offset_param = len(params)
+    sql = (
+        f"SELECT {columns}, count(*) OVER() AS total_count FROM public.order_test "
+        f"WHERE {where_sql} ORDER BY {order_sql}, order_id "
+        f"LIMIT ${limit_param} OFFSET ${offset_param}"
+    )
     return sql, params
 
 

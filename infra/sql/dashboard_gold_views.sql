@@ -256,14 +256,32 @@ SELECT
   r.update_date,
   r.vessel_status                            AS ais_status,     -- navigational (Under way/Anchored/Moored) -- NOT trading status, do not wire into the Fixed/Open/On Subs badge
   r.commercial_status                        AS raw_commercial_status,   -- what the LATEST report says, for reference/debugging only -- can legitimately disagree with dashboard_status below (e.g. latest report says FIXED but a still-more-recent row's window has since overridden it for today, so dashboard_status reads something else)
+  -- Staleness is tested FIRST, before any containment branch. Ordering is
+  -- load-bearing, not cosmetic: a covering row used to win outright, so a
+  -- months-old report carrying a window that happens to bracket today kept
+  -- a vessel reading FIXED/OPEN however long the silence had run -- the
+  -- 5-day rule could only ever fire for vessels no row covered at all.
+  -- Confirmed live: 30 vessels sat on the wrong side of that (28 reading
+  -- OPEN, 2 FIXED, all silent 5+ days, several over 30).
   CASE
-    WHEN ab.commercial_status = 'FIXED'   THEN 'FIXED'
-    WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'        -- confirmed by sponsor: on-subs occupies the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED
-    WHEN ab.vessel_id IS NOT NULL         THEN 'OPEN'           -- a row's window covers today with no fixture -- an explicit, current "open" declaration, regardless of recency
-    WHEN r.update_date IS NOT NULL AND r.update_date >= (tonnage_reference_now() - interval '5 days')
-                                           THEN 'OPEN'           -- no row covers today, but this vessel's still been heard from recently -- not yet silent long enough to assume otherwise
-    ELSE 'LIKELY FIXED'                                          -- no row covers today, and nothing's been heard from this vessel in 5+ days -- sponsor-confirmed: this long a silence is treated as probably fixed off-market, not still open indefinitely
+    WHEN r.update_date IS NULL
+      OR r.update_date < (tonnage_reference_now() - interval '5 days')
+                                           THEN 'LIKELY FIXED'   -- nothing heard in 5+ days -- sponsor-confirmed: this long a silence is treated as probably fixed off-market, whatever the last report's window still claims
+    WHEN ab.commercial_status = 'FIXED'   THEN 'FIXED'           -- a row whose window covers today says fixed -- i.e. under a fixture right now, not merely reported fixed at some point
+    WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'         -- confirmed by sponsor: on-subs occupies the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED
+    ELSE 'OPEN'                                                  -- heard from recently and nothing covering today claims a fixture, whether that's a covering row with no fixture or (far more often) no covering row at all
   END                                        AS dashboard_status,
+  -- Tells "presumed open" (heard from recently, but no row's window covers
+  -- today) apart from "a row currently says open". Most OPEN vessels are
+  -- the former -- confirmed live at 83 of 95 -- so containment decides far
+  -- less here than the CASE above suggests. No caller reads this today;
+  -- it is kept because it is already deployed and because re-deriving this
+  -- date-containment logic elsewhere is what produced the active_bookings
+  -- containment bug fixed earlier in this file.
+  (ab.vessel_id IS NULL
+   AND r.update_date IS NOT NULL
+   AND r.update_date >= (tonnage_reference_now() - interval '5 days'))
+                                              AS open_via_recency_fallback,
   tonnage_reference_now() - r.update_date     AS age_since_update,
   (r.open_date_end IS NOT NULL AND r.open_date_end < tonnage_reference_now())  AS open_window_lapsed,
   fs.first_seen_date                         AS first_date_received  -- the vessel's true earliest-ever report, see first_seen above, not the latest row's own value
