@@ -68,11 +68,6 @@ _ORDER_SORT_COLUMNS: dict[OrderSortKey, str] = {
 
 ChangeWindow = Literal["dod", "wow"]
 
-_WINDOW_LENGTHS: dict[ChangeWindow, timedelta] = {
-    "dod": timedelta(days=1),
-    "wow": timedelta(days=7),
-}
-
 # public.order_test columns -- the core (non-embedding) columns it shares
 # with public."order" (see ai_platform/backend/tables/orders.py's
 # DISPLAY_COLUMNS), minus `assigned`, which is 100% null (see README's
@@ -179,8 +174,32 @@ def window_start(window: ChangeWindow, *, now: datetime | None = None) -> dateti
     datetime
         Naive UTC timestamp marking the start of the window.
     """
+    return change_window_bounds(window, now=now)[0]
+
+
+def change_window_bounds(
+    window: ChangeWindow, *, now: datetime | None = None
+) -> tuple[datetime, datetime]:
+    """Return inclusive start and exclusive end as naive UTC timestamps.
+
+    DoD compares to the same time on the previous weekday (Monday to Friday).
+    Weekends also use Friday; public holidays are not modelled. WoW covers the
+    seven completed UTC calendar days before the reference day, so Tuesday
+    shows last Tuesday through Monday and excludes the current partial day.
+    """
     reference = now or datetime.now(UTC)
-    return (reference - _WINDOW_LENGTHS[window]).replace(tzinfo=None)
+    if reference.tzinfo is not None:
+        reference = reference.astimezone(UTC)
+    reference = reference.replace(tzinfo=None)
+    if window == "wow":
+        until = datetime.combine(reference.date(), time.min)
+        return until - timedelta(days=7), until
+    if window != "dod":
+        raise ValueError(f"Unsupported change window: {window}")
+    since = reference - timedelta(days=1)
+    while since.weekday() >= 5:
+        since -= timedelta(days=1)
+    return since, reference
 
 
 def vessels_sql(
@@ -828,7 +847,7 @@ def new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
     since : datetime
         Window start, from :func:`window_start`.
     until : datetime
-        The simulated "now" itself -- window end (exclusive).
+        Window end (exclusive), before today for completed weekly windows.
 
     Returns
     -------
@@ -849,7 +868,7 @@ def new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
     )
 
 
-def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
+def vessel_status_changes_sql(since: datetime, until: datetime) -> tuple[str, list]:
     """Status transitions (e.g. On Subs -> Fixed) within the window.
 
     ``vessel_status_history`` no longer stores ``prev_status`` directly, so
@@ -878,7 +897,9 @@ def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
     Parameters
     ----------
     since : datetime
-        Window start.
+        Window start (inclusive).
+    until : datetime
+        Window end (exclusive).
 
     Returns
     -------
@@ -892,11 +913,11 @@ def vessel_status_changes_sql(since: datetime) -> tuple[str, list]:
             "  FROM vessel_status_history"
             ") "
             "SELECT * FROM ordered "
-            "WHERE update_date >= $1 AND NOT is_first_segment "
+            "WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment "
             "AND status IS DISTINCT FROM prev_status "
             "ORDER BY update_date DESC"
         ),
-        [since],
+        [since, until],
     )
 
 
@@ -927,7 +948,7 @@ def vessel_field_changes_sql(since: datetime, until: datetime) -> tuple[str, lis
     since : datetime
         Window start.
     until : datetime
-        The simulated "now" itself -- both the row being compared and the
+        Window end (exclusive) -- both the row being compared and the
         row it's compared against must predate this, consistent with every
         other window in this module.
 
@@ -973,7 +994,7 @@ def new_orders_sql(since: datetime, until: datetime) -> tuple[str, list]:
     since : datetime
         Window start.
     until : datetime
-        The simulated "now" itself -- orders on or after this are excluded.
+        Window end (exclusive) -- orders on or after this are excluded.
 
     Returns
     -------

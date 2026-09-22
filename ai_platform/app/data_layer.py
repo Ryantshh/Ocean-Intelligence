@@ -7,6 +7,8 @@ literals, so the schema is what decides which environment's history is read.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import re
 
@@ -16,6 +18,13 @@ from chainlit.data.base import BaseDataLayer
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 from chainlit.data.storage_clients.base import BaseStorageClient
 from chainlit.data.storage_clients.s3 import S3StorageClient
+from chainlit.types import (
+    PageInfo,
+    PaginatedResponse,
+    Pagination,
+    ThreadDict,
+    ThreadFilter,
+)
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,6 +32,144 @@ from sqlalchemy.orm import sessionmaker
 load_dotenv()
 
 SCHEMA_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+_logger = logging.getLogger(__name__)
+_background_deletes: set[asyncio.Task[None]] = set()
+
+THREAD_LIST_QUERY = """
+    SELECT
+        t."id" AS thread_id,
+        t."createdAt" AS thread_createdat,
+        t."name" AS thread_name,
+        t."userId" AS user_id,
+        t."userIdentifier" AS user_identifier,
+        t."tags" AS thread_tags,
+        t."metadata" AS thread_metadata,
+        MAX(s."createdAt") AS updatedat
+    FROM threads t
+    LEFT JOIN steps s ON t."id" = s."threadId"
+    WHERE t."userId" = :user_id
+    GROUP BY t."id", t."createdAt", t."name", t."userId", t."userIdentifier", t."tags", t."metadata"
+    ORDER BY updatedat DESC NULLS LAST
+    LIMIT :limit
+"""
+"""Thread rows for the sidebar, newest activity first, without steps or elements."""
+
+
+class ThreadListDataLayer(SQLAlchemyDataLayer):
+    """SQLAlchemy layer whose thread list skips steps and elements.
+
+    The stock ``list_threads`` loads every step and element of every thread to
+    build the sidebar, which the sidebar never reads. Only the thread rows are
+    fetched here; a thread's steps and elements load when it is opened.
+
+    ``delete_element`` returns before the row is gone. Chainlit removes a form
+    from the screen only after the delete completes, so awaiting it leaves an
+    answered form on screen for the length of two database round trips.
+    """
+
+    async def delete_element(self, element_id: str, thread_id: str | None = None) -> None:
+        """Schedule the element delete and return without waiting for it.
+
+        Parameters
+        ----------
+        element_id : str
+            Element to delete.
+        thread_id : str or None
+            Thread the element belongs to, passed through unchanged.
+
+        Returns
+        -------
+        None
+        """
+        task = asyncio.create_task(self._delete_element_later(element_id, thread_id))
+        _background_deletes.add(task)
+        task.add_done_callback(_background_deletes.discard)
+
+    async def _delete_element_later(self, element_id: str, thread_id: str | None) -> None:
+        """Run the stock delete, logging a failure instead of raising it.
+
+        Parameters
+        ----------
+        element_id : str
+            Element to delete.
+        thread_id : str or None
+            Thread the element belongs to.
+
+        Returns
+        -------
+        None
+        """
+        try:
+            await super().delete_element(element_id, thread_id)
+        except Exception:
+            _logger.exception("background delete of element %s failed", element_id)
+
+    async def list_threads(
+        self, pagination: Pagination, filters: ThreadFilter
+    ) -> PaginatedResponse:
+        """Page through the user's threads by id cursor.
+
+        Parameters
+        ----------
+        pagination : Pagination
+            Page size and the id of the last thread on the previous page.
+        filters : ThreadFilter
+            ``userId`` is required. ``search`` matches the thread name. The
+            feedback filter is not applied, since it needs step data.
+
+        Returns
+        -------
+        PaginatedResponse
+            One page of threads with empty ``steps`` and ``elements``.
+
+        Raises
+        ------
+        ValueError
+            If ``filters.userId`` is unset.
+        """
+        if not filters.userId:
+            raise ValueError("userId is required")
+        rows = await self.execute_sql(
+            query=THREAD_LIST_QUERY,
+            parameters={"user_id": filters.userId, "limit": self.user_thread_limit},
+        )
+        threads: list[ThreadDict] = [
+            ThreadDict(
+                id=str(row["thread_id"]),
+                createdAt=row["thread_createdat"],
+                name=row["thread_name"],
+                userId=row["user_id"],
+                userIdentifier=row["user_identifier"],
+                tags=row["thread_tags"],
+                metadata=row["thread_metadata"],
+                steps=[],
+                elements=[],
+            )
+            for row in (rows if isinstance(rows, list) else [])
+        ]
+        search_keyword = filters.search.lower() if filters.search else None
+        if search_keyword:
+            threads = [
+                thread for thread in threads if search_keyword in (thread["name"] or "").lower()
+            ]
+
+        start = 0
+        if pagination.cursor:
+            for index, thread in enumerate(threads):
+                if thread["id"] == pagination.cursor:
+                    start = index + 1
+                    break
+        end = start + pagination.first
+        page = threads[start:end]
+        return PaginatedResponse(
+            pageInfo=PageInfo(
+                hasNextPage=len(threads) > end,
+                startCursor=page[0]["id"] if page else None,
+                endCursor=page[-1]["id"] if page else None,
+            ),
+            data=page,
+        )
 
 
 def get_schema_name() -> str:
@@ -106,7 +253,7 @@ def get_data_layer() -> BaseDataLayer:
             "CHAINLIT_DATABASE_URL must use the postgresql+asyncpg:// driver."
         )
 
-    data_layer = SQLAlchemyDataLayer(
+    data_layer = ThreadListDataLayer(
         conninfo=conninfo,
         connect_args={"server_settings": {"search_path": get_schema_name()}},
         storage_provider=get_storage_client(),
