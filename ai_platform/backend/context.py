@@ -12,8 +12,11 @@ Imports nothing from chainlit, so the gauge is testable without a web server.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from typing import Any
 
 import tiktoken
+from langchain_core.messages import BaseMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from ai_platform.backend.prompts import AGENT_SYSTEM
@@ -83,20 +86,50 @@ zero rather than starting part-full.
 """
 
 
-def history_tokens(history: list[dict[str, str]]) -> int:
-    """Measure the token cost of a conversation.
+def content_text(content: Any) -> str:
+    """Flatten a message's content to the text the model is sent.
 
     Parameters
     ----------
-    history : list of dict
-        Prior turns in OpenAI message format.
+    content : Any
+        A string, or a list of content parts as some providers return.
+
+    Returns
+    -------
+    str
+        The text, with list parts joined; non-text parts are serialised.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return "" if content is None else str(content)
+
+
+def message_tokens(messages: Sequence[BaseMessage]) -> int:
+    """Measure the token cost of the agent's stored conversation.
+
+    Counts what goes on the wire for each message: its content, which for a tool
+    message is the full result with every row, plus the name and arguments of
+    every tool call an assistant message made.
+
+    Parameters
+    ----------
+    messages : Sequence of BaseMessage
+        The agent's message history from the checkpointer.
 
     Returns
     -------
     int
-        Tokens across every message's content plus its wrapper.
+        Tokens across every message plus its wrapper.
     """
-    return sum(
-        count_tokens(message.get("content", "")) + MESSAGE_OVERHEAD
-        for message in history
-    )
+    total = 0
+    for message in messages:
+        total += count_tokens(content_text(message.content)) + MESSAGE_OVERHEAD
+        for call in getattr(message, "tool_calls", None) or []:
+            total += count_tokens(call.get("name", ""))
+            total += count_tokens(json.dumps(call.get("args", {}), default=str))
+    return total
