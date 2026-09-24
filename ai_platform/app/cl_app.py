@@ -19,7 +19,7 @@ from langgraph.types import Command
 
 from ai_platform.app.data_layer import get_data_layer
 from ai_platform.backend.agent import agent
-from ai_platform.backend.context import USABLE_TOKENS, history_tokens
+from ai_platform.backend.context import USABLE_TOKENS, message_tokens
 from ai_platform.backend.llm import stream_chat
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.tables import OrderSearch, VesselSearch, resolve_table
@@ -130,18 +130,22 @@ def _clean(text: str) -> str:
     return text.translate(_INVISIBLE).translate(_ODD_SPACES)
 
 
-def agent_history() -> list[dict[str, str]]:
-    """Read the conversation so far, for the context gauge.
+async def agent_context_tokens() -> int:
+    """Measure what the agent will carry into its next model call.
 
-    Only the gauge needs this now. The agent keeps its own message history in the
-    checkpointer and summarises it through middleware, so nothing here feeds it.
+    Reads the agent's own history from the checkpointer, which holds tool calls
+    and every tool result row, and reflects summarisation. Chainlit's chat history
+    holds only visible text, so it misses nearly all of it.
 
     Returns
     -------
-    list of dict
-        Prior turns in OpenAI format, excluding the question being asked.
+    int
+        Tokens of stored history for this session; zero when the agent holds
+        none, as after a reload.
     """
-    return cl.chat_context.to_openai()[:-1]
+    state = await agent.aget_state({"configurable": {"thread_id": cl.context.session.id}})
+    messages = (state.values or {}).get("messages", []) if state else []
+    return message_tokens(messages)
 
 
 def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -175,9 +179,7 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-async def refresh_gauge(
-    history: list[dict[str, str]], spent: int = 0, anchor: str = ""
-) -> None:
+async def refresh_gauge(used: int, spent: int = 0, anchor: str = "") -> None:
     """Create or update the bar pinned above the composer.
 
     An element only renders inside the message whose id equals its ``for_id``;
@@ -193,8 +195,9 @@ async def refresh_gauge(
 
     Parameters
     ----------
-    history : list of dict
-        Conversation the next question will carry.
+    used : int
+        Tokens of history the next question will carry, from
+        ``agent_context_tokens``.
     spent : int
         Tokens consumed answering the question just finished.
     anchor : str
@@ -204,7 +207,6 @@ async def refresh_gauge(
     -------
     None
     """
-    used = history_tokens(history)
     props = {
         "percent": round(min(used / USABLE_TOKENS, 1.0) * 100, 2),
         "used": used,
@@ -319,7 +321,7 @@ async def run_agent(question: str) -> None:
     if results_element_name:
         await reply.stream_token(f"\n\n{results_element_name}")
     await reply.send()
-    await refresh_gauge(agent_history(), anchor=reply.id)
+    await refresh_gauge(await agent_context_tokens(), anchor=reply.id)
 
 
 async def _render_node_message(
@@ -762,7 +764,8 @@ async def resume_chat(thread: ThreadDict) -> None:
     rebuild until the agent carries memory.
 
     The gauge is unpersisted, so it is rebuilt here against the last stored
-    assistant message.
+    assistant message. It reads zero: the agent's memory is per session, so a
+    resumed thread starts it empty whatever the screen shows.
 
     Parameters
     ----------
@@ -780,7 +783,7 @@ async def resume_chat(thread: ThreadDict) -> None:
         if step.get("type") == "assistant_message" and (step_id := step.get("id"))
     ]
     if anchors:
-        await refresh_gauge(agent_history(), anchor=anchors[-1])
+        await refresh_gauge(await agent_context_tokens(), anchor=anchors[-1])
 
 
 @cl.on_message

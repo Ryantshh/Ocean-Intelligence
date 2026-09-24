@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -172,6 +172,10 @@ class StatementBuilder:
     def add_ranges(self, filters: BaseModel, specs: tuple[RangeSpec, ...]) -> None:
         """Apply every range bound that was set.
 
+        A ``<=`` bound given as a date covers that whole day: the columns hold
+        timestamps, and a bare date is midnight, so the bound is rewritten as
+        ``< the next day``.
+
         Parameters
         ----------
         filters : BaseModel
@@ -185,10 +189,14 @@ class StatementBuilder:
         """
         for spec in specs:
             value = getattr(filters, spec.field, None)
-            if value is not None:
-                self.clauses.append(
-                    f"{spec.column} {spec.operator} {self.bind_parameter(value)}"
-                )
+            if value is None:
+                continue
+            operator = spec.operator
+            is_whole_day_upper_bound = operator == "<=" and type(value) is date
+            if is_whole_day_upper_bound:
+                operator = "<"
+                value = value + timedelta(days=1)
+            self.clauses.append(f"{spec.column} {operator} {self.bind_parameter(value)}")
 
     def add_equalities(self, filters: BaseModel, specs: tuple[EqualitySpec, ...]) -> None:
         """Apply every exact match that was set.
