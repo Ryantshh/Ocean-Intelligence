@@ -556,7 +556,7 @@
             </div>
             <div id="regionsTableView" class="regions-table-wrap">
               <div class="table-wrap"><table id="regionsTable">
-                <thead><tr><th>Region</th><th>Supply</th><th>Demand</th><th title="On how many of the last 14 simulated days this region carried at least one open vessel. A confidence signal for the Supply column, not part of the Status verdict.">Consistency</th><th>Status</th></tr></thead>
+                <thead><tr><th>Region</th><th>Supply</th><th title="Orders received in the last 14 simulated days, filed under their load zone.">Demand</th><th title="On how many of the last 14 simulated days this region carried at least one open vessel. A confidence signal for the Supply column, not part of the Status verdict.">Consistency</th><th>Status</th></tr></thead>
                 <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
               </table></div>
             </div>
@@ -1181,7 +1181,7 @@
             const html = `
               <div class="t-title">${escapeHtml(region)}</div>
               <div class="t-value">${formatNumber(supply)} open vessels</div>
-              <div class="t-value">${formatNumber(demand)} recent orders</div>
+              <div class="t-value">${formatNumber(demand)} orders in the last 14 days</div>
               <div class="muted">${escapeHtml(status)}</div>
               ${consistencyLine}
             `;

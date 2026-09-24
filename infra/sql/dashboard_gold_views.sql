@@ -466,7 +466,29 @@ demand AS (
   SELECT trim(zone) AS region, COUNT(*) AS demand_count
   FROM public.order_test,
        LATERAL regexp_split_to_table(trim(COALESCE(load_zone, '')), '\s*,\s*') AS zone
-  WHERE date_received > orders_reference_now() - interval '90 days'   -- confirmed by product spec ("Date Received -- windows demand to trailing 90 days"); no longer a placeholder
+  -- 14 days, matching the Daily Trends panel beside this one on the page,
+  -- so the two halves of Market Summary are on the same clock.
+  --
+  -- This was 90 days, carrying a comment attributing that figure to the
+  -- product spec. That attribution could not be substantiated: the value and
+  -- the comment asserting it was confirmed entered the repository in a single
+  -- commit, no spec document exists anywhere in the tree, and the "earlier
+  -- 7-day guess" the README describes as having been replaced never existed
+  -- in this file at all. Changed on Owen's instruction.
+  --
+  -- Known cost, measured before the change: demand falls from 431 counted
+  -- orders to 56, and the regions carrying no order data at all rise from 2
+  -- to 11 of 27. Roughly half the map's verdicts move, and the three largest
+  -- regions by supply (East Coast South America, South Africa, South East
+  -- Asia) invert from Tight to Oversupplied. The verdict also becomes far
+  -- more volatile -- replaying 60 days, region colours change 48 times on a
+  -- 14-day window against 6 on a 90-day one -- because most regions hold only
+  -- a handful of orders in any fortnight, so one arriving can flip a colour.
+  --
+  -- None of that is fixed by the window length, because supply is a single
+  -- instant and demand is an accumulation however long it runs; the ratio
+  -- below compares the two regardless. See the open questions in README.
+  WHERE date_received > orders_reference_now() - interval '14 days'
     AND date_received < orders_reference_now()   -- excludes simulated-future orders outright, not just outside the trailing window
     AND trim(zone) <> ''
   GROUP BY 1
