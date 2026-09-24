@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 
 from ai_platform.backend.prompts import EXTRACTION_SYSTEM
+from ai_platform.backend.provider import local_profile
 from ai_platform.backend.tables import EXTRACTION_RESPONSE_FORMAT
 
 CONTEXT_WINDOW = 131_072
@@ -83,7 +84,7 @@ Recomputed at import from the live prompt and schema, so editing either cannot
 leave a stale constant behind. Replaced by a real measurement once one arrives.
 """
 
-_measured_overhead: int | None = None
+_measured_overhead: dict[str | None, int] = {}
 
 
 def record_prompt_tokens(prompt_tokens: int, history: list[dict[str, str]]) -> None:
@@ -107,10 +108,11 @@ def record_prompt_tokens(prompt_tokens: int, history: list[dict[str, str]]) -> N
     -------
     None
     """
-    global _measured_overhead
+    profile = local_profile.get()
     candidate = prompt_tokens - history_tokens(history)
-    if candidate > 0 and (_measured_overhead is None or candidate < _measured_overhead):
-        _measured_overhead = candidate
+    previous = _measured_overhead.get(profile)
+    if candidate > 0 and (previous is None or candidate < previous):
+        _measured_overhead[profile] = candidate
 
 
 def fixed_overhead() -> int:
@@ -121,7 +123,7 @@ def fixed_overhead() -> int:
     int
         The measured overhead when one has been recorded, else the seed.
     """
-    return SEED_OVERHEAD if _measured_overhead is None else _measured_overhead
+    return _measured_overhead.get(local_profile.get(), SEED_OVERHEAD)
 
 
 def usable_tokens() -> int:
@@ -132,6 +134,10 @@ def usable_tokens() -> int:
     int
         Window less fixed overhead less the completion reserve.
     """
+    if local_profile.get() is not None:
+        # Local configs allow 4096 input tokens plus 512 output tokens.
+        # This estimate drives the gauge; HFBackend enforces exact token limits.
+        return max(1, 4096 - fixed_overhead())
     return CONTEXT_WINDOW - fixed_overhead() - COMPLETION_RESERVE
 
 

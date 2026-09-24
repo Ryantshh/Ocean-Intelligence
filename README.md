@@ -1,6 +1,6 @@
 # Ocean-Intelligence-
 
-The main chat profile picker now also offers local Qwen 0.5B, 1.5B and 3B.
+The main chat profile picker offers local Qwen 0.5B, 1.5B and 3B, plus Llama 3.2 1B/3B Instruct base and QLoRA profiles. See [local model setup and training](freight-ai-poc/docs/local-models.md) for access requirements, the shared pipeline, and current execution blockers.
 See [local Qwen integration](ai_platform/docs/local-qwen.md) for setup, data-flow
 boundaries and Checkpoint 1A rollback information.
 

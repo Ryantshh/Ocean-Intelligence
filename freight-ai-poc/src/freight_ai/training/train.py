@@ -36,7 +36,11 @@ def train(config):
     set_seed(tc["seed"])
     bf16 = torch.cuda.is_bf16_supported()
     tokenizer = AutoTokenizer.from_pretrained(
-        mc["model_id"], revision=mc["revision"], trust_remote_code=False
+        mc["model_id"],
+        revision=mc["revision"],
+        trust_remote_code=False,
+        cache_dir=mc.get("cache_dir"),
+        local_files_only=mc.get("local_files_only", True),
     )
     if not tokenizer.chat_template:
         raise ValueError("Training requires a model chat template")
@@ -46,6 +50,8 @@ def train(config):
         mc["model_id"],
         revision=mc["revision"],
         trust_remote_code=False,
+        cache_dir=mc.get("cache_dir"),
+        local_files_only=mc.get("local_files_only", True),
         device_map={"": torch.cuda.current_device()},
         quantization_config=BitsAndBytesConfig(
             load_in_4bit=True,

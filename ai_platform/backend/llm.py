@@ -25,9 +25,8 @@ back to a standalone trace per call, same as before.
 from __future__ import annotations
 
 import os
-from contextvars import ContextVar
-from types import SimpleNamespace
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 from typing import Any, cast
 
 from dotenv import load_dotenv
@@ -35,23 +34,30 @@ from langfuse.openai import AsyncOpenAI
 from langgraph.config import get_config
 from openai.types.chat import ChatCompletionMessageParam
 
-from ai_platform.backend.tracing import langfuse_handler
 from ai_platform.backend import local_qwen
+from ai_platform.backend.provider import local_profile as _local_profile
+from ai_platform.backend.tracing import langfuse_handler
 
 load_dotenv()
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL = "openai/gpt-oss-120b"
-_qwen_profile: ContextVar[str | None] = ContextVar("qwen_profile", default=None)
 
 
-def use_qwen(profile: str | None):
+def use_local(profile: str | None):
     """Select the local provider for the current graph execution context."""
-    return _qwen_profile.set(profile)
+    if profile is not None and profile not in local_qwen.PROFILES:
+        raise ValueError("Unknown local model profile")
+    return _local_profile.set(profile)
+
+
+# Compatibility for existing callers.
+use_qwen = use_local
 
 
 def reset_provider(token) -> None:
-    _qwen_profile.reset(token)
+    _local_profile.reset(token)
+
 
 SYSTEM_PROMPT = (
     "You are the assistant for Ocean Intelligence, a platform covering shipping "
@@ -91,7 +97,7 @@ def get_client() -> AsyncOpenAI:
     RuntimeError
         If ``GROQ_API_KEY`` is unset.
     """
-    profile = _qwen_profile.get()
+    profile = _local_profile.get()
     if profile:
         return _LocalClient(profile)  # type: ignore[return-value]
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
@@ -110,42 +116,31 @@ class _LocalClient:
         self.chat = SimpleNamespace(completions=self)
 
     async def create(self, *, messages, stream=False, response_format=None, **_kwargs):
-        # Qwen's local checkpoints have a much smaller context window than the
-        # hosted model. Retrieval remains complete in the graph/UI; only the
-        # prose-generation payload is bounded to leave room for the reply.
-        if messages:
-            messages = [dict(message) for message in messages]
-            if response_format is not None and len(messages) > 8:
-                messages = [messages[0], *messages[-7:]]
-            # Leave room for the model's 512-token response and tokenizer/chat
-            # template overhead. The configured 4096-token limit is shared by
-            # input and output, so a 10k-character payload was still unsafe.
-            limit = 6500 if response_format is not None else 5000
-            remaining = limit
-            for message in reversed(messages):
-                content = message.get("content")
-                if isinstance(content, str) and len(content) > 10000:
-                    content = content[:10000]
-                if isinstance(content, str):
-                    keep = max(0, min(len(content), remaining))
-                    message["content"] = content[:keep]
-                    remaining -= keep
-                    if remaining <= 0:
-                        break
-            if response_format is None and messages:
-                messages[-1]["content"] += (
-                    "\n\n[Only a bounded sample is supplied to Qwen. "
-                    "Use the complete results table for all records.]"
-                )
-        text = await local_qwen.generate(self.profile, messages, response_format)
-        usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0,
-                                completion_tokens_details=None)
+        # The worker enforces the tokenizer's real budget without corrupting
+        # system instructions, JSON records or the latest user question.
+        result = await local_qwen.generate_completion(
+            self.profile, messages, response_format
+        )
+        text = result["content"]
+        counts = result.get("usage")
+        usage = (
+            SimpleNamespace(**counts, completion_tokens_details=None)
+            if counts is not None
+            else None
+        )
         if not stream:
-            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))], usage=usage)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=text))],
+                usage=usage,
+            )
 
         async def chunks():
-            yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=text))], usage=None)
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content=text))],
+                usage=None,
+            )
             yield SimpleNamespace(choices=[], usage=usage)
+
         return chunks()
 
 
@@ -233,7 +228,9 @@ async def stream_chat(
             details = chunk.usage.completion_tokens_details
             usage["prompt_tokens"] = chunk.usage.prompt_tokens
             usage["completion_tokens"] = chunk.usage.completion_tokens
-            usage["reasoning_tokens"] = (details.reasoning_tokens or 0) if details else 0
+            usage["reasoning_tokens"] = (
+                (details.reasoning_tokens or 0) if details else 0
+            )
         if not chunk.choices:
             continue
         content = chunk.choices[0].delta.content

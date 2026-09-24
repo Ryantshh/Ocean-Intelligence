@@ -10,6 +10,7 @@ from .data.models import StrictModel
 class ModelConfig(StrictModel):
     model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
     revision: str = "main"
+    local_model_path: str | None = None
     local_files_only: bool = True
     cache_dir: str | None = None
     device: Literal["auto", "cpu", "mps", "cuda"] = "auto"

@@ -50,7 +50,7 @@ class HFBackend:
             "local_files_only": config.local_files_only,
             "cache_dir": config.cache_dir,
         }
-        model_source = config.model_id
+        model_source = config.local_model_path or config.model_id
         if config.local_files_only and not Path(model_source).is_dir():
             from huggingface_hub import snapshot_download
 
@@ -146,6 +146,10 @@ class HFBackend:
                 **decoding,
                 pad_token_id=self.tokenizer.pad_token_id,
             )
+        self.last_usage = {
+            "prompt_tokens": length,
+            "completion_tokens": output.shape[-1] - length,
+        }
         return self.tokenizer.decode(
             output[0, length:], skip_special_tokens=True
         ).strip()

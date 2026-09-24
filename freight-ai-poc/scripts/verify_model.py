@@ -1,4 +1,4 @@
-"""Download only public model assets; verify against pinned Hub Git/LFS metadata."""
+"""Download authorized model assets; verify against pinned Hub Git/LFS metadata."""
 
 import argparse
 import hashlib
@@ -45,7 +45,8 @@ def main():
     names = [
         f.rfilename
         for f in info.siblings
-        if f.rfilename.endswith((".json", ".safetensors", ".txt", ".model", ".jinja"))
+        if "/" not in f.rfilename
+        and f.rfilename.endswith((".json", ".safetensors", ".txt", ".model", ".jinja"))
     ]
     root = Path(
         snapshot_download(

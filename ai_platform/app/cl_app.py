@@ -17,7 +17,6 @@ from chainlit.types import ThreadDict
 
 from ai_platform.app.data_layer import get_data_layer
 from ai_platform.backend import local_qwen
-from ai_platform.backend.clock import working_date
 from ai_platform.backend.context import (
     fill_fraction,
     history_tokens,
@@ -25,7 +24,7 @@ from ai_platform.backend.context import (
     usable_tokens,
 )
 from ai_platform.backend.graph import graph
-from ai_platform.backend.llm import reset_provider, stream_chat, use_qwen
+from ai_platform.backend.llm import reset_provider, stream_chat, use_local
 from ai_platform.backend.tables import resolve_table
 
 __all__ = ["get_data_layer"]
@@ -189,17 +188,31 @@ def qwen_results_props(result: dict[str, Any]) -> dict[str, Any] | None:
     if not rows or dataset not in {"orders", "tonnage"}:
         return None
     if dataset == "orders":
-        fields = [("record_id", "Order ID"), ("cargo_type", "Cargo"),
-                  ("load_port", "Load port"), ("discharge_port", "Discharge port"),
-                  ("cargo_weight_min", "Min tonnes"), ("cargo_weight_max", "Max tonnes"),
-                  ("laycan_start", "Laycan start"), ("laycan_end", "Laycan end")]
+        fields = [
+            ("record_id", "Order ID"),
+            ("cargo_type", "Cargo"),
+            ("load_port", "Load port"),
+            ("discharge_port", "Discharge port"),
+            ("cargo_weight_min", "Min tonnes"),
+            ("cargo_weight_max", "Max tonnes"),
+            ("laycan_start", "Laycan start"),
+            ("laycan_end", "Laycan end"),
+        ]
     else:
-        fields = [("vessel_name", "Vessel"), ("dwt", "DWT (tonnes)"),
-                  ("open_area", "Open location"), ("open_date_start", "Open from"),
-                  ("open_date_end", "Open until"), ("commercial_status", "Commercial status")]
+        fields = [
+            ("vessel_name", "Vessel"),
+            ("dwt", "DWT (tonnes)"),
+            ("open_area", "Open location"),
+            ("open_date_start", "Open from"),
+            ("open_date_end", "Open until"),
+            ("commercial_status", "Commercial status"),
+        ]
     columns = [label for _, label in fields]
-    return {"columns": columns, "rows": [[json_safe(row.get(key)) for key, _ in fields] for row in rows],
-            "noun": "cargo orders" if dataset == "orders" else "vessel reports"}
+    return {
+        "columns": columns,
+        "rows": [[json_safe(row.get(key)) for key, _ in fields] for row in rows],
+        "noun": "cargo orders" if dataset == "orders" else "vessel reports",
+    }
 
 
 def qwen_summary(content: str, has_table: bool) -> str:
@@ -262,7 +275,7 @@ async def refresh_gauge(
     await gauge.send(for_id=target, persist=False)
 
 
-async def run_agent(question: str, qwen_profile: str | None = None) -> None:
+async def run_agent(question: str, local_profile: str | None = None) -> None:
     """Run the retrieval graph and render everything it produces.
 
     The graph never imports chainlit; it emits tagged payloads on LangGraph's
@@ -290,7 +303,7 @@ async def run_agent(question: str, qwen_profile: str | None = None) -> None:
     """
     history = agent_history()
     reply = root_message()
-    provider_token = use_qwen(qwen_profile)
+    provider_token = use_local(local_profile)
     try:
         events = graph.astream(
             {"question": question, "history": history},
@@ -304,7 +317,7 @@ async def run_agent(question: str, qwen_profile: str | None = None) -> None:
             """Consume events until one of the named nodes reports."""
             nonlocal tokens_spent
             async for mode, payload in events:
-            # mid-run text: whichever node is streaming right now
+                # mid-run text: whichever node is streaming right now
                 if mode == "custom":
                     streamed = cast("dict[str, str]", payload)
                     if "answer" in streamed:
@@ -313,8 +326,10 @@ async def run_agent(question: str, qwen_profile: str | None = None) -> None:
                         await compaction_step.stream_token(streamed["compact"])
                     continue
 
-            # a node finished, so record its cost whether or not it was the one awaited
-                node, returned_update = next(iter(cast("dict[str, dict[str, Any] | None]", payload).items()))
+                # a node finished, so record its cost whether or not it was the one awaited
+                node, returned_update = next(
+                    iter(cast("dict[str, dict[str, Any] | None]", payload).items())
+                )
                 node_output = returned_update or {}
                 tokens_spent += sum(node_output.get("tokens", {}).values())
                 if node in wait_for:
@@ -328,13 +343,20 @@ async def run_agent(question: str, qwen_profile: str | None = None) -> None:
                 compaction = await drain_until({"compact"})
             compaction_step = None
             if "history" in compaction:
-                cl.user_session.set(COMPACTION_SESSION_KEY, {"history": compaction["history"], "raw_count": len(cl.chat_context.to_openai()) - 1})
+                cl.user_session.set(
+                    COMPACTION_SESSION_KEY,
+                    {
+                        "history": compaction["history"],
+                        "raw_count": len(cl.chat_context.to_openai()) - 1,
+                    },
+                )
 
         async with cl.Step(name=STEP_READING):
             extraction = await drain_until({"extract_filters"})
 
         answered_without_query = bool(
-            extraction.get("clarifying_question") or extraction.get("error"))
+            extraction.get("clarifying_question") or extraction.get("error")
+        )
         results_element_name = ""
         if not answered_without_query:
             if any(extraction.get("semantic", {}).values()):
@@ -345,9 +367,18 @@ async def run_agent(question: str, qwen_profile: str | None = None) -> None:
             rows = query_result.get("rows")
             if rows:
                 results_element_name = RESULTS_ELEMENT
-                reply.elements = cast("list[Any]", [cl.CustomElement(name=RESULTS_ELEMENT, props=results_props(extraction.get("target", ""), rows), display="side")])
+                reply.elements = cast(
+                    "list[Any]",
+                    [
+                        cl.CustomElement(
+                            name=RESULTS_ELEMENT,
+                            props=results_props(extraction.get("target", ""), rows),
+                            display="side",
+                        )
+                    ],
+                )
 
-    # nothing named, so this drains the reply being written
+        # nothing named, so this drains the reply being written
         await drain_until(set())
         if results_element_name:
             await reply.stream_token(f"\n\n{results_element_name}")
@@ -424,8 +455,15 @@ async def list_chat_profiles(
     ] + [
         cl.ChatProfile(
             name=name,
-            display_name=f"Qwen {size.upper()}",
-            markdown_description="Local freight assistant with read-only Supabase retrieval, preliminary screening and record tables. Uses the application's working date. Chat history uses the main application's existing storage.",
+            display_name=local_qwen.PROFILE_LABELS[name],
+            markdown_description=(
+                "Local freight assistant using the shared retrieval graph and saved chat history. "
+                + (
+                    "Built with Llama. Uses original model weights."
+                    if name.startswith("llama-")
+                    else "Uses verified Qwen base weights."
+                )
+            ),
             starters=[
                 cl.Starter(label=q, message=q)
                 for q in (
@@ -435,7 +473,7 @@ async def list_chat_profiles(
                 )
             ],
         )
-        for name, size in local_qwen.PROFILES.items()
+        for name in local_qwen.SELECTABLE_PROFILES
     ]
 
 
@@ -485,20 +523,18 @@ async def resume_chat(thread: ThreadDict) -> None:
     -------
     None
     """
-    if cl.user_session.get("chat_profile") in local_qwen.PROFILES:
-        for step in reversed(thread.get("steps") or []):
-            metadata = step.get("metadata") or {}
-            if "qwen_state" in metadata:
-                cl.user_session.set("qwen_state", metadata["qwen_state"])
-                break
-        return
     anchors = [
         str(step_id)
         for step in thread.get("steps") or []
         if step.get("type") == "assistant_message" and (step_id := step.get("id"))
     ]
     if anchors:
-        await refresh_gauge(agent_history(), anchor=anchors[-1])
+        profile = cl.user_session.get("chat_profile")
+        token = use_local(profile if profile in local_qwen.PROFILES else None)
+        try:
+            await refresh_gauge(agent_history(), anchor=anchors[-1])
+        finally:
+            reset_provider(token)
 
 
 @cl.on_message
@@ -527,44 +563,12 @@ async def handle_message(message: cl.Message) -> None:
     profile = cl.user_session.get("chat_profile")
     if profile in local_qwen.PROFILES:
         try:
-            await run_agent(message.content, qwen_profile=profile)
+            await run_agent(message.content, local_profile=profile)
         except (TimeoutError, RuntimeError, ValueError, OSError) as exc:
             _logger = __import__("logging").getLogger(__name__)
-            _logger.exception("Qwen graph run failed")
+            _logger.exception("Local model graph run failed")
             await cl.Message(
                 content=f"The local model could not complete this request: {exc}"
-            ).send()
-        return
-        try:
-            async with cl.Step(name="Checking freight records locally"):
-                # Use the same context policy as the main graph: older history
-                # is compacted by the worker, while the recent window remains
-                # verbatim. Keep the transport bounded for Qwen's smaller
-                # context window without silently changing the recent turns.
-                qwen_history = cl.chat_context.to_openai()[:-1]
-                if len(qwen_history) > 20:
-                    qwen_history = qwen_history[-20:]
-                result = await local_qwen.answer(
-                    profile,
-                    message.content,
-                    qwen_history,
-                    cl.user_session.get("qwen_state"),
-                    working_date(),
-                )
-            cl.user_session.set("qwen_state", result.get("conversation_state"))
-            table_props = qwen_results_props(result)
-            reply = cl.Message(
-                content=qwen_summary(result["content"], table_props is not None),
-                metadata={"qwen_state": result.get("conversation_state")},
-            )
-            if table_props:
-                reply.elements = [cl.CustomElement(name=RESULTS_ELEMENT, props=table_props, display="side")]
-                await reply.stream_token(f"\n\n{RESULTS_ELEMENT}")
-            reply.parent_id = None
-            await reply.send()
-        except (TimeoutError, RuntimeError, ValueError, OSError):
-            await cl.Message(
-                content="The local model could not complete this request. Please retry or select another model in a new chat."
             ).send()
         return
     if cl.user_session.get("chat_profile") == PLAIN_MODEL_PROFILE:
