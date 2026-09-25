@@ -234,6 +234,24 @@ active_bookings AS (
     AND (update_date IS NULL OR update_date < tonnage_reference_now())
     AND tonnage_reference_now() >= open_date_start
     AND tonnage_reference_now() < open_date_end + interval '1 day'
+    -- The covering row must itself be recent, not merely cover today.
+    -- dashboard_status already refuses to trust a vessel nobody has spoken
+    -- about in 5 days; without this the same silence was tolerated in the
+    -- row that actually supplies the status, so a vessel heard from
+    -- yesterday could read FIXED off a report filed six weeks ago. The
+    -- worked case: a August row declaring a fixture for 24-26 September,
+    -- never superseded because every later report covers other dates,
+    -- still asserting a fixture today on the strength of nothing said
+    -- since. Measured at 16 of 211 FIXED/ON SUBS vessel-days (7.6%) over a
+    -- 60-day replay. A row with a null update_date fails this test rather
+    -- than passing it -- unknown is not recent.
+    --
+    -- Such a vessel falls through to OPEN, which is the defensible answer:
+    -- it was heard from recently, and its recent reports evidently say
+    -- nothing about today. That also agrees with what the chat agent
+    -- returns for the same vessel, since its DISTINCT ON keeps only the
+    -- newest row and never sees the old covering one at all.
+    AND update_date >= tonnage_reference_now() - interval '5 days'
   ORDER BY vessel_id, update_date DESC NULLS LAST, (commercial_status = 'FIXED') DESC, (commercial_status = 'ON SUBS') DESC
 )
 SELECT
