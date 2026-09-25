@@ -225,6 +225,12 @@
       .stale-banner.hidden { display: none; }
       .section-refreshing { opacity: 0.6; transition: opacity 0.15s ease; pointer-events: none; }
       #ecsaTableWrap.hidden { display: none; }
+      /* Temporary: the ECSA Ballast Tracker is hidden from the page. To bring
+         it back, delete `hidden` from <section id="ecsa-section">'s class --
+         nothing else needs touching. loadEcsa() checks the same class and
+         returns early, so while it is hidden the section makes no request and
+         cannot report a failure into the stale-data banner. */
+      #ecsa-section.hidden { display: none; }
       .history-btn:disabled { opacity: 0.4; cursor: default; }
 
       .badge {
@@ -337,6 +343,12 @@
       .tab-btn:hover { color: var(--fg); }
       .tab-btn.active { color: var(--fg); border-bottom-color: var(--accent); }
       .tab-panel.hidden { display: none; }
+      /* Temporary: the Trader Overrides tab is hidden for a presentation. To
+         bring it back, delete `hidden` from that .tab-btn's class -- nothing
+         else needs touching. Tabs are click-only (no hash routing), so with
+         the button gone the panel cannot be reached, and loadAudit() checks
+         the same class and returns early so nothing is fetched for it. */
+      .tab-btn.hidden { display: none; }
 
       /* ---- trader override form ------------------------------------------
          Own component classes, scoped to #overrides-section where they'd
@@ -512,7 +524,7 @@
 
       <nav class="tabs">
         <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button type="button" class="tab-btn" data-tab="overrides">Trader Overrides</button>
+        <button type="button" class="tab-btn hidden" data-tab="overrides">Trader Overrides</button>
       </nav>
 
       <div id="tab-dashboard" class="tab-panel">
@@ -582,8 +594,6 @@
       </section>
 
       <div class="drilldown-head">
-        <h2>Records</h2>
-        <p class="sub" style="margin:0.15rem 0 0;">Filter, search, and inspect the underlying vessel, order, and change records behind the summary above.</p>
       </div>
 
       <section id="changes-section">
@@ -675,7 +685,7 @@
         <div class="pager" id="ordersPager"></div>
       </section>
 
-      <section id="ecsa-section">
+      <section id="ecsa-section" class="hidden">
         <div class="section-head"><h2>ECSA Ballast Tracker</h2></div>
         <p class="sub" style="margin:0 0 0.75rem;">Every vessel currently ballasting (empty, repositioning) toward East Coast South America. Expand a row for its status history trail. Last-carried-cargo data isn't available in this dataset, so "Destination" below is the vessel's next reported AIS destination, not what it last carried.</p>
         <div class="ecsa-summary">
@@ -2099,6 +2109,11 @@
       // button below -- 222 vessels is a lot to dump into the DOM
       // unasked, and most visits to this section just want the number.
       async function loadEcsa(isRefresh = false) {
+        // Hidden section: skip the request entirely rather than fetching rows
+        // nothing will render. Also keeps refreshAll() from surfacing an ECSA
+        // failure in the "data may be stale" banner for a section that isn't
+        // on the page. Remove the class in the markup to restore both.
+        if (document.getElementById("ecsa-section").classList.contains("hidden")) return;
         const countEl = document.getElementById("ecsaCount");
         const showBtn = document.getElementById("ecsaShowBtn");
         try {
@@ -2634,6 +2649,10 @@
       }
 
       async function loadAudit(isRefresh = false) {
+        // Overrides tab hidden: skip the request. Also keeps refreshAll()
+        // from reporting an override-audit failure in the "data may be
+        // stale" banner for a tab that is not reachable.
+        if (document.querySelector('.tab-btn[data-tab="overrides"]').classList.contains("hidden")) return;
         const tbody = document.querySelector("#auditTable tbody");
         try {
           const rows = await getJson("/api/trader-override/audit");
