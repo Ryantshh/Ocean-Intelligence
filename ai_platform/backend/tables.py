@@ -22,8 +22,9 @@ report received later is the newer information.
 
 Tonnage reads ``commercial_status`` through ``STATUS_EXPRESSION`` in both the
 select list and the status filter, so a vessel has exactly three statuses: FIXED,
-ON SUBS and OPEN. A null means unfixed, which is 79% of the fleet, and any value
-outside the first two reads as OPEN.
+ON SUBS and OPEN, describing today. A fixture whose window has not started or has
+already ended reads OPEN, as does a null, which is 79% of the fleet, and any value
+outside the first two.
 """
 
 from __future__ import annotations
@@ -35,11 +36,27 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_platform.backend.clock import working_date
+from ai_platform.backend.clock import reference_now_sql, working_date
 from ai_platform.backend.sql import EqualitySpec, MatchSpec, RangeSpec, StatementBuilder
 
-STATUS_EXPRESSION = "CASE WHEN {column} IN ('FIXED', 'ON SUBS') THEN {column} ELSE 'OPEN' END"
-"""Folds ``commercial_status`` to the three values a vessel can have."""
+_REFERENCE_NOW = reference_now_sql()
+
+STATUS_EXPRESSION = (
+    "CASE WHEN {column} IN ('FIXED', 'ON SUBS') "
+    f'AND "open_date_start" <= {_REFERENCE_NOW} '
+    f"AND \"open_date_end\" + interval '1 day' > {_REFERENCE_NOW} "
+    "THEN {column} ELSE 'OPEN' END"
+)
+"""Folds ``commercial_status`` to the three values a vessel can have, as of today.
+
+A fixture counts only while its open window covers now: the dashboard's
+``tonnage_reference_now()`` from ``infra/sql/dashboard_gold_views.sql``, or the
+pinned date when ``OI_WORKING_DATE`` is set. The extra day makes a window stored
+at midnight cover its whole last day.
+"""
+
+ORDER_ID_AS_TEXT = '"order_id"::text'
+"""Selects ``order_id`` as text: 18-digit ids lose their last digits in a browser's JSON."""
 
 
 class OrderSearch(BaseModel):
@@ -315,6 +332,7 @@ ORDERS = TableSpec(
         "cargo_description",
     ),
     display_noun="cargoes",
+    column_expressions={"order_id": ORDER_ID_AS_TEXT},
     semantic_columns=("cargo_description",),
     matches=(
         MatchSpec("load_zone", "load_zone", "exact"),
@@ -363,7 +381,8 @@ TONNAGE = TableSpec(
     ),
     display_noun="vessels",
     column_expressions={
-        "commercial_status": STATUS_EXPRESSION.format(column='"commercial_status"')
+        "commercial_status": STATUS_EXPRESSION.format(column='"commercial_status"'),
+        "order_id": ORDER_ID_AS_TEXT,
     },
     semantic_columns=(),
     matches=(
