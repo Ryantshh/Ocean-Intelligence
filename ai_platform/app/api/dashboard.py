@@ -418,10 +418,19 @@ def _with_region_breakdown(
 async def regional_supply_demand() -> list[dict[str, Any]]:
     """Regional supply (open vessels) vs. demand (recent orders), per region.
 
+    ``supply`` and ``demand`` are both current-snapshot counts and are what
+    the map's bubble size and tight/balanced verdict are built from.
+    ``days_with_supply`` is a confidence signal alongside them, not an input
+    to either: on how many of the last ``persistence_window_days`` simulated
+    days this region carried at least one open vessel. It exists because a
+    single instant cannot distinguish a region that reliably holds tonnage
+    from one that happens to hold some today.
+
     Returns
     -------
     list of dict
-        One row per region with ``supply`` and ``demand`` counts.
+        One row per region with ``supply``, ``demand``, ``days_with_supply``
+        and ``persistence_window_days``.
     """
     sql, params = dq.regions_sql()
     return await _run(sql, params)

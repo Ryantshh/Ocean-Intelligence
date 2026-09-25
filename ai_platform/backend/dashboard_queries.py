@@ -119,13 +119,47 @@ _ORDERS_COLUMNS_SAFE = (
 # day once it aged past 5 days. Charts built on this CTE are historical,
 # so every term in it has to be an as-of-that-day fact.
 #
+# The EXISTS clause requires the vessel to have also been heard from within
+# 5 days of the day its window opens. Without it, the day a window starts
+# says nothing about when anyone last spoke about the vessel, and the two
+# routinely diverged by weeks: a report filed on 1 September declaring a
+# ship open 16-20 September put it in the feed on the 16th, a fortnight
+# after the last word on it. Confirmed live before this was added -- 80% of
+# a week-on-week feed's "new vessels" carried a LIKELY FIXED badge, and 99
+# of those 144 were already silent 5+ days on the very day they counted as
+# new, a median of 15 days. The feed was announcing as fresh supply ships
+# nobody had mentioned in two weeks.
+#
+# This is the same 5-day rule dashboard_status applies, but evaluated
+# as-of-that-day rather than as-of-now, which is what keeps it a historical
+# fact: whether a vessel had been heard from recently on 16 September is
+# settled forever on the 16th and cannot change as the clock advances. That
+# distinction is exactly what the removed second branch below got wrong, so
+# it matters that this is not the same mistake in a new place.
+#
+# Vessels that opened while fresh and have gone quiet since are deliberately
+# KEPT (40 of the 69 that survive a week-on-week window still read LIKELY
+# FIXED today). "Became open six days ago, nothing heard since" is real
+# information about real supply, not a contradiction; "became open today
+# having been silent for a fortnight" is the contradiction, and that is what
+# this removes. A handful of currently-open vessels (5, live) drop out for
+# the same reason in reverse -- they were stale on the day their window
+# began and have only been re-reported since.
+#
 # Shared by every query below that computes it (:func:`new_vessels_sql`,
 # :func:`daily_new_vessels_sql`, :func:`daily_new_vessels_by_region_sql`,
 # and the "new_vessels" branch of :func:`vessels_on_day_sql`) so the
 # definition can't drift out of sync between the chart, its region
 # breakdown, the change feed, and the chart-click-to-filter endpoint.
 _NEW_VESSEL_EVENTS_CTE = (
-    "SELECT vessel_id, open_date_start AS day FROM vessel_status_history WHERE status = 'OPEN'"
+    "SELECT h.vessel_id, h.open_date_start AS day "
+    "FROM vessel_status_history h "
+    "WHERE h.status = 'OPEN' "
+    "AND EXISTS ("
+    "SELECT 1 FROM public.tonnage_test t "
+    "WHERE t.vessel_id = h.vessel_id "
+    "AND t.update_date <  h.open_date_start + interval '1 day' "
+    "AND t.update_date >= h.open_date_start - interval '5 days')"
 )
 
 

@@ -546,7 +546,7 @@
                 <button type="button" class="view-btn" data-view="table">Table</button>
               </div>
             </div>
-            <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply). Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Simulated as of today's real date minus one year, not today's actual date.</p>
+            <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply), counted right now so it matches the status tiles above. Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Hover a bubble (or read the Consistency column in the table view) for how many of the last 14 days that region carried any open tonnage &mdash; a region with ships every day is a different proposition from one that happens to have them today. Simulated as of today's real date minus one year, not today's actual date.</p>
             <div id="regionMapFilterBanner" class="day-filter-banner hidden">
               <span id="regionMapFilterLabel"></span>
               <button type="button" id="regionMapFilterClear">Clear filter</button>
@@ -556,7 +556,7 @@
             </div>
             <div id="regionsTableView" class="regions-table-wrap">
               <div class="table-wrap"><table id="regionsTable">
-                <thead><tr><th>Region</th><th>Supply</th><th>Demand</th><th>Status</th></tr></thead>
+                <thead><tr><th>Region</th><th>Supply</th><th title="Orders received in the last 14 simulated days, filed under their load zone.">Demand</th><th title="On how many of the last 14 simulated days this region carried at least one open vessel. A confidence signal for the Supply column, not part of the Status verdict.">Consistency</th><th>Status</th></tr></thead>
                 <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
               </table></div>
             </div>
@@ -1070,6 +1070,22 @@
       // no order in this dataset's simulated recent window named that
       // region, which given orders' narrow date coverage is the common case
       // today, not a real signal -- shown neutral, not guessed.
+      // How many of the last N simulated days this region carried at least
+      // one open vessel. Deliberately NOT an input to regionStatus below: the
+      // bubble size and the tight/balanced verdict stay on today's snapshot so
+      // they keep reconciling with the status tiles, the vessel tracker and
+      // what the chatbot returns for the same question. This only qualifies
+      // that snapshot -- 3 open vessels every day for a fortnight is a
+      // different proposition from 3 today and none on the other thirteen.
+      // Returns null when the API predates these fields, so every caller has
+      // to tolerate its absence rather than render "undefined/14".
+      function supplyConsistency(row) {
+        const days = Number(row.days_with_supply);
+        const windowDays = Number(row.persistence_window_days) || 14;
+        if (!Number.isFinite(days)) return null;
+        return { days, windowDays, short: `${days}/${windowDays}` };
+      }
+
       function regionStatus(supply, demand) {
         if (demand === 0) return { key: "no-data", label: "No recent demand data", color: "var(--muted)" };
         const ratio = supply / demand;
@@ -1117,9 +1133,13 @@
           const label = r.supply >= labelThreshold
             ? `<text class="map-bubble-label" x="${x}" y="${y + radius + 11}" text-anchor="middle">${escapeHtml(r.region)}</text>`
             : "";
-          const ariaLabel = `${escapeHtml(r.region)}: ${formatNumber(r.supply)} supply, ${formatNumber(r.demand)} demand, ${status.label}${isActive ? " -- filter active, click to clear" : " -- click to filter the charts and trackers below"}`;
+          const consistency = supplyConsistency(r);
+          const consistencySpeech = consistency
+            ? `, open tonnage on ${consistency.days} of the last ${consistency.windowDays} days`
+            : "";
+          const ariaLabel = `${escapeHtml(r.region)}: ${formatNumber(r.supply)} supply, ${formatNumber(r.demand)} demand, ${status.label}${consistencySpeech}${isActive ? " -- filter active, click to clear" : " -- click to filter the charts and trackers below"}`;
           return `
-            <g data-region="${escapeHtml(r.region)}" data-supply="${r.supply}" data-demand="${r.demand}" data-status="${status.label}">
+            <g data-region="${escapeHtml(r.region)}" data-supply="${r.supply}" data-demand="${r.demand}" data-status="${status.label}" data-days="${consistency ? consistency.days : ""}" data-window="${consistency ? consistency.windowDays : ""}">
               <circle class="map-bubble" cx="${x}" cy="${y}" r="${radius}" fill="${status.color}" fill-opacity="0.82" stroke="${isActive ? "var(--fg)" : "var(--map-water)"}" stroke-width="${isActive ? 3 : 2}"></circle>
               <circle class="map-bubble-hit" cx="${x}" cy="${y}" r="${Math.max(radius, 12)}" tabindex="0" role="button" aria-label="${ariaLabel}"></circle>
               ${label}
@@ -1154,11 +1174,16 @@
           const hit = g.querySelector(".map-bubble-hit");
           const show = () => {
             const region = g.dataset.region, supply = g.dataset.supply, demand = g.dataset.demand, status = g.dataset.status;
+            const days = g.dataset.days, windowDays = g.dataset.window;
+            const consistencyLine = days === "" || windowDays === ""
+              ? ""
+              : `<div class="muted">Open tonnage on ${escapeHtml(days)} of the last ${escapeHtml(windowDays)} days</div>`;
             const html = `
               <div class="t-title">${escapeHtml(region)}</div>
               <div class="t-value">${formatNumber(supply)} open vessels</div>
-              <div class="t-value">${formatNumber(demand)} recent orders</div>
+              <div class="t-value">${formatNumber(demand)} orders in the last 14 days</div>
               <div class="muted">${escapeHtml(status)}</div>
+              ${consistencyLine}
             `;
             const circle = g.querySelector(".map-bubble");
             const cx = parseFloat(circle.getAttribute("cx")), cy = parseFloat(circle.getAttribute("cy"));
@@ -1195,16 +1220,18 @@
       function renderRegionsTable(rows) {
         const tbody = document.querySelector("#regionsTable tbody");
         if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="4" class="muted">No regional data available.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="5" class="muted">No regional data available.</td></tr>';
           return;
         }
         tbody.innerHTML = rows.map((r) => {
           const status = regionStatus(r.supply, r.demand);
+          const consistency = supplyConsistency(r);
           return `
             <tr>
               <td>${escapeHtml(r.region)}</td>
               <td>${formatNumber(r.supply)}</td>
               <td>${formatNumber(r.demand)}</td>
+              <td class="${consistency ? "" : "muted"}">${consistency ? escapeHtml(consistency.short) : "not available"}</td>
               <td><span class="badge" style="background:color-mix(in srgb, ${status.color} 20%, transparent); color:${status.color};">${escapeHtml(status.label)}</span></td>
             </tr>
           `;
