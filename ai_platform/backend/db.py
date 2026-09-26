@@ -15,6 +15,8 @@ from typing import Any
 import asyncpg
 from dotenv import load_dotenv
 
+from ai_platform.backend.clock import overridden_working_date
+
 load_dotenv()
 
 
@@ -53,8 +55,10 @@ def json_safe(value: Any) -> Any:
 def get_dsn() -> str:
     """Read the connection string in the form asyncpg expects.
 
-    ``CHAINLIT_DATABASE_URL`` carries the SQLAlchemy ``+asyncpg`` driver marker,
-    which asyncpg itself rejects.
+    ``DATA_DATABASE_URL`` points at Supabase's transaction-mode pooler (port 6543),
+    so data reads stop holding the 15 session-mode slots Chainlit's own storage
+    needs. Falls back to ``CHAINLIT_DATABASE_URL`` when unset. Either may carry the
+    SQLAlchemy ``+asyncpg`` driver marker, which asyncpg itself rejects.
 
     Returns
     -------
@@ -64,11 +68,14 @@ def get_dsn() -> str:
     Raises
     ------
     RuntimeError
-        If ``CHAINLIT_DATABASE_URL`` is unset.
+        If neither variable is set.
     """
-    url = os.environ.get("CHAINLIT_DATABASE_URL", "").strip()
+    url = (
+        os.environ.get("DATA_DATABASE_URL", "").strip()
+        or os.environ.get("CHAINLIT_DATABASE_URL", "").strip()
+    )
     if not url:
-        raise RuntimeError("CHAINLIT_DATABASE_URL is not set. Check .env.")
+        raise RuntimeError("DATA_DATABASE_URL and CHAINLIT_DATABASE_URL are unset. Check .env.")
     return url.replace("postgresql+asyncpg://", "postgresql://")
 
 
@@ -140,6 +147,7 @@ async def _get_pool() -> asyncpg.Pool:
                     min_size=_POOL_MIN_SIZE,
                     max_size=_POOL_MAX_SIZE,
                     timeout=TIMEOUT_SECONDS,
+                    statement_cache_size=0,
                 )
     return _pool
 
@@ -168,7 +176,10 @@ async def fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     """Run a read-only query and return plain dictionaries.
 
     Acquires a connection from the shared pool (see :func:`_get_pool`)
-    rather than opening a new one per call.
+    rather than opening a new one per call. When ``OI_WORKING_DATE`` is set, the
+    query runs in a transaction that first sets ``oi.working_date`` for
+    ``tonnage_reference_now()`` and ``orders_reference_now()``; a transaction-mode
+    pooler forgets anything set outside one.
 
     Parameters
     ----------
@@ -182,9 +193,17 @@ async def fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:
     list of dict
         Result rows, with driver types coerced so ``json.dumps`` accepts them.
     """
+    pinned = overridden_working_date()
     pool = await _get_pool()
     async with pool.acquire(timeout=TIMEOUT_SECONDS) as connection:
-        records = await connection.fetch(sql, *params, timeout=TIMEOUT_SECONDS)
+        if pinned is None:
+            records = await connection.fetch(sql, *params, timeout=TIMEOUT_SECONDS)
+        else:
+            async with connection.transaction():
+                await connection.execute(
+                    "SELECT set_config('oi.working_date', $1, true)", pinned.isoformat()
+                )
+                records = await connection.fetch(sql, *params, timeout=TIMEOUT_SECONDS)
     return [
         {column: json_safe(value) for column, value in record.items()}
         for record in records

@@ -99,8 +99,6 @@
          a wider page container -- toggled only while that tab is active, so
          the Dashboard tab's own layout/width is never touched. */
       main.wide { max-width: 100rem; }
-      header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-      h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
       h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
       p.sub { color: var(--muted); margin: 0.25rem 0 2rem; }
       /* Matches the chat UI's own button component (shadcn/ui, via
@@ -108,20 +106,14 @@
          every variant -- rounded-md (--radius: .75rem, so 2px less here),
          text-sm font-medium, py-2 px-4, a subtle shadow -- verified
          directly from chainlit/frontend/dist/assets/*.css rather than
-         guessed. Only the fill (solid accent vs. outlined) differs
-         between .cta and .theme-toggle, matching chat's primary vs.
-         secondary button treatment. */
-      a.cta, .theme-toggle {
+         guessed. Outlined, matching chat's secondary button treatment. */
+      .theme-toggle {
         display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
         padding: 0.5rem 1rem; border-radius: 0.625rem;
         font: inherit; font-size: 0.875rem; font-weight: 500; line-height: 1.25rem;
         box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         cursor: pointer; white-space: nowrap;
       }
-      a.cta {
-        background: var(--accent); color: #fff; text-decoration: none; border: none;
-      }
-      .header-actions { display: flex; align-items: center; gap: 0.6rem; }
       .theme-toggle {
         /* Icon-only (size-9 in shadcn terms): square, no text padding --
            overrides the shared text-button padding above. */
@@ -217,7 +209,8 @@
       .day-group-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); margin: 0.5rem 0 0.15rem; padding-top: 0.35rem; border-top: 1px dashed var(--border); }
       .day-group-header:first-child { border-top: none; padding-top: 0; margin-top: 0; }
 
-      .refresh-bar { display: flex; align-items: center; gap: 0.75rem; font-size: 0.78rem; margin-top: 0.5rem; }
+      .refresh-bar { display: flex; align-items: center; gap: 0.75rem; font-size: 0.78rem; margin-bottom: 1.5rem; }
+      .refresh-bar .theme-toggle { margin-left: auto; }
       .stale-banner {
         margin-top: 0.6rem; padding: 0.6rem 0.9rem; border-radius: 0.6rem; font-size: 0.82rem;
         background: color-mix(in srgb, var(--stale) 14%, transparent); border: 1px solid color-mix(in srgb, var(--stale) 40%, transparent); color: var(--fg);
@@ -331,18 +324,26 @@
       .history-trail li:not(:last-child)::after { content: "\2192"; color: var(--muted); margin-left: 0.4rem; }
 
       /* ---- top-level tabs --------------------------------------------------
-         Underline style, distinct from the pill toggles used for in-section
-         filters (.view-toggle, .window-btn) so page-level navigation doesn't
-         read as just another filter control. */
-      .tabs { display: flex; gap: 0.25rem; margin: 1.5rem 0 0; border-bottom: 1px solid var(--border); }
+         Fixed in the empty middle of the chat's 60px header (Chainlit keeps its
+         own controls at the left and right edges), so chat stays full screen.
+         The same bar sits above the Dashboard and Trader Overrides pages. */
+      .tabs {
+        position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 30;
+        height: 60px; display: flex; align-items: center; gap: 0.25rem;
+      }
       .tab-btn {
-        font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.65rem 1rem;
-        border: none; border-bottom: 2px solid transparent; background: transparent;
-        color: var(--muted); cursor: pointer; margin-bottom: -1px;
+        font: inherit; font-size: 0.875rem; font-weight: 600; padding: 0.4rem 0.9rem;
+        border: 1px solid transparent; border-radius: 0.6rem; background: transparent;
+        color: var(--muted); cursor: pointer; white-space: nowrap;
       }
       .tab-btn:hover { color: var(--fg); }
-      .tab-btn.active { color: var(--fg); border-bottom-color: var(--accent); }
-      .tab-panel.hidden { display: none; }
+      .tab-btn.active { color: var(--fg); background: var(--card); border-color: var(--border); }
+      .tab-panel.hidden, main.hidden { display: none; }
+      main { padding-top: 5rem; }
+      /* Chat is Chainlit's own /chat page in a full-screen frame. Hiding it
+         keeps it loaded, so neither side reloads when switching tabs. */
+      #tab-chat { position: fixed; inset: 0; }
+      #chatFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
       /* Temporary: the Trader Overrides tab is hidden for a presentation. To
          bring it back, delete `hidden` from that .tab-btn's class -- nothing
          else needs touching. Tabs are click-only (no hash routing), so with
@@ -504,30 +505,25 @@
     </style>
   </head>
   <body>
-    <main>
-      <header>
-        <div>
-          <h1>Ocean Intelligence</h1>
-          <p class="sub">Market status overview</p>
-        </div>
-        <div class="header-actions">
-          <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
-          <a class="cta" href="/chat">Open chat</a>
-        </div>
-      </header>
+    <nav class="tabs">
+      <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
+      <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
+      <button type="button" class="tab-btn hidden" data-tab="overrides">Trader Overrides</button>
+    </nav>
 
+    <div id="tab-chat" class="tab-panel">
+      <iframe id="chatFrame" src="/chat" title="Ocean Intelligence chat"></iframe>
+    </div>
+
+    <main class="hidden">
       <div class="refresh-bar">
         <span class="muted" id="lastRefreshed">Loading&hellip;</span>
         <button type="button" id="refreshNowBtn" class="history-btn">Refresh now</button>
+        <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
-      <nav class="tabs">
-        <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button type="button" class="tab-btn hidden" data-tab="overrides">Trader Overrides</button>
-      </nav>
-
-      <div id="tab-dashboard" class="tab-panel">
+      <div id="tab-dashboard" class="tab-panel hidden">
       <section id="summary-section">
         <div class="section-head"><h2>Market Summary</h2></div>
         <div class="status-tiles" id="statusTiles">
@@ -894,6 +890,7 @@
           btn.classList.add("active");
           document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
           document.querySelector("main").classList.toggle("wide", btn.dataset.tab === "overrides");
+          document.querySelector("main").classList.toggle("hidden", btn.dataset.tab === "chat");
         });
       });
 

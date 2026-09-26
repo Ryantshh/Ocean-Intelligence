@@ -85,13 +85,20 @@
 -- can diverge again later without every caller changing) and both float
 -- forward with the real clock -- one year behind today, always -- so
 -- nothing here needs a manual date bump as real time passes.
+-- The app pins both to the last instant of OI_WORKING_DATE when that env
+-- var is set, by writing it to the oi.working_date setting, so the whole
+-- pinned day counts as today.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION tonnage_reference_now() RETURNS timestamptz AS $$
-  SELECT now() - interval '1 year'
+  SELECT COALESCE((NULLIF(current_setting('oi.working_date', true), '')::date + 1)::timestamptz
+                    - interval '1 microsecond',
+                  now() - interval '1 year')
 $$ LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION orders_reference_now() RETURNS timestamptz AS $$
-  SELECT now() - interval '1 year'
+  SELECT COALESCE((NULLIF(current_setting('oi.working_date', true), '')::date + 1)::timestamptz
+                    - interval '1 microsecond',
+                  now() - interval '1 year')
 $$ LANGUAGE sql STABLE;
 
 -- vessel_current_status and vessel_status_history both get rebuilt with a
