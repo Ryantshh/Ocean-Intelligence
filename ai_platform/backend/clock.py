@@ -28,7 +28,8 @@ WORKING_DATE_OVERRIDE = "OI_WORKING_DATE"
 """Environment variable that pins the working date, as ``YYYY-MM-DD``, for testing.
 
 Read once, when the table module is imported, so the app must be restarted after
-changing it. Affects the chat agent only; the dashboard keeps the database clock.
+changing it. Applies to the chat agent and, through ``db``, the dashboard's
+database clock.
 """
 
 
@@ -75,19 +76,3 @@ def working_date() -> date:
     is_leap_day = today.month == 2 and today.day == 29
     day = 28 if is_leap_day else today.day
     return today.replace(year=target_year, day=day)
-
-
-def reference_now_sql() -> str:
-    """Return the SQL expression for "now" used when judging a vessel's status.
-
-    Returns
-    -------
-    str
-        ``tonnage_reference_now()``, the dashboard's database clock, or a timestamp
-        literal for midnight of the pinned date when ``OI_WORKING_DATE`` is set. The
-        literal is built from a parsed ``date``, never from raw text.
-    """
-    pinned = overridden_working_date()
-    if pinned is None:
-        return "tonnage_reference_now()"
-    return f"TIMESTAMP '{pinned.isoformat()} 00:00:00'"

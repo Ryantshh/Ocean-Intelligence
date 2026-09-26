@@ -257,15 +257,17 @@ Every outbound call the running app makes, by function.
 through asyncpg. Chainlit writes threads, steps and elements to the environment schema through
 SQLAlchemy. Neither knows about the other, and they use different drivers.
 
-`get_dsn()` strips the `+asyncpg` marker from `CHAINLIT_DATABASE_URL` — SQLAlchemy needs it,
-asyncpg rejects it. `fetch_rows` opens a connection per call with a 30-second timeout and is
-read-only by construction: every value is a bound parameter and every column name comes from
-the package, never from the model.
+`get_dsn()` reads `DATA_DATABASE_URL`, falling back to `CHAINLIT_DATABASE_URL`, and strips the
+`+asyncpg` marker — SQLAlchemy needs it, asyncpg rejects it. `fetch_rows` borrows from a shared
+pool with a 30-second timeout and is read-only by construction: every value is a bound
+parameter and every column name comes from the package, never from the model.
 
 **The session pooler caps at 15 concurrent connections.** Exceeding it surfaces as
-`EMAXCONNSESSION`, counting Chainlit's SQLAlchemy pool and every `fetch_rows` call together.
-`db.py`'s own docstring notes the connection pool that belongs there once query rate justifies
-one.
+`EMAXCONNSESSION`, and Chainlit then reports "Thread not found". Chainlit's storage stays on
+the session pooler (port 5432) because it sets `search_path` per connection. `fetch_rows` goes
+through the transaction pooler (port 6543) via `DATA_DATABASE_URL`, with the prepared-statement
+cache off and `OI_WORKING_DATE` set per transaction, so dashboard bursts no longer use session
+slots.
 
 **Two failure modes that are silent rather than loud.** `embed_search_terms` must send
 `input_type="search_query"` against the `search_document` the gold loader wrote with; a
