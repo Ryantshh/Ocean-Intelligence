@@ -11,12 +11,13 @@ Chainlit never sees the request.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from chainlit.utils import mount_chainlit
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ai_platform.app.api.dashboard import router as dashboard_router
@@ -31,6 +32,34 @@ DASHBOARD_DIR = PACKAGE_ROOT / "dashboard"
 CHAINLIT_TARGET = str(PACKAGE_ROOT / "app" / "cl_app.py")
 
 app = FastAPI(title="Ocean Intelligence")
+
+CHAINLIT_PUBLIC_PREFIX = "/chat/public/"
+
+
+@app.middleware("http")
+async def revalidate_chainlit_public(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    """Make browsers revalidate Chainlit's public files on every load.
+
+    Chainlit serves custom elements such as ``Results.jsx`` with no
+    ``Cache-Control``, so browsers reuse a stale copy for hours after an edit.
+    ``no-cache`` still allows a cheap 304 via the ETag.
+
+    Parameters
+    ----------
+    request : Request
+        Incoming request.
+    call_next : Callable
+        The rest of the application.
+
+    Returns
+    -------
+    Response
+        The response, with ``Cache-Control: no-cache`` on public files.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith(CHAINLIT_PUBLIC_PREFIX):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.on_event("shutdown")

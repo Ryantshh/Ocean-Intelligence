@@ -36,10 +36,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_platform.backend.clock import reference_now_sql, working_date
+from ai_platform.backend.clock import working_date
 from ai_platform.backend.sql import EqualitySpec, MatchSpec, RangeSpec, StatementBuilder
 
-_REFERENCE_NOW = reference_now_sql()
+_REFERENCE_NOW = "tonnage_reference_now()"
 
 STATUS_EXPRESSION = (
     "CASE WHEN {column} IN ('FIXED', 'ON SUBS') "
@@ -50,9 +50,9 @@ STATUS_EXPRESSION = (
 """Folds ``commercial_status`` to the three values a vessel can have, as of today.
 
 A fixture counts only while its open window covers now: the dashboard's
-``tonnage_reference_now()`` from ``infra/sql/dashboard_gold_views.sql``, or the
-pinned date when ``OI_WORKING_DATE`` is set. The extra day makes a window stored
-at midnight cover its whole last day.
+``tonnage_reference_now()`` from ``infra/sql/dashboard_gold_views.sql``, which
+follows ``OI_WORKING_DATE`` through ``fetch_rows``. The extra day makes a window
+stored at midnight cover its whole last day.
 """
 
 ORDER_ID_AS_TEXT = '"order_id"::text'
@@ -70,11 +70,14 @@ class OrderSearch(BaseModel):
     Unknown fields are rejected rather than dropped. Pydantic ignores extras by
     default, which would silently discard a vessel field aimed at this table and
     return unfiltered rows that look like an answer.
+
+    ``order_ids`` are strings: Groq rounds an integer tool argument to a double,
+    which corrupts the last digits of an 18-digit id.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    order_ids: list[int] | None = Field(
+    order_ids: list[str] | None = Field(
         default=None, description="exact order numbers, when quoted"
     )
     laycan_start_from: date | None = Field(
@@ -300,7 +303,7 @@ class TableSpec:
         if identifiers:
             column = self.id_field.removesuffix("s")
             builder.clauses.append(
-                f"{column} = ANY({builder.bind_parameter(identifiers)})"
+                f"{column}::text = ANY({builder.bind_parameter(identifiers)})"
             )
         builder.add_ranges(filters, self.ranges)
         builder.add_equalities(filters, self.equalities)
