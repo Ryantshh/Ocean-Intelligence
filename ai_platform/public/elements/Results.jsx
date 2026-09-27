@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const PAGE_SIZE = 12;
 const SELECTION_CAP = 25;
+const MATCH_CAP = 5;
 const PAGE_WINDOW = 2;
 const BLANK = "(blank)";
 const EXPORT_URL = "/api/export/xlsx";
@@ -96,6 +97,8 @@ function Table({ columns, rows, noun }) {
   const [page, setPage] = useState(0);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const sendMenuRef = useRef(null);
   const [openColumn, setOpenColumn] = useState(null);
   const [menuAt, setMenuAt] = useState(null);
   const [search, setSearch] = useState("");
@@ -146,6 +149,24 @@ function Table({ columns, rows, noun }) {
     const timer = setTimeout(() => setNotice(""), 4000);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!sendMenuOpen) return undefined;
+    const close = (event) => {
+      if (sendMenuRef.current && !sendMenuRef.current.contains(event.target)) {
+        setSendMenuOpen(false);
+      }
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") setSendMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [sendMenuOpen]);
 
   useEffect(() => {
     if (!openColumn) return undefined;
@@ -229,6 +250,19 @@ function Table({ columns, rows, noun }) {
     } catch {
       setNotice("Could not reach the message box or the clipboard");
     }
+  };
+
+  const findVessels = () => {
+    const chosen = [...selected].sort((x, y) => x - y).map((index) => rows[index]);
+    if (!chosen.length || chosen.length > MATCH_CAP) return;
+    const ask = chosen.length === 1
+      ? "Find all open vessels that can carry this order"
+      : "Find all open vessels that can carry these orders";
+    sendUserMessage(`${ask}
+
+${toMarkdown(columns, chosen)}`);
+    setSelected(new Set());
+    setNotice(`Asked for vessels for ${chosen.length} ${chosen.length === 1 ? "order" : "orders"}`);
   };
 
   const downloadExcel = async () => {
@@ -356,6 +390,39 @@ function Table({ columns, rows, noun }) {
           background: hsl(var(--primary) / 0.14);
         }
 
+        .oi-t-sendwrap { position: relative; }
+        .oi-t-sendmenu {
+          position: absolute;
+          right: 0;
+          bottom: calc(100% + 0.35rem);
+          z-index: 60;
+          width: 16rem;
+          display: flex;
+          flex-direction: column;
+          padding: 0.25rem;
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 0.5rem;
+          box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+        }
+        .oi-t-sendopt {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 0.1rem;
+          padding: 0.45rem 0.55rem;
+          font: inherit;
+          text-align: left;
+          color: hsl(var(--foreground));
+          background: transparent;
+          border: none;
+          border-radius: 0.375rem;
+          cursor: pointer;
+        }
+        .oi-t-sendopt:hover:not(:disabled) { background: hsl(var(--muted)); }
+        .oi-t-sendopt:disabled { opacity: 0.5; cursor: not-allowed; }
+        .oi-t-sendopt-label { font-size: 0.78rem; font-weight: 500; }
+        .oi-t-sendopt-desc { font-size: 0.7rem; color: hsl(var(--muted-foreground)); }
         .oi-t-menu {
           position: absolute;
           z-index: 60;
@@ -651,18 +718,60 @@ function Table({ columns, rows, noun }) {
         >
           {busy ? "Preparing…" : "Download Excel"}
         </button>
-        <button
-          className="oi-t-send"
-          disabled={!selected.size || overCap}
-          onClick={sendSelected}
-          title={
-            overCap
-              ? `Too many to paste into one message. Select ${SELECTION_CAP} or fewer.`
-              : "Add the selected rows to the message box"
-          }
-        >
-          {overCap ? `Select ${SELECTION_CAP} or fewer` : `Send ${selected.size || ""} to chat`}
-        </button>
+        {noun === "cargoes" ? (
+          <div className="oi-t-sendwrap" ref={sendMenuRef}>
+            <button
+              className="oi-t-send"
+              disabled={!selected.size}
+              aria-haspopup="menu"
+              aria-expanded={sendMenuOpen}
+              onClick={() => setSendMenuOpen((open) => !open)}
+            >
+              {`Send ${selected.size || ""} to chat`} &#9662;
+            </button>
+            {sendMenuOpen && (
+              <div className="oi-t-sendmenu" role="menu">
+                <button
+                  role="menuitem"
+                  className="oi-t-sendopt"
+                  disabled={overCap}
+                  onClick={() => { setSendMenuOpen(false); sendSelected(); }}
+                >
+                  <span className="oi-t-sendopt-label">Add to message box</span>
+                  <span className="oi-t-sendopt-desc">
+                    {overCap ? `Select ${SELECTION_CAP} or fewer` : "Paste the rows, edit, then press enter"}
+                  </span>
+                </button>
+                <button
+                  role="menuitem"
+                  className="oi-t-sendopt"
+                  disabled={selected.size > MATCH_CAP}
+                  onClick={() => { setSendMenuOpen(false); findVessels(); }}
+                >
+                  <span className="oi-t-sendopt-label">Find open vessels</span>
+                  <span className="oi-t-sendopt-desc">
+                    {selected.size > MATCH_CAP
+                      ? `Select ${MATCH_CAP} or fewer`
+                      : "Sends now: open vessels that can carry these orders"}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button
+            className="oi-t-send"
+            disabled={!selected.size || overCap}
+            onClick={sendSelected}
+            title={
+              overCap
+                ? `Too many to paste into one message. Select ${SELECTION_CAP} or fewer.`
+                : "Add the selected rows to the message box"
+            }
+          >
+            {overCap ? `Select ${SELECTION_CAP} or fewer` : `Send ${selected.size || ""} to chat`}
+          </button>
+        )}
       </div>
 
       {pageCount > 1 && (

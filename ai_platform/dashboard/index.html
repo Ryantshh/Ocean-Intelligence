@@ -316,6 +316,10 @@
       .modal-body ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
       .modal-body li { border-bottom: 1px dashed var(--border); padding-bottom: 0.6rem; }
 
+      .send-to-chat { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-size: 0.78rem; }
+      #ordersTable tfoot .send-row td { border-bottom: none; padding-top: 0.6rem; }
+      .pick-col { width: 1.75rem; }
+      .history-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .history-btn { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
       .history-trail { display: none; padding: 0.5rem 0.6rem 0.75rem; font-size: 0.82rem; }
       .history-trail.open { display: block; }
@@ -673,10 +677,17 @@
         </div>
         <div class="table-wrap"><table id="ordersTable">
           <thead><tr>
+            <th class="pick-col"></th>
             <th>Order</th><th>Cargo</th><th>Load zone</th><th>Discharge zone</th>
             <th>Laycan</th><th>Weight</th><th>Received</th>
           </tr></thead>
-          <tbody><tr><td colspan="7" class="muted">Loading&hellip;</td></tr></tbody>
+          <tbody><tr><td colspan="8" class="muted">Loading&hellip;</td></tr></tbody>
+          <tfoot><tr class="send-row"><td colspan="8">
+            <div class="send-to-chat">
+              <span class="muted" id="ordersSendNotice"></span>
+              <button type="button" id="ordersSendToChat" class="history-btn" disabled>Send to chat</button>
+            </div>
+          </td></tr></tfoot>
         </table></div>
         <div class="pager" id="ordersPager"></div>
       </section>
@@ -1670,6 +1681,9 @@
       // and vessels have different columns and no shared identity, so
       // there's nothing real to factor out beyond a naming convention.
       const ORDERS_PAGE_SIZE = 15;
+      // Ticked orders, kept across pages and filter changes until sent.
+      const selectedOrderIds = new Set();
+      const ORDER_SELECTION_CAP = 25;
       let ordersFetched = [];
       let ordersPage = 0;
       let ordersTotal = 0;
@@ -1718,6 +1732,8 @@
       function orderRow(row) {
         return `
           <tr>
+            <td class="pick-col"><input type="checkbox" class="order-pick" aria-label="Select order ${escapeHtml(row.order_id)}"
+              data-order-id="${escapeHtml(row.order_id)}" ${selectedOrderIds.has(String(row.order_id)) ? "checked" : ""} /></td>
             <td>${escapeHtml(row.order_id)}</td>
             <td>${escapeHtml(row.cargo_type || "—")}</td>
             <td>${escapeHtml(row.load_zone || "—")}</td>
@@ -1759,8 +1775,8 @@
         tbody.innerHTML = pageRows.length
           ? pageRows.map(orderRow).join("")
           : hasActiveOrderFilter()
-            ? '<tr><td colspan="7" class="muted">No orders match these filters.</td></tr>'
-            : '<tr><td colspan="7" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
+            ? '<tr><td colspan="8" class="muted">No orders match these filters.</td></tr>'
+            : '<tr><td colspan="8" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
 
         const rangeLabel = total
           ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, total)} of ${formatNumber(total)}`
@@ -1783,6 +1799,68 @@
         });
       }
 
+      function updateOrdersSendButton() {
+        const btn = document.getElementById("ordersSendToChat");
+        const count = selectedOrderIds.size;
+        const overCap = count > ORDER_SELECTION_CAP;
+        btn.disabled = count === 0 || overCap;
+        btn.textContent = overCap
+          ? `Select ${ORDER_SELECTION_CAP} or fewer`
+          : count ? `Send ${count} to chat` : "Send to chat";
+      }
+
+      // Writes into Chainlit's composer inside the chat frame. React ignores a
+      // plain .value assignment, so the prototype setter plus a bubbling input
+      // event is what makes the controlled textarea register the text.
+      function writeToChatComposer(text) {
+        const frame = document.getElementById("chatFrame");
+        const frameWindow = frame && frame.contentWindow;
+        const input = frameWindow && frameWindow.document.querySelector("#chat-input");
+        if (!input || input.tagName !== "TEXTAREA") return false;
+        const setter = Object.getOwnPropertyDescriptor(
+          frameWindow.HTMLTextAreaElement.prototype, "value",
+        )?.set;
+        if (!setter) return false;
+        setter.call(input, text);
+        input.dispatchEvent(new frameWindow.Event("input", { bubbles: true }));
+        input.focus();
+        return true;
+      }
+
+      async function sendOrdersToChat() {
+        const ids = [...selectedOrderIds];
+        if (!ids.length || ids.length > ORDER_SELECTION_CAP) return;
+        const prompt = ids.length === 1
+          ? `Find order with order id: ${ids[0]} and provide details for it`
+          : `Find orders with order ids: ${ids.join(", ")} and provide details for them`;
+        const notice = document.getElementById("ordersSendNotice");
+        document.querySelector('.tab-btn[data-tab="chat"]').click();
+        if (writeToChatComposer(prompt)) {
+          notice.textContent = "";
+        } else {
+          try {
+            await navigator.clipboard.writeText(prompt);
+            notice.textContent = "Chat not ready — prompt copied, paste with Ctrl+V";
+          } catch {
+            notice.textContent = "Could not reach the chat or the clipboard";
+          }
+          return;
+        }
+        selectedOrderIds.clear();
+        updateOrdersSendButton();
+        document.querySelectorAll("#ordersTable .order-pick").forEach((box) => { box.checked = false; });
+      }
+
+      document.querySelector("#ordersTable tbody").addEventListener("change", (event) => {
+        const box = event.target;
+        if (!box.classList || !box.classList.contains("order-pick")) return;
+        const id = box.dataset.orderId;
+        if (box.checked) selectedOrderIds.add(id); else selectedOrderIds.delete(id);
+        document.getElementById("ordersSendNotice").textContent = "";
+        updateOrdersSendButton();
+      });
+      document.getElementById("ordersSendToChat").addEventListener("click", sendOrdersToChat);
+
       async function loadOrders(isRefresh = false, isPageNav = false) {
         const tbody = document.querySelector("#ordersTable tbody");
         const banner = document.getElementById("orderDayFilterBanner");
@@ -1797,7 +1875,7 @@
           renderOrdersTable();
           return;
         }
-        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
+        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading&hellip;</td></tr>';
         let url;
         if (activeOrderDayFilter) {
           const { day } = activeOrderDayFilter;
@@ -1835,7 +1913,7 @@
           renderOrdersTable();
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load orders: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load orders: ${escapeHtml(error.message)}</td></tr>`;
           document.getElementById("ordersPager").innerHTML = "";
         }
       }
