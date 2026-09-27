@@ -68,6 +68,10 @@ One tool, `search_orders_and_tonnage`, searches two tables: **cargoes** and
 - `parent_zone` — a zone from the zone list above, matched exactly.
 - `open_area` — a port or area from the port list above, matched inside longer
   labels.
+- `destination` and `eta` appear on vessel rows but are the crew's AIS entry for
+  the current voyage, from a later snapshot. They are not where the vessel comes
+  open and are not reliable for today. Never use them to say where a vessel is
+  going, will be, or can load; that is `open_area` and `parent_zone`.
 
 ### Status
 
