@@ -18,6 +18,9 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.types import Command
 
 from ai_platform.app.data_layer import get_data_layer
+from ai_platform.app.accounts import authenticate as authenticate_account
+from ai_platform.app.accounts import verify_session
+from fastapi import HTTPException
 from ai_platform.backend.agent import agent
 from ai_platform.backend.context import USABLE_TOKENS, message_tokens
 from ai_platform.backend.llm import stream_chat
@@ -29,8 +32,6 @@ __all__ = ["get_data_layer"]
 
 _logger = get_logger("chat")
 
-DEV_USERNAME = "dev"
-DEV_PASSWORD = "dev"
 
 PLAIN_MODEL_PROFILE = "plain-model"
 AGENT_PROFILE = "agent"
@@ -696,29 +697,9 @@ async def list_chat_profiles(
 
 @cl.password_auth_callback
 async def authenticate(username: str, password: str) -> cl.User | None:
-    """Authenticate a local developer against hardcoded credentials.
-
-    Placeholder for Phase 2, which replaces this with header auth against the
-    identity provider. The returned ``identifier`` is what threads are keyed on,
-    so it must stay stable across restarts or existing history is orphaned.
-
-    Parameters
-    ----------
-    username : str
-        Submitted username.
-    password : str
-        Submitted password.
-
-    Returns
-    -------
-    cl.User or None
-        The authenticated user, or None to reject the login.
-    """
-    if username == DEV_USERNAME and password == DEV_PASSWORD:
-        return cl.User(identifier=DEV_USERNAME, metadata={"role": "dev"})
-    return None
-
-
+    """Authenticate using the configured development or individual-account mode."""
+    metadata = await authenticate_account(username, password)
+    return cl.User(identifier=username, metadata=metadata) if metadata else None
 
 
 @cl.on_chat_start
@@ -809,6 +790,15 @@ async def handle_message(message: cl.Message) -> None:
     -------
     None
     """
+    user = cl.user_session.get("user")
+    if user is None:
+        await cl.Message(content="Please sign in before sending a message.").send()
+        return
+    try:
+        await verify_session(user.identifier, user.metadata or {})
+    except HTTPException:
+        await cl.Message(content="Your session has expired or was revoked. Please sign in again.").send()
+        return
     if cl.user_session.get("chat_profile") == PLAIN_MODEL_PROFILE:
         reply = root_message()
         async for token in stream_chat(cl.chat_context.to_openai()):

@@ -1,0 +1,225 @@
+[
+  {
+    "id": "eligible-vessel",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-27",
+      "laycan_end": "2025-09-30",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [
+      {
+        "vessel_id": "A",
+        "dwt": 180000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": "2025-09-30",
+        "parent_zone": "ECSA",
+        "commercial_status": "AVAILABLE",
+        "update_date": "2025-09-27"
+      }
+    ],
+    "relevant": [
+      "A"
+    ],
+    "forbidden": []
+  },
+  {
+    "id": "fixed-vessel",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-27",
+      "laycan_end": "2025-09-30",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [
+      {
+        "vessel_id": "A",
+        "dwt": 180000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": "2025-09-30",
+        "parent_zone": "ECSA",
+        "commercial_status": "FIXED",
+        "update_date": "2025-09-27"
+      }
+    ],
+    "relevant": [],
+    "forbidden": [
+      "A"
+    ]
+  },
+  {
+    "id": "insufficient-dwt",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-27",
+      "laycan_end": "2025-09-30",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [
+      {
+        "vessel_id": "A",
+        "dwt": 90000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": "2025-09-30",
+        "parent_zone": "ECSA",
+        "commercial_status": "AVAILABLE",
+        "update_date": "2025-09-27"
+      }
+    ],
+    "relevant": [],
+    "forbidden": [
+      "A"
+    ]
+  },
+  {
+    "id": "stale-position",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-27",
+      "laycan_end": "2025-09-30",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [
+      {
+        "vessel_id": "A",
+        "dwt": 180000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": "2025-09-30",
+        "parent_zone": "ECSA",
+        "commercial_status": "AVAILABLE",
+        "update_date": "2025-09-20"
+      }
+    ],
+    "relevant": [],
+    "forbidden": [
+      "A"
+    ]
+  },
+  {
+    "id": "missing-window",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-27",
+      "laycan_end": "2025-09-30",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [
+      {
+        "vessel_id": "A",
+        "dwt": 180000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": null,
+        "parent_zone": "ECSA",
+        "commercial_status": "AVAILABLE",
+        "update_date": "2025-09-27"
+      }
+    ],
+    "relevant": [],
+    "forbidden": [
+      "A"
+    ]
+  },
+  {
+    "id": "expired-order",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-20",
+      "laycan_end": "2025-09-25",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [
+      {
+        "vessel_id": "A",
+        "dwt": 180000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": "2025-09-30",
+        "parent_zone": "ECSA",
+        "commercial_status": "AVAILABLE",
+        "update_date": "2025-09-27"
+      }
+    ],
+    "relevant": [],
+    "forbidden": [
+      "A"
+    ]
+  },
+  {
+    "id": "mixed-fleet",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-27",
+      "laycan_end": "2025-09-30",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [
+      {
+        "vessel_id": "A",
+        "dwt": 180000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": "2025-09-30",
+        "parent_zone": "ECSA",
+        "commercial_status": "AVAILABLE",
+        "update_date": "2025-09-27"
+      },
+      {
+        "vessel_id": "B",
+        "dwt": 180000,
+        "open_date_start": "2025-09-27",
+        "open_date_end": "2025-09-30",
+        "parent_zone": "ECSA",
+        "commercial_status": "ON SUBS",
+        "update_date": "2025-09-27"
+      }
+    ],
+    "relevant": [
+      "A"
+    ],
+    "forbidden": [
+      "B"
+    ]
+  },
+  {
+    "id": "no-vessels",
+    "label_source": "synthetic regression fixture, not trader-labelled",
+    "as_of": "2025-09-27",
+    "order": {
+      "order_id": "evaluation-001",
+      "cargo_weight_min": 100000,
+      "laycan_start": "2025-09-27",
+      "laycan_end": "2025-09-30",
+      "load_zone": "ECSA",
+      "load_port": "Santos"
+    },
+    "vessels": [],
+    "relevant": [],
+    "forbidden": []
+  }
+]

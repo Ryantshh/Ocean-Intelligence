@@ -503,27 +503,30 @@
       .combobox-option:hover, .combobox-option.active { background: var(--card); }
       .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
+    <link rel="stylesheet" href="/static/desk.css?v=5" />
   </head>
   <body>
-    <nav class="tabs">
-      <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
-      <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
-      <button type="button" class="tab-btn hidden" data-tab="overrides">Trader Overrides</button>
+    <nav class="tabs" aria-label="Workspace navigation">
+      <a class="desk-brand" href="/" aria-label="Ocean Intelligence home"><span class="brand-mark">≋</span><span>Ocean Intelligence<small>Chartering workspace</small></span></a>
+      <button type="button" class="tab-btn" data-tab="chat">Assistant</button>
+      <button type="button" class="tab-btn active" data-tab="dashboard">Market overview</button>
+      <button type="button" class="tab-btn" data-tab="overrides">Status overrides</button>
     </nav>
 
-    <div id="tab-chat" class="tab-panel">
+    <div id="tab-chat" class="tab-panel hidden">
       <iframe id="chatFrame" src="/chat" title="Ocean Intelligence chat"></iframe>
     </div>
 
-    <main class="hidden">
+    <main>
       <div class="refresh-bar">
+        <div class="desk-heading"><div class="eyebrow">The chartering desk</div><h1>Your market, in focus.</h1><p>Fleet availability, regional demand and the moves that matter.</p></div>
         <span class="muted" id="lastRefreshed">Loading&hellip;</span>
         <button type="button" id="refreshNowBtn" class="history-btn">Refresh now</button>
         <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
-      <div id="tab-dashboard" class="tab-panel hidden">
+      <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
         <div class="section-head"><h2>Market Summary</h2></div>
         <div class="status-tiles" id="statusTiles">
@@ -554,7 +557,7 @@
                 <button type="button" class="view-btn" data-view="table">Table</button>
               </div>
             </div>
-            <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply), counted right now so it matches the status tiles above. Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Hover a bubble (or read the Consistency column in the table view) for how many of the last 14 days that region carried any open tonnage &mdash; a region with ships every day is a different proposition from one that happens to have them today. Simulated as of today's real date minus one year, not today's actual date.</p>
+            <details class="map-description"><summary>Live supply by region · demand pressure where available</summary><p>Bubble size represents open vessels. Color indicates demand pressure; grey means insufficient order data. Consistency shows how often supply appeared over the last 14 days. This workspace uses a simulated working date one year behind today.</p></details>
             <div id="regionMapFilterBanner" class="day-filter-banner hidden">
               <span id="regionMapFilterLabel"></span>
               <button type="button" id="regionMapFilterClear">Clear filter</button>
@@ -722,7 +725,7 @@
           <div class="form-panel">
             <h3>Enter a Status Update</h3>
             <p class="sub" style="margin-bottom:1rem;">
-              Only Vessel, Status, and Entered by are required -- fill in
+              Vessel and Status are required. Fill in
               whatever else you actually have fresh word on.
             </p>
             <form class="override-form" id="overrideForm">
@@ -764,9 +767,7 @@
               </p>
 
               <p class="form-section-label">Attribution</p>
-              <label class="field-required">Entered by
-                <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
-              </label>
+              <p class="form-hint">Your signed-in identity is recorded automatically with every change.</p>
               <button type="submit" id="ovSubmit">Submit Update</button>
               <div class="form-message" id="ovMessage"></div>
             </form>
@@ -930,7 +931,7 @@
       async function postJson(path, payload) {
         const response = await fetch(path, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-OI-Request": "1" },
           body: JSON.stringify(payload),
         });
         const body = await response.json().catch(() => ({}));
@@ -2673,7 +2674,6 @@
         const submitBtn = document.getElementById("ovSubmit");
         const vesselId = document.getElementById("ovVessel").value;
         const overrideStatus = document.getElementById("ovStatus").value;
-        const enteredBy = document.getElementById("ovEnteredBy").value.trim();
         const openArea = document.getElementById("ovOpenArea").value.trim();
         const openDateStart = document.getElementById("ovOpenDateStart").value;
         const openDateEnd = document.getElementById("ovOpenDateEnd").value;
@@ -2684,8 +2684,8 @@
           vesselInput().focus();
           return;
         }
-        if (!overrideStatus || !enteredBy) {
-          showFormMessage("error", "Status and Entered by are required.");
+        if (!overrideStatus) {
+          showFormMessage("error", "Status is required.");
           return;
         }
         if (openDateStart && openDateEnd && openDateEnd < openDateStart) {
@@ -2707,7 +2707,6 @@
             vessel_id: vesselId,
             base_tonnage_row_key: baseTonnageRowKey,
             override_status: overrideStatus,
-            entered_by: enteredBy,
             open_area: openArea || null,
             open_date_start: toSimulatedDate(openDateStart),
             open_date_end: toSimulatedDate(openDateEnd),
@@ -2820,5 +2819,6 @@
 
       refreshTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     </script>
+    <script src="/static/recommendations.js?v=5"></script>
   </body>
 </html>
