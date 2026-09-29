@@ -677,7 +677,7 @@
         </div>
         <div class="table-wrap"><table id="ordersTable">
           <thead><tr>
-            <th class="pick-col"></th>
+            <th class="pick-col"><input type="checkbox" id="ordersPickAll" aria-label="Select all orders on this page" disabled /></th>
             <th>Order</th><th>Cargo</th><th>Load zone</th><th>Discharge zone</th>
             <th>Laycan</th><th>Weight</th><th>Received</th>
           </tr></thead>
@@ -1680,7 +1680,7 @@
       // own day-filter banner) rather than sharing code with it -- orders
       // and vessels have different columns and no shared identity, so
       // there's nothing real to factor out beyond a naming convention.
-      const ORDERS_PAGE_SIZE = 15;
+      const ORDERS_PAGE_SIZE = 25;
       // Ticked orders, kept across pages and filter changes until sent.
       const selectedOrderIds = new Set();
       const ORDER_SELECTION_CAP = 25;
@@ -1777,6 +1777,7 @@
           : hasActiveOrderFilter()
             ? '<tr><td colspan="8" class="muted">No orders match these filters.</td></tr>'
             : '<tr><td colspan="8" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
+        syncOrdersPickAll();
 
         const rangeLabel = total
           ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, total)} of ${formatNumber(total)}`
@@ -1797,6 +1798,17 @@
           ordersPage += 1;
           if (activeOrderDayFilter) renderOrdersTable(); else loadOrders(false, true);
         });
+      }
+
+      // Header box reflects the visible page only: checked when every row on it is
+      // ticked, mixed when some are, since the server returns one page at a time.
+      function syncOrdersPickAll() {
+        const pickAll = document.getElementById("ordersPickAll");
+        const boxes = [...document.querySelectorAll("#ordersTable .order-pick")];
+        const tickedCount = boxes.filter((box) => box.checked).length;
+        pickAll.disabled = boxes.length === 0;
+        pickAll.checked = boxes.length > 0 && tickedCount === boxes.length;
+        pickAll.indeterminate = tickedCount > 0 && tickedCount < boxes.length;
       }
 
       function updateOrdersSendButton() {
@@ -1849,6 +1861,7 @@
         selectedOrderIds.clear();
         updateOrdersSendButton();
         document.querySelectorAll("#ordersTable .order-pick").forEach((box) => { box.checked = false; });
+        syncOrdersPickAll();
       }
 
       document.querySelector("#ordersTable tbody").addEventListener("change", (event) => {
@@ -1858,6 +1871,17 @@
         if (box.checked) selectedOrderIds.add(id); else selectedOrderIds.delete(id);
         document.getElementById("ordersSendNotice").textContent = "";
         updateOrdersSendButton();
+        syncOrdersPickAll();
+      });
+      document.getElementById("ordersPickAll").addEventListener("change", (event) => {
+        const shouldTick = event.target.checked;
+        document.querySelectorAll("#ordersTable .order-pick").forEach((box) => {
+          box.checked = shouldTick;
+          if (shouldTick) selectedOrderIds.add(box.dataset.orderId); else selectedOrderIds.delete(box.dataset.orderId);
+        });
+        document.getElementById("ordersSendNotice").textContent = "";
+        updateOrdersSendButton();
+        syncOrdersPickAll();
       });
       document.getElementById("ordersSendToChat").addEventListener("click", sendOrdersToChat);
 

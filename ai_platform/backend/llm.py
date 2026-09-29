@@ -40,15 +40,6 @@ Declared here because LangChain carries profiles for known providers only,
 and a custom base URL is not one. Without it any middleware working in
 fractions of the window raises rather than guessing."""
 
-MAX_OUTPUT_TOKENS = 2048
-"""Cap on one completion, reasoning included.
-
-A reply is a sentence and five bullets; the reasoning before it measured four to
-five times that. The cap ends a degenerating generation — ``gpt-oss`` on Groq
-has emitted thousands of zero-width spaces in one turn — before it runs to the
-model's own limit.
-"""
-
 SYSTEM_PROMPT = Path(__file__).with_name("plain_model.md").read_text(encoding="utf-8")
 
 
@@ -112,7 +103,6 @@ def get_chat_model() -> ChatOpenAI:
         api_key=SecretStr(api_key),
         base_url=os.environ.get("GROQ_BASE_URL", "").strip() or DEFAULT_BASE_URL,
         temperature=0,
-        max_completion_tokens=MAX_OUTPUT_TOKENS,
         profile={"max_input_tokens": MAX_INPUT_TOKENS},
     )
 
