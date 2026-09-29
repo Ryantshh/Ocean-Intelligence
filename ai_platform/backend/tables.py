@@ -117,13 +117,21 @@ class OrderSearch(BaseModel):
     cargo_description: str | None = Field(
         default=None, description="free-text wording from the enquiry, the one field searched by meaning"
     )
-    load_port: str | None = Field(default=None, description="load port from the port list, stored spelling")
-    load_zone: str | None = Field(default=None, description="load zone from the zone list, stored spelling")
-    discharge_port: str | None = Field(
-        default=None, description="discharge port from the port list, stored spelling"
+    load_port: list[str] | None = Field(
+        default=None,
+        description="one or more load ports from the port list, stored spelling; an enquiry at any of them matches",
     )
-    discharge_parent_zone: str | None = Field(
-        default=None, description="discharge zone from the zone list, stored spelling"
+    load_zone: list[str] | None = Field(
+        default=None,
+        description="one or more load zones from the zone list, stored spelling; an enquiry in any of them matches",
+    )
+    discharge_port: list[str] | None = Field(
+        default=None,
+        description="one or more discharge ports from the port list, stored spelling; any of them matches",
+    )
+    discharge_parent_zone: list[str] | None = Field(
+        default=None,
+        description="one or more discharge zones from the zone list, stored spelling; any of them matches",
     )
 
 
@@ -191,11 +199,13 @@ class VesselSearch(BaseModel):
     vessel_status: str | None = Field(
         default=None, description="navigational status from the status list, stored spelling"
     )
-    parent_zone: str | None = Field(
-        default=None, description="zone from the zone list, stored spelling"
+    parent_zone: list[str] | None = Field(
+        default=None,
+        description="one or more zones from the zone list, stored spelling; a vessel in any of them matches",
     )
-    open_area: str | None = Field(
-        default=None, description="open port or area from the port list, stored spelling"
+    open_area: list[str] | None = Field(
+        default=None,
+        description="one or more open ports or areas from the port list, stored spelling; a vessel at any of them matches",
     )
 
 
@@ -338,11 +348,11 @@ ORDERS = TableSpec(
     column_expressions={"order_id": ORDER_ID_AS_TEXT},
     semantic_columns=("cargo_description",),
     matches=(
-        MatchSpec("load_zone", "load_zone", "exact"),
-        MatchSpec("discharge_parent_zone", "discharge_parent_zone", "exact"),
+        MatchSpec("load_zone", "load_zone", "any"),
+        MatchSpec("discharge_parent_zone", "discharge_parent_zone", "any"),
         MatchSpec("cargo_type", "cargo_type", "prefix"),
-        MatchSpec("load_port", "load_port", "contains"),
-        MatchSpec("discharge_port", "discharge_port", "contains"),
+        MatchSpec("load_port", "load_port", "contains_any"),
+        MatchSpec("discharge_port", "discharge_port", "contains_any"),
     ),
     ranges=(
         RangeSpec("laycan_start_from", "laycan_start", ">="),
@@ -389,9 +399,9 @@ TONNAGE = TableSpec(
     },
     semantic_columns=(),
     matches=(
-        MatchSpec("parent_zone", "parent_zone", "exact"),
+        MatchSpec("parent_zone", "parent_zone", "any"),
         MatchSpec("vessel_status", "vessel_status", "exact"),
-        MatchSpec("open_area", "open_area", "contains"),
+        MatchSpec("open_area", "open_area", "contains_any"),
     ),
     ranges=(
         RangeSpec("open_start_from", "open_date_start", ">="),

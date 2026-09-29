@@ -19,9 +19,10 @@ from langgraph.types import Command
 
 from ai_platform.app.data_layer import get_data_layer
 from ai_platform.backend.agent import agent
-from ai_platform.backend.context import USABLE_TOKENS, message_tokens
+from ai_platform.backend.context import CONTEXT_WINDOW, PROMPT_TOKENS, message_tokens
 from ai_platform.backend.llm import stream_chat
 from ai_platform.backend.logging_utils import get_logger
+from ai_platform.backend.matching import MATCH_COLUMNS
 from ai_platform.backend.tables import OrderSearch, VesselSearch, resolve_table
 from ai_platform.backend.tracing import langfuse_handler
 
@@ -48,6 +49,7 @@ which lives in the reply prose and in the table's own footer instead.
 
 TOOL_STEPS = {
     "search_orders_and_tonnage": "Order and tonnage search",
+    "match_orders": "Vessel matching",
     "ask_user": "Clarifying question",
 }
 """Progress step shown while each tool runs."""
@@ -57,6 +59,16 @@ STEP_OUTPUT_CAP = 500
 
 Caps ``ask_user`` forms and tool errors so a stray payload cannot push the
 transcript out of the viewport.
+"""
+
+CUT_OFF_NOTICE = (
+    "\n\n_My answer was cut short before I finished. The results panel has every "
+    "row; ask about fewer orders or a narrower search for a full summary._"
+)
+"""Appended when a model call ended at the model's output limit.
+
+The stream drops ``finish_reason``, so without this a truncated reply ends
+mid-sentence or, when reasoning spent the whole budget, shows nothing at all.
 """
 
 ASK_ELEMENT = "AskUser"
@@ -131,7 +143,7 @@ def _clean(text: str) -> str:
 
 
 async def agent_context_tokens() -> int:
-    """Measure what the agent will carry into its next model call.
+    """Measure what the agent will send in its next model call.
 
     Reads the agent's own history from the checkpointer, which holds tool calls
     and every tool result row, and reflects summarisation. Chainlit's chat history
@@ -140,12 +152,12 @@ async def agent_context_tokens() -> int:
     Returns
     -------
     int
-        Tokens of stored history for this session; zero when the agent holds
-        none, as after a reload.
+        Tokens of the fixed prompt and tools plus the stored history for this
+        session; the prompt alone when the agent holds none, as after a reload.
     """
     state = await agent.aget_state({"configurable": {"thread_id": cl.context.session.id}})
     messages = (state.values or {}).get("messages", []) if state else []
-    return message_tokens(messages)
+    return PROMPT_TOKENS + message_tokens(messages)
 
 
 def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -161,7 +173,7 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     Parameters
     ----------
     target : str
-        Table the question resolved to.
+        Table the question resolved to, or ``matches`` for order-vessel pairs.
     rows : list of dict
         Every matching row.
 
@@ -170,12 +182,15 @@ def results_props(target: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     dict
         ``columns``, ``rows`` and ``noun``, ready to hand to the element.
     """
-    spec = resolve_table(target)
-    columns = list(spec.display_columns)
+    if target == "matches":
+        columns, noun = list(MATCH_COLUMNS), "matches"
+    else:
+        spec = resolve_table(target)
+        columns, noun = list(spec.display_columns), spec.display_noun
     return {
         "columns": columns,
         "rows": [[row.get(column) for column in columns] for row in rows],
-        "noun": spec.display_noun,
+        "noun": noun,
     }
 
 
@@ -196,7 +211,7 @@ async def refresh_gauge(used: int, spent: int = 0, anchor: str = "") -> None:
     Parameters
     ----------
     used : int
-        Tokens of history the next question will carry, from
+        Tokens the next model call will send, prompt included, from
         ``agent_context_tokens``.
     spent : int
         Tokens consumed answering the question just finished.
@@ -208,9 +223,9 @@ async def refresh_gauge(used: int, spent: int = 0, anchor: str = "") -> None:
     None
     """
     props = {
-        "percent": round(min(used / USABLE_TOKENS, 1.0) * 100, 2),
+        "percent": round(min(used / CONTEXT_WINDOW, 1.0) * 100, 2),
         "used": used,
-        "usable": USABLE_TOKENS,
+        "usable": CONTEXT_WINDOW,
         "spent": spent,
     }
     stored = cl.user_session.get(GAUGE_SESSION_KEY)
@@ -235,6 +250,11 @@ async def run_agent(question: str) -> None:
     The agent decides which tools to call and how many times, so there is no
     fixed sequence of steps to wrap. Tool calls are shown as they are chosen and
     closed when their result arrives.
+
+    The stream includes subgraphs so that ``match_orders`` can report each order's
+    matcher as it starts and finishes. Messages and updates from any namespace but
+    the root belong to matchers and are skipped: their tokens are not the reply, and
+    their rows reach the panel through the tool's ``match_rows`` event.
 
     ``ask_user`` interrupts the run rather than returning, which ends the stream.
     The outer loop exists for that: it shows the form, waits, and resumes with
@@ -263,17 +283,30 @@ async def run_agent(question: str) -> None:
     payload: Any = {"messages": [{"role": "user", "content": question}]}
     reply = root_message()
     results_element_name = ""
+    was_cut_off = False
 
     while True:
         interrupt_value: dict[str, Any] | None = None
         open_steps: dict[str, cl.Step] = {}
+        order_steps: dict[str, cl.Step] = {}
 
         stream = agent.astream(
-            payload, cast("Any", config), stream_mode=["updates", "messages"]
+            payload,
+            cast("Any", config),
+            stream_mode=["updates", "messages", "custom"],
+            subgraphs=True,
         )
         failed = False
         try:
-            async for mode, event in stream:
+            async for namespace, mode, event in stream:
+                if mode == "custom":
+                    name = await _render_match_event(
+                        cast("dict[str, Any]", event), open_steps, order_steps, reply
+                    )
+                    results_element_name = name or results_element_name
+                    continue
+                if namespace:
+                    continue
                 if mode == "messages":
                     chunk, meta = cast("tuple[Any, dict[str, Any]]", event)
                     text = _clean(chunk.content) if isinstance(chunk.content, str) else ""
@@ -293,6 +326,10 @@ async def run_agent(question: str) -> None:
 
                 for node, node_update in update.items():
                     for message in (node_update or {}).get("messages", []) or []:
+                        metadata = getattr(message, "response_metadata", None) or {}
+                        was_cut_off = was_cut_off or (
+                            node == "model" and metadata.get("finish_reason") == "length"
+                        )
                         name = await _render_node_message(
                             message, node, open_steps, reply
                         )
@@ -304,7 +341,7 @@ async def run_agent(question: str) -> None:
                 f"\n\nSomething went wrong on my side and I could not finish: {error}"
             )
 
-        for step in open_steps.values():
+        for step in [*order_steps.values(), *open_steps.values()]:
             await step.__aexit__(None, None, None)
 
         if failed or interrupt_value is None:
@@ -318,6 +355,8 @@ async def run_agent(question: str) -> None:
             break
         payload = Command(resume=submitted)
 
+    if was_cut_off:
+        await reply.stream_token(CUT_OFF_NOTICE)
     if results_element_name:
         await reply.stream_token(f"\n\n{results_element_name}")
     await reply.send()
@@ -376,17 +415,100 @@ async def _render_node_message(
 
     if not sets:
         return ""
+    return await _show_panel(sets, reply, getattr(message, "tool_call_id", ""))
 
+
+async def _show_panel(sets: list[dict[str, Any]], reply: cl.Message, key: str) -> str:
+    """Attach a results panel to the reply and open it in the sidebar.
+
+    Parameters
+    ----------
+    sets : list of dict
+        Props sets, one per tab.
+    reply : cl.Message
+        The reply the panel persists with.
+    key : str
+        Sidebar key; a fresh one makes the sidebar swap to these rows.
+
+    Returns
+    -------
+    str
+        ``RESULTS_ELEMENT``, for the reply's link line.
+    """
     shown_at_ms = int(time.time() * 1000)
     panel = cl.CustomElement(
         name=RESULTS_ELEMENT, props={"sets": sets, "seq": shown_at_ms}, display="side"
     )
     reply.elements = cast("list[Any]", [panel])
     await cl.ElementSidebar.set_title(RESULTS_ELEMENT)
-    await cl.ElementSidebar.set_elements(
-        [panel], key=getattr(message, "tool_call_id", "") or panel.id
-    )
+    await cl.ElementSidebar.set_elements([panel], key=key or panel.id)
     return RESULTS_ELEMENT
+
+
+async def _render_match_event(
+    event: dict[str, Any],
+    open_steps: dict[str, cl.Step],
+    order_steps: dict[str, cl.Step],
+    reply: cl.Message,
+) -> str:
+    """Show a ``match_orders`` custom event: a matcher's step, or the match rows.
+
+    The match rows open one panel with a tab per order, labelled with its id, each
+    listing only that order's vessels. Each matcher gets a step nested under the
+    "Vessel matching" step, opened when
+    it starts and closed with the search it ran, as the same table the main
+    agent's search steps show, and its vessel count.
+
+    Parameters
+    ----------
+    event : dict
+        Custom stream payload from ``match_orders``, keyed by ``kind``.
+    open_steps : dict of str to cl.Step
+        Open tool steps, searched for the "Vessel matching" step to nest under.
+    order_steps : dict of str to cl.Step
+        Open matcher steps, keyed by order id.
+    reply : cl.Message
+        The reply a results panel attaches to.
+
+    Returns
+    -------
+    str
+        The results element name when the match rows opened a panel, else empty.
+    """
+    kind = event.get("kind")
+    if kind == "match_rows":
+        rows_by_order: dict[str, list[dict[str, Any]]] = {}
+        for row in event.get("rows") or []:
+            rows_by_order.setdefault(str(row.get("order_id")), []).append(row)
+        sets = [
+            {**results_props("matches", rows), "label": f"Order {matched_order}"}
+            for matched_order, rows in rows_by_order.items()
+        ]
+        return await _show_panel(sets, reply, f"matches-{time.time()}")
+    order_id = str(event.get("order_id", ""))
+    if kind == "match_started":
+        parent = next(
+            (step for step in open_steps.values() if step.name == TOOL_STEPS["match_orders"]),
+            None,
+        )
+        step = cl.Step(
+            name=f"Matcher agent {event.get('agent')} is searching for suitable vessels for order {order_id}",
+            type="tool",
+            show_input=True,
+            parent_id=parent.id if parent else None,
+        )
+        await step.__aenter__()
+        order_steps[order_id] = step
+    elif kind == "match_finished" and (step := order_steps.pop(order_id, None)):
+        matched = event.get("matched", 0)
+        step.name = (
+            f"Matcher agent {event.get('agent')} found {matched} suitable vessels "
+            f"for order {order_id}"
+        )
+        step.input = _step_input(event.get("search") or {})
+        step.output = f"{matched} vessels"
+        await step.__aexit__(None, None, None)
+    return ""
 
 
 _SEARCH_MODELS = {"cargoes": OrderSearch, "vessels": VesselSearch}
@@ -450,7 +572,8 @@ def _paired_rows(
             rows.append((base.replace("_", " "), shown, _BOUND_WORDING.sub("", meaning_of(source))))
             break
         else:
-            rows.append((field.replace("_", " "), str(value), meaning_of(field)))
+            shown = ", ".join(map(str, value)) if isinstance(value, list) else str(value)
+            rows.append((field.replace("_", " "), shown, meaning_of(field)))
     return _merge_overlap(rows)
 
 
@@ -555,6 +678,8 @@ def _step_output(message: Any, sets: list[dict[str, Any]]) -> str:
         parsed = json.loads(content)
     except json.JSONDecodeError:
         parsed = None
+    if isinstance(parsed, dict) and "not_in_results" in parsed:
+        return _match_summary(parsed)
     if isinstance(parsed, dict) and "counts" in parsed:
         return "no rows"
     if isinstance(parsed, dict) and parsed and all(
@@ -562,6 +687,32 @@ def _step_output(message: Any, sets: list[dict[str, Any]]) -> str:
     ):
         return "\n".join(f"- {question}: **{answer}**" for question, answer in parsed.items())
     return content[:STEP_OUTPUT_CAP] if content else "no rows"
+
+
+def _match_summary(result: dict[str, Any]) -> str:
+    """Summarise a ``match_orders`` result for its progress step.
+
+    Parameters
+    ----------
+    result : dict
+        The parsed tool result.
+
+    Returns
+    -------
+    str
+        Orders and vessels matched, then any order ids not found, not matchable
+        or not yet in results.
+    """
+    matched = result.get("orders") or []
+    parts = [f"{len(matched)} orders, {sum(order.get('matched', 0) for order in matched)} vessels"]
+    for key, label in (
+        ("not_found", "not on the book"),
+        ("cannot_match", "no load zone or laycan"),
+        ("not_in_results", "not in earlier results"),
+    ):
+        if result.get(key):
+            parts.append(f"{label}: {', '.join(result[key])}")
+    return "; ".join(parts)
 
 
 def _sets_from(message: Any) -> list[dict[str, Any]]:

@@ -74,14 +74,16 @@ class MatchSpec:
     column : str
         Database column, possibly holding several names joined by ``", "``.
     mode : str
-        ``exact`` for a closed vocabulary, ``prefix`` for a family such as
-        ``IRON ORE`` covering ``IRON ORE PELLETS``, ``contains`` for a port that
-        may sit inside a longer label such as ``Itaguai / Sepetiba``.
+        ``exact`` for a closed vocabulary, ``any`` for a list of names from one
+        where a piece equal to any of them is enough, ``prefix`` for a family such
+        as ``IRON ORE`` covering ``IRON ORE PELLETS``, ``contains_any`` for a list of
+        ports where a piece holding any of them is enough, since a port may sit
+        inside a longer label such as ``Itaguai / Sepetiba``.
     """
 
     field: str
     column: str
-    mode: Literal["exact", "prefix", "contains"]
+    mode: Literal["exact", "any", "prefix", "contains_any"]
 
 
 @dataclass(frozen=True)
@@ -244,16 +246,17 @@ class StatementBuilder:
             value = getattr(filters, spec.field, None)
             if not value:
                 continue
-            pattern = {
-                "exact": value,
-                "prefix": f"{value}%",
-                "contains": f"%{value}%",
-            }[spec.mode]
-            operator = "=" if spec.mode == "exact" else "ILIKE"
-            self.clauses.append(
-                f"""EXISTS (SELECT 1 FROM unnest(string_to_array("{spec.column}", ', ')) """
-                f"AS element WHERE element {operator} {self.bind_parameter(pattern)})"
-            )
+            element_cells = f"""unnest(string_to_array("{spec.column}", ', '))"""
+            if spec.mode == "any":
+                condition = f"element = ANY({self.bind_parameter(list(value))})"
+            elif spec.mode == "contains_any":
+                patterns = [f"%{name}%" for name in value]
+                condition = f"element ILIKE ANY({self.bind_parameter(patterns)})"
+            elif spec.mode == "prefix":
+                condition = f"element ILIKE {self.bind_parameter(f'{value}%')}"
+            else:
+                condition = f"element = {self.bind_parameter(value)}"
+            self.clauses.append(f"EXISTS (SELECT 1 FROM {element_cells} AS element WHERE {condition})")
 
     def set_horizon(self, column: str, cutoff: date) -> None:
         """Hide rows stamped on or after a cutoff.

@@ -1,10 +1,9 @@
 """Context-window arithmetic for the gauge.
 
-The window is shared between the prompt and the completion, so the room left for
-conversation history is the window less the fixed prompt overhead less space for
-the model to reply. Reasoning tokens count against the completion and measured
-around 75% of it on this model, so the reserve is sized for thinking rather than
-for the visible text.
+The gauge measures what the next model call sends against the whole window: the
+fixed prompt and tools plus the stored history. On that scale summarisation fires
+at exactly the 80% it is configured for, and the 20% above it is the room left for
+the reply.
 
 Imports nothing from chainlit, so the gauge is testable without a web server.
 """
@@ -19,19 +18,12 @@ import tiktoken
 from langchain_core.messages import BaseMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
+from ai_platform.backend.matching import match_orders
 from ai_platform.backend.prompts import AGENT_SYSTEM
 from ai_platform.backend.tools import ask_user, search_orders_and_tonnage
 
 CONTEXT_WINDOW = 131_072
 """Published limit for ``openai/gpt-oss-120b``, shared by prompt and completion."""
-
-COMPLETION_RESERVE = 2_000
-"""Space held back so the model can always reply.
-
-Sized for reasoning, not for the answer. The visible reply is short, but the
-thinking that precedes it ran four to five times longer in testing and occupies
-the same window.
-"""
 
 _ENCODING = tiktoken.get_encoding("o200k_harmony")
 """The tokeniser ``gpt-oss-120b`` actually uses."""
@@ -62,9 +54,9 @@ def count_tokens(text: str) -> int:
     return len(_ENCODING.encode(text, disallowed_special=()))
 
 
-_SEED_OVERHEAD = count_tokens(AGENT_SYSTEM) + sum(
+PROMPT_TOKENS = count_tokens(AGENT_SYSTEM) + sum(
     count_tokens(json.dumps(convert_to_openai_tool(tool)))
-    for tool in (search_orders_and_tonnage, ask_user)
+    for tool in (search_orders_and_tonnage, match_orders, ask_user)
 )
 """Fixed cost of a model call before any history.
 
@@ -78,12 +70,6 @@ against a true 2,996 for the search tool. The conversion already carries the
 docstring as ``description``, so that must not be added again.
 """
 
-USABLE_TOKENS = CONTEXT_WINDOW - _SEED_OVERHEAD - COMPLETION_RESERVE
-"""Space available to conversation history.
-
-Overhead and reserve are already deducted, so a new conversation reads exactly
-zero rather than starting part-full.
-"""
 
 
 def content_text(content: Any) -> str:
