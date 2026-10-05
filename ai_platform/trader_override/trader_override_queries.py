@@ -46,35 +46,20 @@ def _parse_date(value: str | None) -> date | None:
     """
     return date.fromisoformat(value) if value else None
 
-OverrideStatus = Literal[
-    "AVAILABLE",
-    "ON SUBS",
-    "FIXED",
-    "FAILED",
-    "CANCELLED",
-    "POSS FIXED",
-    "PROGRAM",
-    "CONTRACT",
-    "RELET",
-    "BALLAST FIXED",
-    "DO NOT COUNT",
-    "WATCHLIST",
-]
+OverrideStatus = Literal["ON SUBS", "FIXED", "OPEN"]
 
-OVERRIDE_STATUSES: tuple[OverrideStatus, ...] = (
-    "AVAILABLE",
-    "ON SUBS",
-    "FIXED",
-    "FAILED",
-    "CANCELLED",
-    "POSS FIXED",
-    "PROGRAM",
-    "CONTRACT",
-    "RELET",
-    "BALLAST FIXED",
-    "DO NOT COUNT",
-    "WATCHLIST",
-)
+# The three statuses a vessel can have on the Dashboard. The override form
+# used to accept twelve (AVAILABLE, FAILED, CANCELLED, POSS FIXED, PROGRAM,
+# CONTRACT, RELET, BALLAST FIXED, DO NOT COUNT, WATCHLIST ...), but only
+# FIXED and ON SUBS are recognised by vessel_current_status -- everything
+# else fell through to OPEN. So a trader choosing "DO NOT COUNT" saw the
+# vessel counted as available supply, and the form's own "AVAILABLE" wrote a
+# value that appears nowhere else in the data. Narrowed to the statuses the
+# dashboard and the chat agent actually distinguish. OPEN is written as the
+# literal string rather than NULL: every reader tests for 'FIXED' / 'ON SUBS'
+# explicitly and treats anything else as OPEN, so the two are equivalent, and
+# a stored 'OPEN' keeps the Current Record table legible.
+OVERRIDE_STATUSES: tuple[OverrideStatus, ...] = ("ON SUBS", "FIXED", "OPEN")
 
 
 def vessels_sql() -> tuple[str, list]:
@@ -275,12 +260,11 @@ def override_tonnage_row_sql(
         :func:`vessel_exists_sql`. Also checked against the base row itself
         so a stale/mismatched key can never edit a different vessel.
     commercial_status : OverrideStatus
-        One of the 12 values in :data:`OVERRIDE_STATUSES`, already
+        One of the three values in :data:`OVERRIDE_STATUSES`, already
         validated by the API layer's Pydantic model before this is called.
-        Only ``FIXED``/``ON SUBS`` are recognised by
-        ``vessel_current_status``'s booking-window logic -- every other
-        value is still written here, but reads as OPEN on the Dashboard
-        tab.
+        ``FIXED``/``ON SUBS`` are what ``vessel_current_status``'s
+        booking-window logic recognises; ``OPEN`` is written as-is and reads
+        the same as an unfixed (NULL) row.
     open_area, open_date_start, open_date_end, order_assignment : optional
         The rest of what a trader might have fresh word on -- all
         optional, since a trader may only have new word on the status, not

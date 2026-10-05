@@ -470,9 +470,11 @@
       }
       /* Audit Trail status coloring -- distinct from the Dashboard tab's
          OPEN/ON SUBS/FIXED badges (.badge-open/-watchlist/-fixed above),
-         since this covers all 12 raw override_status values a trader can
+         since this covers the raw override_status values a trader can
          submit (OVERRIDE_STATUSES in trader_override_queries.py), not the
-         4-way derived dashboard_status. Default (no modifier) stays the
+         4-way derived dashboard_status. Rows logged before the list was
+         narrowed to ON SUBS / FIXED / OPEN can still carry the old values
+         (e.g. AVAILABLE) and simply render with the neutral badge. Default (no modifier) stays the
          neutral card/border look for statuses that are neither good nor
          bad news for the vessel's tonnage. */
       #auditTable thead th, #orderAuditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
@@ -2426,7 +2428,7 @@
       });
 
       // ---- trader status override ------------------------------------------
-      const OVERRIDE_STATUSES = ["AVAILABLE", "ON SUBS", "FIXED"];
+      const OVERRIDE_STATUSES = ["ON SUBS", "FIXED", "OPEN"]; // keep in step with trader_override_queries.py
 
       // Open date start/end are bounded against the trader's real calendar
       // today, not the Dashboard's simulated clock -- toSimulatedDate() only
@@ -2851,22 +2853,14 @@
         }
       }
 
-      // Maps every OVERRIDE_STATUSES value (trader_override_queries.py) to
-      // a badge color: red for statuses that mean the tonnage is off the
-      // market or the deal fell through, green for statuses that mean it's
-      // successfully booked/secured, amber for genuinely uncertain ones,
-      // and the plain neutral badge (no class) for the rest.
+      // Maps an audit row's override_status to a badge color: green for the
+      // two that take the vessel off the market, neutral (no class) for
+      // OPEN. Audit rows written before OVERRIDE_STATUSES was narrowed to
+      // ON SUBS / FIXED / OPEN can carry other values; those fall through
+      // to the neutral badge rather than being dropped or miscolored.
       const AUDIT_STATUS_CLASS = {
         FIXED: "badge-good",
         "ON SUBS": "badge-good",
-        CONTRACT: "badge-good",
-        "BALLAST FIXED": "badge-good",
-        FAILED: "badge-bad",
-        CANCELLED: "badge-bad",
-        "DO NOT COUNT": "badge-bad",
-        "POSS FIXED": "badge-caution",
-        WATCHLIST: "badge-caution",
-        RELET: "badge-caution",
       };
 
       function auditStatusBadge(status) {
