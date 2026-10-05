@@ -47,11 +47,16 @@
 -- order_test has 1,949 rows -- both supersets of the previous source's
 -- 11,105/1,037 and 1,864. commercial_status, parent_zone's comma-space
 -- delimiter, and "East Coast South America" as the exact live ECSA zone
--- label all carried over unchanged (same underlying broker data). The two
--- previously-open policy questions are now confirmed by the sponsor:
--- staleness is a 5-day-past-open_date_end rule (not a 48h/update_date
--- rule), and ON SUBS does occupy the vessel for its window the same way a
--- firm fixture does -- see vessel_current_status below for both.
+-- label all carried over unchanged (same underlying broker data).
+--
+-- Two status rules are settled, both implemented in vessel_current_status
+-- below. Staleness is measured from the vessel's last report: one not heard
+-- from (update_date) in the last 5 days reads LIKELY FIXED. It is NOT
+-- measured from the booking window's open_date_end, which an earlier
+-- revision of this file did. That test runs before any window containment,
+-- so an old row whose window happens to cover today cannot keep a silent
+-- vessel reading FIXED or OPEN. And ON SUBS occupies the vessel for its
+-- window the same way a firm fixture does, kept under its own label.
 --
 -- "Now" is simulated, not real: every staleness/freshness computation below
 -- is measured against tonnage_reference_now() / orders_reference_now()
@@ -198,17 +203,18 @@ first_seen AS (
 -- timestamp) fall back to preferring FIXED, then ON SUBS, purely for a
 -- deterministic result -- not expected to matter in practice.
 --
--- Revised again after further sponsor consultation: OPEN used to be the
--- unconditional default whenever nothing said FIXED/ON SUBS -- including
--- a vessel with NO row covering today at all. That's no longer assumed
--- to hold forever. A vessel with no covering row is now only kept as
--- OPEN if it's still been heard from recently (updated within the last 5
--- days); past that silence it's reclassified LIKELY FIXED -- a distinct
--- status, not folded into FIXED, so a trader can tell a confirmed
--- fixture from an inferred one. This is also what replaces the old
--- separate is_stale flag: a vessel whose latest row's open_date_end
--- lapsed 5+ days ago reads as LIKELY FIXED here rather than carrying a
--- second, overlapping "stale" signal alongside its status.
+-- Revised again: OPEN used to be the unconditional default whenever
+-- nothing said FIXED/ON SUBS -- including a vessel with NO row covering
+-- today at all. That's no longer assumed to hold forever. A vessel is only
+-- kept as OPEN, or FIXED/ON SUBS, if it has been heard from recently
+-- (its latest report is within the last 5 days); past that silence it's
+-- reclassified LIKELY FIXED -- a distinct status, not folded into FIXED, so
+-- a trader can tell a confirmed fixture from an inferred one. The test
+-- applies to every vessel, covered by a row or not (see the dashboard_status
+-- CASE below, where it comes first). This is also what replaces the old
+-- separate is_stale flag: a vessel silent for 5+ days reads as LIKELY FIXED
+-- here rather than carrying a second, overlapping "stale" signal alongside
+-- its status.
 --
 -- Bug fix, found live: the containment check used to be plain
 -- `tonnage_reference_now() BETWEEN open_date_start AND open_date_end`.
