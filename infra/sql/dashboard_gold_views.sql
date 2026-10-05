@@ -486,11 +486,25 @@ WHERE v.parent_zone = 'East Coast South America'   -- [VERIFY AGAINST LIVE DATA]
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE VIEW regional_supply_demand AS
 WITH supply AS (
-  SELECT trim(zone) AS region, COUNT(*) AS supply_count
-  FROM vessel_current_status,
-       LATERAL unnest(parent_zones) AS zone
+  -- Each open vessel is counted ONCE, in the first zone it lists. It used to
+  -- be counted in every zone it listed (LATERAL unnest), so the regions'
+  -- supply summed to more than the number of open vessels and disagreed with
+  -- the Open tile: 47 against 46 when this was changed, the difference being
+  -- one vessel listed under "South Africa, East Coast South America".
+  -- parent_zone is written most-relevant-first rather than alphabetically
+  -- (only 18 of its 33 distinct multi-zone lists are in alphabetical order),
+  -- so the first entry is used as the vessel's home region. If that
+  -- assumption is wrong, this is the one place to change.
+  --
+  -- Demand below is deliberately still counted per zone: an order spanning
+  -- two load zones is cargo that can load in either, and only 3 of the
+  -- orders in the window do. The tracker's region filter also still matches
+  -- a vessel on ANY zone it lists, so clicking a bubble can list one more
+  -- vessel than the bubble counts for a multi-zone vessel.
+  SELECT trim(parent_zones[1]) AS region, COUNT(*) AS supply_count
+  FROM vessel_current_status
   WHERE dashboard_status = 'OPEN'
-    AND trim(zone) <> ''
+    AND trim(parent_zones[1]) <> ''
   GROUP BY 1
 ),
 demand AS (
@@ -624,10 +638,12 @@ persistence_open AS (
      OR c.commercial_status NOT IN ('FIXED', 'ON SUBS')   -- same containment test as dashboard_status; the 5-day silence rule is applied in persistence_recent above
 ),
 persistence AS (
-  SELECT trim(zone) AS region, COUNT(DISTINCT ref)::int AS days_with_supply
-  FROM persistence_open,
-       LATERAL regexp_split_to_table(trim(COALESCE(parent_zone, '')), '\s*,\s*') AS zone
-  WHERE trim(zone) <> ''
+  -- Same first-zone rule as `supply` above, so a region's consistency figure
+  -- describes the same vessels its supply count does.
+  SELECT trim((regexp_split_to_array(trim(COALESCE(parent_zone, '')), '\s*,\s*'))[1]) AS region,
+         COUNT(DISTINCT ref)::int AS days_with_supply
+  FROM persistence_open
+  WHERE trim((regexp_split_to_array(trim(COALESCE(parent_zone, '')), '\s*,\s*'))[1]) <> ''
   GROUP BY 1
 )
 SELECT
