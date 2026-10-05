@@ -85,8 +85,8 @@ async def search_orders_and_tonnage(**request: Any) -> dict[str, Any]:
     Set ``cargoes`` to search orders, ``vessels`` to search tonnage, or both when
     the question needs both — they run concurrently, so asking for both costs one
     round trip rather than two. Call this a second time only when the second
-    search depends on what the first returned, such as sizing vessels against the
-    cargoes you just found.
+    search depends on what the first returned. To find vessels for orders, use
+    match_orders instead.
 
     Read the rows before answering. If they do not match what was asked for — a
     load port you did not name, a region on the wrong continent — the search

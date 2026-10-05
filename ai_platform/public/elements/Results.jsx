@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const PAGE_SIZE = 12;
 const SELECTION_CAP = 25;
-const MATCH_CAP = 5;
 const PAGE_WINDOW = 2;
 const BLANK = "(blank)";
 const EXPORT_URL = "/api/export/xlsx";
@@ -254,7 +253,7 @@ function Table({ columns, rows, noun }) {
 
   const findVessels = () => {
     const chosen = [...selected].sort((x, y) => x - y).map((index) => rows[index]);
-    if (!chosen.length || chosen.length > MATCH_CAP) return;
+    if (!chosen.length || chosen.length > SELECTION_CAP) return;
     const ask = chosen.length === 1
       ? "Find all open vessels that can carry this order"
       : "Find all open vessels that can carry these orders";
@@ -394,7 +393,7 @@ ${toMarkdown(columns, chosen)}`);
         .oi-t-sendmenu {
           position: absolute;
           right: 0;
-          bottom: calc(100% + 0.35rem);
+          top: calc(100% + 0.35rem);
           z-index: 60;
           width: 16rem;
           display: flex;
@@ -558,6 +557,7 @@ ${toMarkdown(columns, chosen)}`);
         .oi-t-tabwrap { display: flex; flex-direction: column; gap: 0.6rem; }
         .oi-t-tabs {
           display: flex;
+          flex-wrap: wrap;
           gap: 0.2rem;
           border-bottom: 1px solid hsl(var(--border));
         }
@@ -745,13 +745,13 @@ ${toMarkdown(columns, chosen)}`);
                 <button
                   role="menuitem"
                   className="oi-t-sendopt"
-                  disabled={selected.size > MATCH_CAP}
+                  disabled={overCap}
                   onClick={() => { setSendMenuOpen(false); findVessels(); }}
                 >
                   <span className="oi-t-sendopt-label">Find open vessels</span>
                   <span className="oi-t-sendopt-desc">
-                    {selected.size > MATCH_CAP
-                      ? `Select ${MATCH_CAP} or fewer`
+                    {overCap
+                      ? `Select ${SELECTION_CAP} or fewer`
                       : "Sends now: open vessels that can carry these orders"}
                   </span>
                 </button>
@@ -835,16 +835,16 @@ export default function Results() {
         <div className="oi-t-tabs">
           {sets.map((set, at) => (
             <button
-              key={set.noun}
+              key={set.label ?? set.noun}
               className={at === tab ? "oi-t-tab oi-t-tab-on" : "oi-t-tab"}
               onClick={() => setTab(at)}
             >
-              {set.noun} ({set.rows.length})
+              {set.label ?? set.noun} ({set.rows.length})
             </button>
           ))}
         </div>
       )}
-      <Table key={active.noun} {...active} />
+      <Table key={active.label ?? active.noun} {...active} />
     </div>
   );
 }

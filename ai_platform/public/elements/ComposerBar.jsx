@@ -176,8 +176,8 @@ export default function ComposerBar() {
           <div
             className="oi-gauge"
             title={
-              `Conversation using ${used.toLocaleString()} of ` +
-              `${usable.toLocaleString()} usable tokens. ` +
+              `Next call sends ${used.toLocaleString()} of the model's ` +
+              `${usable.toLocaleString()}-token window; older history is summarised at 80%. ` +
               `Last question cost ${spent.toLocaleString()}.` +
               (box.anchored ? "" : " Not anchored: no #message-composer found.")
             }
