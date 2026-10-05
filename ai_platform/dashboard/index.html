@@ -533,7 +533,6 @@
     <nav class="tabs">
       <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
       <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
-      <button type="button" class="tab-btn" data-tab="overrides">Trader Overrides</button>
     </nav>
 
     <div id="tab-chat" class="tab-panel">
@@ -1043,6 +1042,11 @@
           document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
           btn.classList.add("active");
           document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
+          // <main> starts hidden because Chat is the default tab, and it holds
+          // the dashboard and both override panels -- so every tab except Chat
+          // needs it shown. Without this a click on Dashboard marks the panel
+          // visible inside a <main> that is still display:none: a blank page.
+          document.querySelector("main").classList.toggle("hidden", btn.dataset.tab === "chat");
           document.querySelector("main").classList.toggle(
             "wide", btn.dataset.tab === "tonnage-overrides" || btn.dataset.tab === "order-overrides"
           );
