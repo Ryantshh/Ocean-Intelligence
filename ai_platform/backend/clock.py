@@ -7,7 +7,12 @@ module is what keeps the dependency acyclic.
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, date, datetime
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DATA_LAG_YEARS = 1
 """How many calendar years the working date is set back from the wall clock.
@@ -19,6 +24,38 @@ which use ``now() - interval '1 year'``. Remove once the pipeline feeds live
 positions.
 """
 
+WORKING_DATE_OVERRIDE = "OI_WORKING_DATE"
+"""Environment variable that pins the working date, as ``YYYY-MM-DD``, for testing.
+
+Read once, when the table module is imported, so the app must be restarted after
+changing it. Applies to the chat agent and, through ``db``, the dashboard's
+database clock.
+"""
+
+
+def overridden_working_date() -> date | None:
+    """Return the pinned working date, when one is set.
+
+    Returns
+    -------
+    date or None
+        The date in ``OI_WORKING_DATE``, or None when the variable is unset or blank.
+
+    Raises
+    ------
+    RuntimeError
+        If the variable is set to something that is not an ISO date.
+    """
+    raw = os.environ.get(WORKING_DATE_OVERRIDE, "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as error:
+        raise RuntimeError(
+            f"{WORKING_DATE_OVERRIDE} must be a date as YYYY-MM-DD, got {raw!r}"
+        ) from error
+
 
 def working_date() -> date:
     """Return the date relative dates are resolved against.
@@ -26,10 +63,14 @@ def working_date() -> date:
     Returns
     -------
     date
-        Today in UTC, shifted back by ``DATA_LAG_YEARS``. A 29 February lands on
-        28 February, as Postgres does. Update dates are stored in UTC, so the
-        working date follows them rather than the server clock.
+        The pinned date when ``OI_WORKING_DATE`` is set. Otherwise today in UTC,
+        shifted back by ``DATA_LAG_YEARS``; a 29 February lands on 28 February, as
+        Postgres does. Update dates are stored in UTC, so the working date follows
+        them rather than the server clock.
     """
+    pinned = overridden_working_date()
+    if pinned is not None:
+        return pinned
     today = datetime.now(UTC).date()
     target_year = today.year - DATA_LAG_YEARS
     is_leap_day = today.month == 2 and today.day == 29

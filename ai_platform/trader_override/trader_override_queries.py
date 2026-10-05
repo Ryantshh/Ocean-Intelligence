@@ -251,7 +251,10 @@ def override_tonnage_row_sql(
     excludes any row dated on or after it outright -- a row stamped with
     the real ``now()`` would never appear on the Dashboard tab at all. Keep
     this expression in sync with ``tonnage_reference_now()`` by hand if
-    that convention ever changes. ``first_date_received`` is carried over
+    that convention ever changes. When ``OI_WORKING_DATE`` is pinned (the
+    ``oi.working_date`` setting ``fetch_rows`` sets), the stamp is the pinned
+    date at the current time of day instead, which stays before the pinned "now"
+    (that day's last instant); a year-old stamp would read as stale. ``first_date_received`` is carried over
     from the base row unchanged -- it's still the same position, first
     reported whenever it originally was; only ``update_date`` reflects this
     edit.
@@ -318,7 +321,12 @@ def override_tonnage_row_sql(
             "  parent_zone_embedding, open_area_embedding, embedding_source_hash, gold_loaded_at"
             ") "
             "SELECT"
-            "  $3, base.vessel_id, now() - interval '1 year', $4,"
+            "  $3, base.vessel_id,"
+            "  COALESCE("
+            "    NULLIF(current_setting('oi.working_date', true), '')::date + localtime,"
+            "    (now() - interval '1 year')::timestamp"
+            "  ),"
+            "  $4,"
             "  COALESCE($5, base.open_area),"
             "  COALESCE($6::timestamp, base.open_date_start),"
             "  COALESCE($7::timestamp, base.open_date_end),"

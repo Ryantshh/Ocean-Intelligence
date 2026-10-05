@@ -22,8 +22,9 @@ report received later is the newer information.
 
 Tonnage reads ``commercial_status`` through ``STATUS_EXPRESSION`` in both the
 select list and the status filter, so a vessel has exactly three statuses: FIXED,
-ON SUBS and OPEN. A null means unfixed, which is 79% of the fleet, and any value
-outside the first two reads as OPEN.
+ON SUBS and OPEN, describing today. A fixture whose window has not started or has
+already ended reads OPEN, as does a null, which is 79% of the fleet, and any value
+outside the first two.
 """
 
 from __future__ import annotations
@@ -38,8 +39,24 @@ from pydantic import BaseModel, ConfigDict, Field
 from ai_platform.backend.clock import working_date
 from ai_platform.backend.sql import EqualitySpec, MatchSpec, RangeSpec, StatementBuilder
 
-STATUS_EXPRESSION = "CASE WHEN {column} IN ('FIXED', 'ON SUBS') THEN {column} ELSE 'OPEN' END"
-"""Folds ``commercial_status`` to the three values a vessel can have."""
+_REFERENCE_NOW = "tonnage_reference_now()"
+
+STATUS_EXPRESSION = (
+    "CASE WHEN {column} IN ('FIXED', 'ON SUBS') "
+    f'AND "open_date_start" <= {_REFERENCE_NOW} '
+    f"AND \"open_date_end\" + interval '1 day' > {_REFERENCE_NOW} "
+    "THEN {column} ELSE 'OPEN' END"
+)
+"""Folds ``commercial_status`` to the three values a vessel can have, as of today.
+
+A fixture counts only while its open window covers now: the dashboard's
+``tonnage_reference_now()`` from ``infra/sql/dashboard_gold_views.sql``, which
+follows ``OI_WORKING_DATE`` through ``fetch_rows``. The extra day makes a window
+stored at midnight cover its whole last day.
+"""
+
+ORDER_ID_AS_TEXT = '"order_id"::text'
+"""Selects ``order_id`` as text: 18-digit ids lose their last digits in a browser's JSON."""
 
 
 class OrderSearch(BaseModel):
@@ -53,11 +70,14 @@ class OrderSearch(BaseModel):
     Unknown fields are rejected rather than dropped. Pydantic ignores extras by
     default, which would silently discard a vessel field aimed at this table and
     return unfiltered rows that look like an answer.
+
+    ``order_ids`` are strings: Groq rounds an integer tool argument to a double,
+    which corrupts the last digits of an 18-digit id.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    order_ids: list[int] | None = Field(
+    order_ids: list[str] | None = Field(
         default=None, description="exact order numbers, when quoted"
     )
     laycan_start_from: date | None = Field(
@@ -97,13 +117,21 @@ class OrderSearch(BaseModel):
     cargo_description: str | None = Field(
         default=None, description="free-text wording from the enquiry, the one field searched by meaning"
     )
-    load_port: str | None = Field(default=None, description="load port from the port list, stored spelling")
-    load_zone: str | None = Field(default=None, description="load zone from the zone list, stored spelling")
-    discharge_port: str | None = Field(
-        default=None, description="discharge port from the port list, stored spelling"
+    load_port: list[str] | None = Field(
+        default=None,
+        description="one or more load ports from the port list, stored spelling; an enquiry at any of them matches",
     )
-    discharge_parent_zone: str | None = Field(
-        default=None, description="discharge zone from the zone list, stored spelling"
+    load_zone: list[str] | None = Field(
+        default=None,
+        description="one or more load zones from the zone list, stored spelling; an enquiry in any of them matches",
+    )
+    discharge_port: list[str] | None = Field(
+        default=None,
+        description="one or more discharge ports from the port list, stored spelling; any of them matches",
+    )
+    discharge_parent_zone: list[str] | None = Field(
+        default=None,
+        description="one or more discharge zones from the zone list, stored spelling; any of them matches",
     )
 
 
@@ -171,11 +199,13 @@ class VesselSearch(BaseModel):
     vessel_status: str | None = Field(
         default=None, description="navigational status from the status list, stored spelling"
     )
-    parent_zone: str | None = Field(
-        default=None, description="zone from the zone list, stored spelling"
+    parent_zone: list[str] | None = Field(
+        default=None,
+        description="one or more zones from the zone list, stored spelling; a vessel in any of them matches",
     )
-    open_area: str | None = Field(
-        default=None, description="open port or area from the port list, stored spelling"
+    open_area: list[str] | None = Field(
+        default=None,
+        description="one or more open ports or areas from the port list, stored spelling; a vessel at any of them matches",
     )
 
 
@@ -283,7 +313,7 @@ class TableSpec:
         if identifiers:
             column = self.id_field.removesuffix("s")
             builder.clauses.append(
-                f"{column} = ANY({builder.bind_parameter(identifiers)})"
+                f"{column}::text = ANY({builder.bind_parameter(identifiers)})"
             )
         builder.add_ranges(filters, self.ranges)
         builder.add_equalities(filters, self.equalities)
@@ -315,13 +345,14 @@ ORDERS = TableSpec(
         "cargo_description",
     ),
     display_noun="cargoes",
+    column_expressions={"order_id": ORDER_ID_AS_TEXT},
     semantic_columns=("cargo_description",),
     matches=(
-        MatchSpec("load_zone", "load_zone", "exact"),
-        MatchSpec("discharge_parent_zone", "discharge_parent_zone", "exact"),
+        MatchSpec("load_zone", "load_zone", "any"),
+        MatchSpec("discharge_parent_zone", "discharge_parent_zone", "any"),
         MatchSpec("cargo_type", "cargo_type", "prefix"),
-        MatchSpec("load_port", "load_port", "contains"),
-        MatchSpec("discharge_port", "discharge_port", "contains"),
+        MatchSpec("load_port", "load_port", "contains_any"),
+        MatchSpec("discharge_port", "discharge_port", "contains_any"),
     ),
     ranges=(
         RangeSpec("laycan_start_from", "laycan_start", ">="),
@@ -363,13 +394,14 @@ TONNAGE = TableSpec(
     ),
     display_noun="vessels",
     column_expressions={
-        "commercial_status": STATUS_EXPRESSION.format(column='"commercial_status"')
+        "commercial_status": STATUS_EXPRESSION.format(column='"commercial_status"'),
+        "order_id": ORDER_ID_AS_TEXT,
     },
     semantic_columns=(),
     matches=(
-        MatchSpec("parent_zone", "parent_zone", "exact"),
+        MatchSpec("parent_zone", "parent_zone", "any"),
         MatchSpec("vessel_status", "vessel_status", "exact"),
-        MatchSpec("open_area", "open_area", "contains"),
+        MatchSpec("open_area", "open_area", "contains_any"),
     ),
     ranges=(
         RangeSpec("open_start_from", "open_date_start", ">="),

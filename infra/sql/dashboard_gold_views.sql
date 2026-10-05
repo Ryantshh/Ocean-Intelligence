@@ -85,13 +85,20 @@
 -- can diverge again later without every caller changing) and both float
 -- forward with the real clock -- one year behind today, always -- so
 -- nothing here needs a manual date bump as real time passes.
+-- The app pins both to the last instant of OI_WORKING_DATE when that env
+-- var is set, by writing it to the oi.working_date setting, so the whole
+-- pinned day counts as today.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION tonnage_reference_now() RETURNS timestamptz AS $$
-  SELECT now() - interval '1 year'
+  SELECT COALESCE((NULLIF(current_setting('oi.working_date', true), '')::date + 1)::timestamptz
+                    - interval '1 microsecond',
+                  now() - interval '1 year')
 $$ LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION orders_reference_now() RETURNS timestamptz AS $$
-  SELECT now() - interval '1 year'
+  SELECT COALESCE((NULLIF(current_setting('oi.working_date', true), '')::date + 1)::timestamptz
+                    - interval '1 microsecond',
+                  now() - interval '1 year')
 $$ LANGUAGE sql STABLE;
 
 -- vessel_current_status and vessel_status_history both get rebuilt with a
@@ -234,6 +241,24 @@ active_bookings AS (
     AND (update_date IS NULL OR update_date < tonnage_reference_now())
     AND tonnage_reference_now() >= open_date_start
     AND tonnage_reference_now() < open_date_end + interval '1 day'
+    -- The covering row must itself be recent, not merely cover today.
+    -- dashboard_status already refuses to trust a vessel nobody has spoken
+    -- about in 5 days; without this the same silence was tolerated in the
+    -- row that actually supplies the status, so a vessel heard from
+    -- yesterday could read FIXED off a report filed six weeks ago. The
+    -- worked case: a August row declaring a fixture for 24-26 September,
+    -- never superseded because every later report covers other dates,
+    -- still asserting a fixture today on the strength of nothing said
+    -- since. Measured at 16 of 211 FIXED/ON SUBS vessel-days (7.6%) over a
+    -- 60-day replay. A row with a null update_date fails this test rather
+    -- than passing it -- unknown is not recent.
+    --
+    -- Such a vessel falls through to OPEN, which is the defensible answer:
+    -- it was heard from recently, and its recent reports evidently say
+    -- nothing about today. That also agrees with what the chat agent
+    -- returns for the same vessel, since its DISTINCT ON keeps only the
+    -- newest row and never sees the old covering one at all.
+    AND update_date >= tonnage_reference_now() - interval '5 days'
   ORDER BY vessel_id, update_date DESC NULLS LAST, (commercial_status = 'FIXED') DESC, (commercial_status = 'ON SUBS') DESC
 )
 SELECT
@@ -256,14 +281,32 @@ SELECT
   r.update_date,
   r.vessel_status                            AS ais_status,     -- navigational (Under way/Anchored/Moored) -- NOT trading status, do not wire into the Fixed/Open/On Subs badge
   r.commercial_status                        AS raw_commercial_status,   -- what the LATEST report says, for reference/debugging only -- can legitimately disagree with dashboard_status below (e.g. latest report says FIXED but a still-more-recent row's window has since overridden it for today, so dashboard_status reads something else)
+  -- Staleness is tested FIRST, before any containment branch. Ordering is
+  -- load-bearing, not cosmetic: a covering row used to win outright, so a
+  -- months-old report carrying a window that happens to bracket today kept
+  -- a vessel reading FIXED/OPEN however long the silence had run -- the
+  -- 5-day rule could only ever fire for vessels no row covered at all.
+  -- Confirmed live: 30 vessels sat on the wrong side of that (28 reading
+  -- OPEN, 2 FIXED, all silent 5+ days, several over 30).
   CASE
-    WHEN ab.commercial_status = 'FIXED'   THEN 'FIXED'
-    WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'        -- confirmed by sponsor: on-subs occupies the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED
-    WHEN ab.vessel_id IS NOT NULL         THEN 'OPEN'           -- a row's window covers today with no fixture -- an explicit, current "open" declaration, regardless of recency
-    WHEN r.update_date IS NOT NULL AND r.update_date >= (tonnage_reference_now() - interval '5 days')
-                                           THEN 'OPEN'           -- no row covers today, but this vessel's still been heard from recently -- not yet silent long enough to assume otherwise
-    ELSE 'LIKELY FIXED'                                          -- no row covers today, and nothing's been heard from this vessel in 5+ days -- sponsor-confirmed: this long a silence is treated as probably fixed off-market, not still open indefinitely
+    WHEN r.update_date IS NULL
+      OR r.update_date < (tonnage_reference_now() - interval '5 days')
+                                           THEN 'LIKELY FIXED'   -- nothing heard in 5+ days -- sponsor-confirmed: this long a silence is treated as probably fixed off-market, whatever the last report's window still claims
+    WHEN ab.commercial_status = 'FIXED'   THEN 'FIXED'           -- a row whose window covers today says fixed -- i.e. under a fixture right now, not merely reported fixed at some point
+    WHEN ab.commercial_status = 'ON SUBS' THEN 'ON SUBS'         -- confirmed by sponsor: on-subs occupies the vessel for that window the same way a firm fixture does, kept under its own raw label rather than merged into FIXED
+    ELSE 'OPEN'                                                  -- heard from recently and nothing covering today claims a fixture, whether that's a covering row with no fixture or (far more often) no covering row at all
   END                                        AS dashboard_status,
+  -- Tells "presumed open" (heard from recently, but no row's window covers
+  -- today) apart from "a row currently says open". Most OPEN vessels are
+  -- the former -- confirmed live at 83 of 95 -- so containment decides far
+  -- less here than the CASE above suggests. No caller reads this today;
+  -- it is kept because it is already deployed and because re-deriving this
+  -- date-containment logic elsewhere is what produced the active_bookings
+  -- containment bug fixed earlier in this file.
+  (ab.vessel_id IS NULL
+   AND r.update_date IS NOT NULL
+   AND r.update_date >= (tonnage_reference_now() - interval '5 days'))
+                                              AS open_via_recency_fallback,
   tonnage_reference_now() - r.update_date     AS age_since_update,
   (r.open_date_end IS NOT NULL AND r.open_date_end < tonnage_reference_now())  AS open_window_lapsed,
   fs.first_seen_date                         AS first_date_received  -- the vessel's true earliest-ever report, see first_seen above, not the latest row's own value
@@ -448,17 +491,148 @@ demand AS (
   SELECT trim(zone) AS region, COUNT(*) AS demand_count
   FROM public.order_test,
        LATERAL regexp_split_to_table(trim(COALESCE(load_zone, '')), '\s*,\s*') AS zone
-  WHERE date_received > orders_reference_now() - interval '90 days'   -- confirmed by product spec ("Date Received -- windows demand to trailing 90 days"); no longer a placeholder
+  -- 14 days, matching the Daily Trends panel beside this one on the page,
+  -- so the two halves of Market Summary are on the same clock.
+  --
+  -- This was 90 days, carrying a comment attributing that figure to the
+  -- product spec. That attribution could not be substantiated: the value and
+  -- the comment asserting it was confirmed entered the repository in a single
+  -- commit, no spec document exists anywhere in the tree, and the "earlier
+  -- 7-day guess" the README describes as having been replaced never existed
+  -- in this file at all. Changed on Owen's instruction.
+  --
+  -- Known cost, measured before the change: demand falls from 431 counted
+  -- orders to 56, and the regions carrying no order data at all rise from 2
+  -- to 11 of 27. Roughly half the map's verdicts move, and the three largest
+  -- regions by supply (East Coast South America, South Africa, South East
+  -- Asia) invert from Tight to Oversupplied. The verdict also becomes far
+  -- more volatile -- replaying 60 days, region colours change 48 times on a
+  -- 14-day window against 6 on a 90-day one -- because most regions hold only
+  -- a handful of orders in any fortnight, so one arriving can flip a colour.
+  --
+  -- None of that is fixed by the window length, because supply is a single
+  -- instant and demand is an accumulation however long it runs; the ratio
+  -- below compares the two regardless. See the open questions in README.
+  WHERE date_received > orders_reference_now() - interval '14 days'
     AND date_received < orders_reference_now()   -- excludes simulated-future orders outright, not just outside the trailing window
     AND trim(zone) <> ''
   GROUP BY 1
+),
+-- days_with_supply: on how many of the last 14 simulated days did this
+-- region have at least one OPEN vessel? Purely a confidence signal
+-- alongside `supply` -- it never feeds the bubble size or the
+-- tight/balanced/oversupplied verdict, both of which stay on today's
+-- snapshot so the map continues to reconcile with the status tiles, the
+-- vessel tracker and what the chatbot returns for the same question.
+--
+-- Why it earns its cost: `supply` is a single instant, and a region
+-- showing 3 open vessels every day for a fortnight is a materially
+-- different proposition from one that happened to have 3 today and none
+-- on the other thirteen. Confirmed live that this distinction is real and
+-- not hypothetical -- Far East, South Africa and East Coast South America
+-- each carry supply on 14 of 14 days, while West Australia manages 7 and
+-- Europe Atlantic Coast 5. It also answers the standing objection to a
+-- one-day snapshot: every region currently reading zero supply turns out
+-- to have had zero on all 14 days, so those blanks are structural rather
+-- than an artefact of the day this happened to be read.
+--
+-- This deliberately re-derives dashboard_status per day instead of
+-- reading vessel_current_status (which only ever describes *now*) or
+-- vessel_status_history (whose segments carry no staleness concept at
+-- all). Both the 5-day silence rule and the containment tie-break below
+-- are copied from vessel_current_status and MUST be kept in step with it;
+-- a divergence here shows up as a confidence figure that disagrees with
+-- the supply count sitting next to it.
+persistence_days AS (
+  SELECT generate_series(
+           date_trunc('day', tonnage_reference_now()) - interval '13 days',
+           date_trunc('day', tonnage_reference_now()),
+           interval '1 day'
+         ) + interval '12 hours' AS ref   -- midday, so a whole simulated day is represented by one instant inside it
+),
+-- Both sides below are pre-filtered before the 14-way day join rather than
+-- after it. Joining all of tonnage_test against 14 days first and filtering
+-- afterwards is correct but costs ~7.7s here -- far too slow for a view the
+-- dashboard blocks on -- because it materialises 14 x every row in the table
+-- before discarding almost all of them.
+--
+-- The newest-row side can safely ignore anything older than (14 + 5) days:
+-- a vessel only counts as OPEN on day D if its newest row as of D is within
+-- 5 days of D, and the earliest D considered is 13 days back, so no row
+-- older than 18 days can ever satisfy that test. Dropping such a vessel
+-- entirely is the same outcome as keeping it and failing it on staleness.
+-- One day of slack is added on top, purely so the boundary is not exact.
+persistence_recent AS (
+  SELECT d.ref, t.vessel_id, t.update_date, t.first_date_received, t.parent_zone
+  FROM persistence_days d
+  JOIN public.tonnage_test t
+    ON t.update_date < d.ref
+   AND t.update_date >= d.ref - interval '5 days'   -- the staleness rule itself, applied before the dedup rather than after
+),
+-- The trailing parent_zone sort is a determinism guard, not a preference.
+-- update_date + first_date_received do NOT uniquely identify a row: 93
+-- vessel-days inside this window resolve to a tie on both, and 17 of those
+-- ties disagree about parent_zone (e.g. VESSEL 0546 reported under both
+-- "Black Sea" and "West Africa" at the same instant). Without a final key,
+-- DISTINCT ON picks whichever tied row the planner happens to reach first,
+-- so the same query returns different regional counts run to run -- this
+-- was observed directly, as a 3-day swing in West Africa's and Black Sea's
+-- figures purely from re-ordering the input. Alphabetical is arbitrary but
+-- stable, which is the whole point.
+--
+-- Note that vessel_current_status's own `ranked` CTE has the identical
+-- ambiguity and no such guard, so `supply` can still flicker for these few
+-- vessels while days_with_supply stays put. Left alone deliberately: fixing
+-- it there moves a vessel between two regional counts on the tiles, which is
+-- a visible change to a shipped number and wants deciding on its own rather
+-- than riding along with this one.
+persistence_newest AS (
+  SELECT DISTINCT ON (ref, vessel_id) ref, vessel_id, update_date, parent_zone
+  FROM persistence_recent
+  ORDER BY ref, vessel_id, update_date DESC NULLS LAST, first_date_received DESC NULLS LAST, parent_zone
+),
+-- The covering side cannot be narrowed the same way: a fixture reported
+-- months ago can still cover a day inside the window, and missing one would
+-- wrongly count an occupied vessel as open. It is restricted only by what
+-- containment already implies -- a window that ended before the earliest day
+-- considered can never cover any of them.
+persistence_covering AS (
+  SELECT DISTINCT ON (d.ref, t.vessel_id) d.ref, t.vessel_id, t.commercial_status
+  FROM persistence_days d
+  JOIN public.tonnage_test t
+    ON t.open_date_start IS NOT NULL
+   AND t.open_date_end IS NOT NULL
+   AND (t.update_date IS NULL OR t.update_date < d.ref)
+   AND d.ref >= t.open_date_start
+   AND d.ref <  t.open_date_end + interval '1 day'
+  WHERE t.open_date_end >= date_trunc('day', tonnage_reference_now()) - interval '14 days'
+  ORDER BY d.ref, t.vessel_id, t.update_date DESC NULLS LAST,
+           (t.commercial_status = 'FIXED') DESC, (t.commercial_status = 'ON SUBS') DESC
+),
+persistence_open AS (
+  SELECT n.ref, n.vessel_id, n.parent_zone
+  FROM persistence_newest n
+  LEFT JOIN persistence_covering c
+    ON c.ref = n.ref AND c.vessel_id = n.vessel_id
+  WHERE c.commercial_status IS NULL
+     OR c.commercial_status NOT IN ('FIXED', 'ON SUBS')   -- same containment test as dashboard_status; the 5-day silence rule is applied in persistence_recent above
+),
+persistence AS (
+  SELECT trim(zone) AS region, COUNT(DISTINCT ref)::int AS days_with_supply
+  FROM persistence_open,
+       LATERAL regexp_split_to_table(trim(COALESCE(parent_zone, '')), '\s*,\s*') AS zone
+  WHERE trim(zone) <> ''
+  GROUP BY 1
 )
 SELECT
-  COALESCE(s.region, d.region) AS region,
-  COALESCE(s.supply_count, 0)  AS supply,
-  COALESCE(d.demand_count, 0)  AS demand
+  COALESCE(s.region, d.region)     AS region,
+  COALESCE(s.supply_count, 0)      AS supply,
+  COALESCE(d.demand_count, 0)      AS demand,
+  COALESCE(p.days_with_supply, 0)  AS days_with_supply,
+  14                               AS persistence_window_days   -- published rather than hard-coded in the UI, so the window lives in one place
 FROM supply s
 FULL OUTER JOIN demand d ON s.region = d.region
+LEFT JOIN persistence p ON p.region = COALESCE(s.region, d.region)
 ORDER BY 1;
 
 -- ---------------------------------------------------------------------

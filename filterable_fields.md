@@ -58,8 +58,10 @@ Not selected at all: `assigned` (100% null) and the pipeline columns `embedding_
 | `vessel_status` | `vessel_status` | exact, per element |
 | `open_area` | `open_area` | contains, per element |
 
-`commercial_status` is folded before it is compared or shown: FIXED and ON SUBS pass through,
-and anything else, including null, reads as OPEN.
+`commercial_status` is folded before it is compared or shown, and describes today: FIXED and
+ON SUBS pass through only while that report's open window covers the working date, checked
+with the dashboard's `tonnage_reference_now()`. A fixture whose window has not started or has
+ended, and anything else including null, reads as OPEN.
 
 Displayed but not filterable:
 
