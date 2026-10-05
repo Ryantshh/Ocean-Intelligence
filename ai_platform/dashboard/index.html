@@ -328,7 +328,9 @@
       /* ---- top-level tabs --------------------------------------------------
          Fixed in the empty middle of the chat's 60px header (Chainlit keeps its
          own controls at the left and right edges), so chat stays full screen.
-         The same bar sits above the Dashboard and Trader Overrides pages. */
+         One bar serves every page: Chat, Dashboard, Vessel Override, Order
+         Override. It must stay the only .tabs element -- it is position: fixed,
+         so a second one would be drawn on top of it rather than below. */
       .tabs {
         position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 30;
         height: 60px; display: flex; align-items: center; gap: 0.25rem;
@@ -533,6 +535,8 @@
     <nav class="tabs">
       <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
       <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
+      <button type="button" class="tab-btn" data-tab="tonnage-overrides">Vessel Override</button>
+      <button type="button" class="tab-btn" data-tab="order-overrides">Order Override</button>
     </nav>
 
     <div id="tab-chat" class="tab-panel">
@@ -546,12 +550,6 @@
         <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
-
-      <nav class="tabs">
-        <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage Status Override</button>
-        <button type="button" class="tab-btn" data-tab="order-overrides">Order Status Override</button>
-      </nav>
 
       <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
@@ -806,7 +804,7 @@
               but it's an order-side attribute surfaced on the vessel record, not
               something this tonnage form edits, so it's hidden here rather than
               shown as a plain, uneditable number. It isn't editable from the
-              Order Status Override tab either yet -- that tab only covers an
+              Order Override tab either yet -- that tab only covers an
               order's own laycan window for now.
             </p>
             <input
