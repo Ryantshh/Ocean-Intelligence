@@ -202,6 +202,20 @@
       .move-legend .swatch { display: inline-flex; align-items: center; gap: 0.3rem; }
       .move-legend .dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; }
       .move-legend .net { margin-left: auto; font-weight: 650; color: var(--fg); }
+      /* A vessel / order id that offers a shortcut to its override form: a
+         faint underline on hover, and one shared floating bubble (below). The
+         id itself is plain selectable text -- clicking it does nothing, so a
+         trader can still double-click to copy it. */
+      .rec-id { border-bottom: 1px dotted transparent; }
+      .rec-id:hover, .rec-id:focus-visible { border-bottom-color: var(--muted); outline: none; }
+      #recIdBubble { position: fixed; z-index: 80; display: none; }
+      #recIdBubble.visible { display: block; }
+      #recIdBubble button {
+        font: inherit; font-size: 0.75rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+        padding: 0.3rem 0.65rem; border-radius: 0.55rem; border: 1px solid var(--border);
+        background: var(--card); color: var(--fg); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+      }
+      #recIdBubble button:hover, #recIdBubble button:focus-visible { border-color: var(--accent); outline: none; }
       .drilldown-head { margin-top: 3rem; }
       .drilldown-head h2 { margin-bottom: 0.15rem; }
 
@@ -986,6 +1000,8 @@
       </div>
     </main>
 
+    <div id="recIdBubble" role="tooltip"><button type="button"></button></div>
+
     <div id="changeGroupModal" class="modal-overlay hidden">
       <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="changeGroupModalTitle">
         <div class="modal-head">
@@ -1724,10 +1740,142 @@
       let vesselsPage = 0;
       let vesselsTotal = 0;
 
+      // ---- jump from a record to its override form -------------------------
+      // Every vessel / order id shown in the Change Feed, the vessel tracker,
+      // the order tracker and the ECSA tracker is wrapped by idChip(). Hovering
+      // (or focusing) one shows a single shared bubble; clicking the bubble
+      // opens the matching override tab with that id already selected. One
+      // delegated set of listeners covers all of them, including rows that are
+      // re-rendered on every page change and the Change Feed's expanded modal.
+      const ID_KINDS = {
+        vessel: { tab: "tonnage-overrides", label: "Open in Vessel Override" },
+        order: { tab: "order-overrides", label: "Open in Order Override" },
+      };
+
+      function idChip(kind, id) {
+        const safe = escapeHtml(id);
+        return `<span class="rec-id" tabindex="0" data-rec-kind="${kind}" data-rec-id="${safe}">${safe}</span>`;
+      }
+
+      const recBubble = document.getElementById("recIdBubble");
+      const recBubbleButton = recBubble.querySelector("button");
+      let recBubbleTarget = null;
+      let recBubbleTimer = null;
+
+      function showRecBubble(chip) {
+        clearTimeout(recBubbleTimer);
+        const kind = chip.dataset.recKind;
+        recBubbleTarget = { kind, id: chip.dataset.recId };
+        recBubbleButton.textContent = `${ID_KINDS[kind].label} ↗`;
+        recBubble.style.left = "0px";
+        recBubble.style.top = "0px";
+        recBubble.classList.add("visible");
+        const anchor = chip.getBoundingClientRect();
+        const box = recBubble.getBoundingClientRect();
+        let top = anchor.top - box.height - 2;
+        if (top < 4) top = anchor.bottom + 2; // no room above (top of the page or a modal): drop below
+        const left = Math.min(Math.max(4, anchor.left), Math.max(4, window.innerWidth - box.width - 4));
+        recBubble.style.left = `${left}px`;
+        recBubble.style.top = `${top}px`;
+      }
+
+      function hideRecBubble() {
+        clearTimeout(recBubbleTimer);
+        recBubble.classList.remove("visible");
+        recBubbleTarget = null;
+      }
+
+      // A short grace period lets the pointer cross the gap between the id and
+      // the bubble without the bubble vanishing under it.
+      function hideRecBubbleSoon() {
+        clearTimeout(recBubbleTimer);
+        recBubbleTimer = setTimeout(hideRecBubble, 180);
+      }
+
+      const closestOf = (event, selector) => (event.target.closest ? event.target.closest(selector) : null);
+
+      document.addEventListener("pointerover", (event) => {
+        const chip = closestOf(event, ".rec-id");
+        if (chip) showRecBubble(chip);
+        else if (closestOf(event, "#recIdBubble")) clearTimeout(recBubbleTimer);
+      });
+      document.addEventListener("pointerout", (event) => {
+        // A finger lifting off fires pointerout at once, which would remove the
+        // bubble before it could be tapped; touch is dismissed by tapping away.
+        if (event.pointerType === "touch") return;
+        if (closestOf(event, ".rec-id") || closestOf(event, "#recIdBubble")) hideRecBubbleSoon();
+      });
+      document.addEventListener("pointerdown", (event) => {
+        if (!closestOf(event, ".rec-id") && !closestOf(event, "#recIdBubble")) hideRecBubble();
+      });
+      document.addEventListener("focusin", (event) => {
+        const chip = closestOf(event, ".rec-id");
+        if (chip) showRecBubble(chip);
+      });
+      document.addEventListener("focusout", (event) => {
+        if (closestOf(event, ".rec-id")) hideRecBubbleSoon();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") { hideRecBubble(); return; }
+        const chip = closestOf(event, ".rec-id");
+        if (chip && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          openOverrideFor(chip.dataset.recKind, chip.dataset.recId);
+        }
+      });
+      // position: fixed would otherwise leave the bubble behind when the page scrolls
+      window.addEventListener("scroll", hideRecBubble, true);
+      recBubbleButton.addEventListener("click", () => {
+        if (recBubbleTarget) openOverrideFor(recBubbleTarget.kind, recBubbleTarget.id);
+      });
+
+      // Wipes the vessel form and selects `id` -- the same thing choosing it in
+      // the picker does (hidden field, label, Current Record panel), after
+      // clearing everything that was already typed, entered-by included. That
+      // matches what the form does after a successful submit.
+      function startVesselOverride(id) {
+        document.getElementById("overrideForm").reset();
+        populateStatusOptions();
+        vesselHidden().value = "";
+        vesselInput().value = "";
+        closeVesselList();
+        const message = document.getElementById("ovMessage");
+        message.className = "form-message";
+        message.textContent = "";
+        // The picker cache may not have loaded (or may not hold this vessel):
+        // fall back to the bare id, which selectVessel labels as just the id.
+        selectVessel(vesselsCache.find((v) => v.vessel_id === id) || { vessel_id: id });
+        document.getElementById("ovStatus").focus();
+      }
+
+      function startOrderOverride(id) {
+        document.getElementById("orderOverrideForm").reset();
+        orderHidden().value = "";
+        orderInput().value = "";
+        closeOrderList();
+        const message = document.getElementById("ooMessage");
+        message.className = "form-message";
+        message.textContent = "";
+        selectOrder(ordersCache.find((o) => o.order_id === id) || { order_id: id });
+        document.getElementById("ooLaycanStart").focus();
+      }
+
+      function openOverrideFor(kind, id) {
+        hideRecBubble();
+        // The Change Feed's expanded view is a full-screen overlay; leave it open
+        // and it would sit on top of the form we are about to show.
+        closeChangeGroupModal();
+        // Clicking the tab button is what reveals <main> and the right panel.
+        document.querySelector(`.tab-btn[data-tab="${ID_KINDS[kind].tab}"]`).click();
+        if (kind === "vessel") startVesselOverride(id);
+        else startOrderOverride(id);
+        window.scrollTo(0, 0);
+      }
+
       function vesselRow(row) {
         return `
           <tr>
-            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${idChip("vessel", row.vessel_id)}</td>
             <td>${statusBadge(row.dashboard_status)}</td>
             <td>${escapeHtml(row.parent_zone || "—")}</td>
             <td>${formatNumber(row.dwt)}</td>
@@ -2012,7 +2160,7 @@
           <tr>
             <td class="pick-col"><input type="checkbox" class="order-pick" aria-label="Select order ${escapeHtml(row.order_id)}"
               data-order-id="${escapeHtml(row.order_id)}" ${selectedOrderIds.has(String(row.order_id)) ? "checked" : ""} /></td>
-            <td>${escapeHtml(row.order_id)}</td>
+            <td>${idChip("order", row.order_id)}</td>
             <td>${escapeHtml(row.cargo_type || "—")}</td>
             <td>${escapeHtml(row.load_zone || "—")}</td>
             <td>${escapeHtml(row.discharge_parent_zone || "—")}</td>
@@ -2290,7 +2438,7 @@
             return `<div class="field-diff"><span class="field-name">${escapeHtml(label)}:</span> <span class="field-old">${format(row[prev])}</span> &rarr; <span class="field-new">${format(row[cur])}</span></div>`;
           })
           .join("");
-        return `<li>${escapeHtml(row.vessel_id)}${diffs}</li>`;
+        return `<li>${idChip("vessel", row.vessel_id)}${diffs}</li>`;
       }
 
       const EXPAND_ICON_SVG = `
@@ -2352,10 +2500,10 @@
           // when zero reports were actually submitted.
           const byDay = window_ === "wow";
           const groups = [
-            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, byDay ? "new_as_of" : null],
-            ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, byDay ? "update_date" : null],
+            ["New vessels", data.new_vessels, (r) => `<li>${idChip("vessel", r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, byDay ? "new_as_of" : null],
+            ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${idChip("vessel", r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, byDay ? "update_date" : null],
             ["Field changes", data.field_changes, fieldChangeRow, byDay ? "update_date" : null],
-            ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
+            ["New orders", data.new_orders, (r) => `<li>Order ${idChip("order", r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
           ];
           currentChangeGroups = groups;
           el.innerHTML = `
@@ -2411,7 +2559,7 @@
       function ecsaRow(row) {
         return `
           <tr>
-            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${idChip("vessel", row.vessel_id)}</td>
             <td>${statusBadge(row.dashboard_status)}</td>
             <td>${escapeHtml(row.parent_zone || "—")}</td>
             <td>${escapeHtml(row.open_area || "—")}</td>
