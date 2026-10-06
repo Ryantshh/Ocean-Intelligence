@@ -12,6 +12,7 @@ themselves were checked against a Python recomputation on the live data.
 
 import unittest
 from datetime import date, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
@@ -150,3 +151,51 @@ class DailyCountsApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChangeFeedDefinitionTests(unittest.TestCase):
+    """The Change Feed's "Supply moves" list is the chart's definition."""
+
+    def test_feed_and_chart_share_one_definition(self):
+        sql, params = dq.vessel_status_changes_sql(SINCE, UNTIL)
+        self.assertIn(dq._STATUS_MOVES_CTE, sql)
+        self.assertEqual(params, [SINCE, UNTIL])
+
+    def test_feed_is_dated_by_effective_day_not_report_day(self):
+        sql, _ = dq.vessel_status_changes_sql(SINCE, UNTIL)
+        self.assertIn("day::timestamp >= $1 AND day::timestamp < $2", sql)
+        self.assertNotIn("update_date", sql)
+
+    def test_feed_returns_what_the_page_renders(self):
+        sql, _ = dq.vessel_status_changes_sql(SINCE, UNTIL)
+        for column in ("vessel_id", "prev_status", "status", "direction", "AS effective_date"):
+            self.assertIn(column, sql)
+
+    def test_returns_to_open_are_listed_first_within_a_day(self):
+        sql, _ = dq.vessel_status_changes_sql(SINCE, UNTIL)
+        self.assertIn("ORDER BY day DESC, direction DESC, vessel_id", sql)
+
+    def test_the_shared_definition_carries_the_transition_the_feed_shows(self):
+        self.assertIn("prev_status, status FROM (", dq._STATUS_MOVES_CTE)
+
+
+class DefinitionIsRecordedTests(unittest.TestCase):
+    """The definition and its change must stay findable: they get asked about later."""
+
+    def test_the_change_is_recorded_in_the_query_docstring(self):
+        doc = dq.vessel_status_changes_sql.__doc__
+        self.assertIn("DEFINITION CHANGE, 6 Oct 2026", doc)
+        self.assertIn("update_date", doc)  # what it used to be dated by
+        self.assertIn("FIXED <-> ON SUBS no longer appears", doc)
+
+    def test_the_chart_definition_block_is_still_there(self):
+        source = Path(dq.__file__).read_text(encoding="utf-8")
+        self.assertIn("KNOWN LIMIT", source)
+        self.assertIn("TAKES EFFECT", source)
+
+    def test_readme_carries_the_definition_and_the_change_log(self):
+        readme = (Path(dq.__file__).resolve().parents[2] / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Supply moves", readme)
+        self.assertIn("Definition change log", readme)
+        self.assertIn("6 Oct 2026: Change Feed", readme)
+        self.assertIn("only 23 events were in both", readme)

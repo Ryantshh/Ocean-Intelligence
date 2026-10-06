@@ -2456,12 +2456,21 @@
       // per-day vessel-name breakdown within the DoD/WoW window, not one
       // flat list -- rows already arrive newest-first from the API, so
       // insertion-ordered day buckets stay newest-first too.
+      // The API sends a midnight timestamp as a bare date ("2025-10-05"), and
+      // new Date() reads that as UTC midnight -- which is the PREVIOUS evening
+      // for anyone west of UTC, so a day's group would be headed with the day
+      // before. A bare date is built as a local date instead; anything with a
+      // time on it is parsed as before.
+      function parseFeedDate(raw) {
+        const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(raw));
+        return bare ? new Date(Number(bare[1]), Number(bare[2]) - 1, Number(bare[3])) : new Date(raw);
+      }
       function groupByDay(rows, dateField) {
         const groups = new Map();
         for (const row of rows) {
           const raw = row[dateField];
           const day = raw
-            ? new Date(raw).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" })
+            ? parseFeedDate(raw).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" })
             : "Unknown date";
           if (!groups.has(day)) groups.set(day, []);
           groups.get(day).push(row);
@@ -2571,7 +2580,11 @@
           const byDay = window_ === "wow";
           const groups = [
             ["New vessels", data.new_vessels, (r) => `<li>${idChip("vessel", r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, byDay ? "new_as_of" : null],
-            ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${idChip("vessel", r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, byDay ? "update_date" : null],
+            // Same events as the Daily Trends chart (see _STATUS_MOVES_CTE in
+            // dashboard_queries.py): dated by the day the new status takes effect,
+            // so week-on-week groups by that day, not by when it was reported.
+            ["Supply moves", data.vessel_status_changes, (r) => `<li>${idChip("vessel", r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, byDay ? "effective_date" : null,
+              "The same supply moves the Daily Trends chart counts, dated by the day the new status takes effect rather than the day it was reported: Fixed or On Subs back to Open, and Open to Fixed or On Subs. Fixed to On Subs is not listed. A change reported today for a later date appears when that date arrives."],
             ["Field changes", data.field_changes, fieldChangeRow, byDay ? "update_date" : null],
             ["New orders", data.new_orders, (r) => `<li>Order ${idChip("order", r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
           ];
@@ -2584,10 +2597,10 @@
               Simulated as of ${escapeHtml(data.tonnage_reference_now.slice(0, 10))} (UTC) &mdash; today's real date minus one year, not today's actual date.
             </p>
             <div class="change-groups">
-              ${groups.map(([title, rows, render, dateField], i) => `
+              ${groups.map(([title, rows, render, dateField, help], i) => `
                 <div class="change-group">
                   <button type="button" class="change-group-expand" data-group-index="${i}" aria-label="Expand ${escapeHtml(title)}">${EXPAND_ICON_SVG}</button>
-                  <h3>${title} <span class="change-count">${rows.length}</span></h3>
+                  <h3${help ? ` title="${escapeHtml(help)}"` : ""}>${title} <span class="change-count">${rows.length}</span></h3>
                   ${changeList(rows, render, dateField)}
                 </div>
               `).join("")}

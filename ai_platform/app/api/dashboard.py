@@ -518,14 +518,20 @@ async def ecsa_vessel_history(vessel_id: str) -> list[dict[str, Any]]:
 async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     """Day-on-day or week-on-week change feed.
 
-    ``new_vessels`` and ``vessel_status_changes`` intentionally overlap:
-    ``vessel_status_changes`` is the complete transition log (any status
-    -> any status, including into 'OPEN'), and ``new_vessels`` separately
-    highlights the same into-'OPEN' events under their own heading (the
-    sponsor's "new vessel" -- a row explicitly declaring the vessel open,
-    for trader attention) -- a transition can and should appear under
-    both. See
+    ``vessel_status_changes`` is the Daily Trends chart's own definition,
+    not a log of every transition: vessels returning to OPEN from FIXED or
+    ON SUBS ("up") and vessels leaving OPEN for FIXED or ON SUBS ("down"),
+    each dated by the day the new status takes effect rather than the day it
+    was reported, so its row count equals the chart's bars for the same days.
+    FIXED <-> ON SUBS is not listed. It changed from a report-day log of
+    every transition on 6 Oct 2026; the old and new definitions and the
+    reason are recorded in
     ``ai_platform.backend.dashboard_queries.vessel_status_changes_sql``.
+
+    ``new_vessels`` and ``vessel_status_changes`` intentionally overlap: a
+    vessel returning to OPEN can appear under both headings, ``new_vessels``
+    being the narrower trader-attention highlight (a row explicitly declaring
+    the vessel open).
 
     ``field_changes`` covers everything *except* the FIXED/OPEN/ON SUBS
     transition (that's ``vessel_status_changes``, kept separate so the same

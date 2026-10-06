@@ -103,12 +103,13 @@ _ORDERS_COLUMNS_SAFE = (
 # it open, with that day as the start of its open window. This does NOT
 # mean "first ever seen in the data" (an earlier, rejected definition
 # built on vessel_current_status.first_date_received). Since every segment
-# in vessel_status_history comes from a real reported row, this is also
-# exactly the "became OPEN" subset of what vessel_status_changes_sql
-# tracks -- deliberately NOT excluded from that query's own results:
-# "new vessels" is a narrower, separately-labeled highlight of the same
-# underlying events, not a mutually-exclusive category, so an into-OPEN
-# transition is expected to appear under both headings in the change feed.
+# in vessel_status_history comes from a real reported row, a vessel that
+# returns to OPEN is also one of the "+" supply moves that
+# vessel_status_changes_sql lists -- deliberately NOT excluded from that
+# query's results: "new vessels" is a narrower, separately-labeled highlight
+# (it also includes a vessel's very first segment, and requires recent
+# contact), not a mutually-exclusive category, so a return to OPEN can
+# appear under both headings in the change feed.
 #
 # A second branch used to be unioned in here, counting vessels that rolled
 # into "presumed open" via the 5-day recency fallback. Removed because it
@@ -203,11 +204,14 @@ _NEW_VESSEL_EVENTS_CTE = (
 # reporting gap that returns to the same status is not a change.
 #
 # Shared by every query below that computes it so the bar, its region split
-# and the click-through can't disagree. Yields one row per move:
-# (vessel_id, parent_zone, day, direction) with direction 'up' or 'down'.
+# and the click-through can't disagree -- and, since 6 Oct 2026, the Change
+# Feed's "Supply moves" list (:func:`vessel_status_changes_sql`), so the
+# feed and the chart count the same events. Yields one row per move:
+# (vessel_id, parent_zone, day, direction, prev_status, status) with
+# direction 'up' or 'down'.
 _STATUS_MOVES_CTE = (
-    "SELECT vessel_id, parent_zone, day, direction FROM ("
-    "  SELECT vessel_id, parent_zone, open_date_start::date AS day, "
+    "SELECT vessel_id, parent_zone, day, direction, prev_status, status FROM ("
+    "  SELECT vessel_id, parent_zone, open_date_start::date AS day, status, prev_status, "
     "  CASE "
     "    WHEN status = 'OPEN' AND prev_status IN ('FIXED', 'ON SUBS') THEN 'up' "
     "    WHEN prev_status = 'OPEN' AND status IN ('FIXED', 'ON SUBS') THEN 'down' "
@@ -974,30 +978,46 @@ def new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
 
 
 def vessel_status_changes_sql(since: datetime, until: datetime) -> tuple[str, list]:
-    """Status transitions (e.g. On Subs -> Fixed) within the window.
+    """Supply moves in the window: the Change Feed's "Supply moves" list.
 
-    ``vessel_status_history`` no longer stores ``prev_status`` directly, so
-    it's recomputed here via ``LAG`` ordered by ``open_date_start`` -- the
-    segment's own chronological position, not ``update_date``. Adjacent
-    segments in that view are always a real status change *unless* there's
-    a reporting gap between them (no row covered the days in between) that
-    happens to return to the same status afterward -- e.g. OPEN, silence,
-    then OPEN again is not a change even though it's two separate segments
-    -- so ``status IS DISTINCT FROM prev_status`` is checked explicitly
-    rather than assumed from the segment boundary alone.
+    These are exactly the events the Daily Trends "Supply moves" chart
+    counts, so the two agree. A vessel returning to OPEN from FIXED or ON
+    SUBS is "up"; a vessel leaving OPEN for FIXED or ON SUBS is "down";
+    FIXED <-> ON SUBS is not listed. Each is dated by the day the new status
+    takes effect. The definition, and what it deliberately leaves out, is the
+    comment above :data:`_STATUS_MOVES_CTE`.
 
-    Also excludes a vessel's first-ever segment (``is_first_segment``) --
-    it has no prior segment to have changed *from*, so it's not itself a
-    status change (its ``prev_status`` is NULL, which is already
-    "distinct" from anything, so this exclusion isn't implied by the
-    check above).
+    Window: effective dates are whole calendar days (midnight), so the time of
+    day in ``since`` only decides whether ``since``'s own day is included, and
+    it is not unless ``since`` is itself midnight. In practice that means
+    day-on-day on a Tuesday lists Tuesday's moves, on a Monday it lists
+    Saturday's, Sunday's and Monday's, and week-on-week lists the seven whole
+    days. The row count equals the sum of the chart's bars for those same
+    days. Nothing effective at or after ``until`` ("now") is listed.
 
-    Does NOT exclude transitions into 'OPEN' -- this is deliberately the
-    complete, unrestricted transition log (any status -> any status).
-    :func:`new_vessels_sql` reports the same into-OPEN events too, under
-    its own narrower "new vessel" heading -- that's an intentional
-    overlap, not a duplicate to avoid: "new vessels" is a spotlighted
-    subset of this list, not a mutually-exclusive category.
+    DEFINITION CHANGE, 6 Oct 2026. This list used to be every status
+    transition in ``vessel_status_history`` (any status -> any status,
+    FIXED <-> ON SUBS included) whose report *arrived* in the window
+    (``update_date``). It was changed because it disagreed with the chart.
+    Over one week the old list had 52 rows and the chart 50, but only 23 of
+    those events were in both: 20 were reported in the week yet took effect
+    after "now", 8 took effect before the week began, and 1 was FIXED <-> ON
+    SUBS. What that means in practice:
+
+    * A change now appears when it *takes effect*, not when it is reported. A
+      change reported today for next week no longer shows until next week;
+      one reported late for an earlier day shows on that earlier day, in an
+      earlier window.
+    * FIXED <-> ON SUBS no longer appears anywhere in the Change Feed (the
+      field-changes group already excludes status). It is still visible in a
+      vessel's status history trail.
+    * Rows carry ``effective_date`` and ``direction`` instead of the history
+      columns they used to (``update_date``, ``open_date_end`` and so on).
+    * The same limit as the chart: a vessel going quiet (LIKELY FIXED) is not
+      an event, and the 5-day freshness rule is not applied here.
+
+    ``new_vessels`` overlaps this list by design: a vessel returning to OPEN
+    can appear under both headings.
 
     Parameters
     ----------
@@ -1009,18 +1029,18 @@ def vessel_status_changes_sql(since: datetime, until: datetime) -> tuple[str, li
     Returns
     -------
     tuple
-        ``(sql, params)``.
+        ``(sql, params)``; rows have ``vessel_id``, ``prev_status``,
+        ``status``, ``direction`` ('up' or 'down') and ``effective_date``
+        (a midnight timestamp), newest day first, returns-to-open first
+        within a day.
     """
     return (
         (
-            "WITH ordered AS ("
-            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
-            "  FROM vessel_status_history"
-            ") "
-            "SELECT * FROM ordered "
-            "WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment "
-            "AND status IS DISTINCT FROM prev_status "
-            "ORDER BY update_date DESC"
+            f"WITH moves AS ({_STATUS_MOVES_CTE}) "
+            "SELECT vessel_id, prev_status, status, direction, day::timestamp AS effective_date "
+            "FROM moves "
+            "WHERE day::timestamp >= $1 AND day::timestamp < $2 "
+            "ORDER BY day DESC, direction DESC, vessel_id"
         ),
         [since, until],
     )
