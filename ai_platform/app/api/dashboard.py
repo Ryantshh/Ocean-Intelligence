@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
@@ -191,6 +191,7 @@ async def vessels_by_day(
     day: date,
     range_since: datetime | None = None,
     range_until: datetime | None = None,
+    direction: Literal["up", "down"] | None = None,
 ) -> list[dict[str, Any]]:
     """Vessel tracker rows for the vessels counted in one Daily Trends bar.
 
@@ -214,13 +215,19 @@ async def vessels_by_day(
         way that bar's own count was, including at the 14-day window's
         (partial) first and last days. Omit only for an ad-hoc lookup
         outside the chart, where a plain midnight-to-midnight day is fine.
+    direction : "up", "down" or None
+        Status Changes only: "up" is the green bar (vessels returning to
+        OPEN), "down" the red one (vessels leaving it for FIXED / ON SUBS).
+        None returns both. Ignored for New Vessels.
 
     Returns
     -------
     list of dict
         Same shape as :func:`list_vessels`, one row per matched vessel.
     """
-    sql, params = dq.vessels_on_day_sql(metric, day, range_since=range_since, range_until=range_until)
+    sql, params = dq.vessels_on_day_sql(
+        metric, day, range_since=range_since, range_until=range_until, direction=direction
+    )
     return await _run(sql, params)
 
 
@@ -384,7 +391,7 @@ async def daily_counts(days: int = 14) -> dict[str, Any]:
         "range": {"since": tonnage_since, "until": tonnage_until},
         "orders_range": {"since": orders_since, "until": orders_until},
         "new_vessels": _with_region_breakdown(new_vessels, new_vessels_by_region),
-        "status_changes": _with_region_breakdown(status_changes, status_changes_by_region),
+        "status_changes": _with_move_breakdown(status_changes, status_changes_by_region),
         "new_orders": _with_region_breakdown(new_orders, new_orders_by_region),
     }
 
@@ -410,6 +417,41 @@ def _with_region_breakdown(
     for row in breakdown:
         by_day.setdefault(row["day"], []).append(
             {"region": row["region"], "count": row["count"]}
+        )
+    return [{**row, "regions": by_day.get(row["day"], [])} for row in totals]
+
+
+def _with_move_breakdown(
+    totals: list[dict[str, Any]], breakdown: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge the supply-move totals with their per-(day, region) split.
+
+    Same idea as :func:`_with_region_breakdown`, but the Status Changes
+    chart has two bars per day, so each region carries ``up`` and ``down``
+    as well as their sum.
+
+    Parameters
+    ----------
+    totals : list of dict
+        One row per day, from
+        :func:`ai_platform.backend.dashboard_queries.daily_status_changes_sql`.
+    breakdown : list of dict
+        One row per (day, region), from its ``_by_region`` companion.
+
+    Returns
+    -------
+    list of dict
+        ``totals``, each row with a ``regions`` key added.
+    """
+    by_day: dict[Any, list[dict[str, Any]]] = {}
+    for row in breakdown:
+        by_day.setdefault(row["day"], []).append(
+            {
+                "region": row["region"],
+                "up": row["up"],
+                "down": row["down"],
+                "count": row["count"],
+            }
         )
     return [{**row, "regions": by_day.get(row["day"], [])} for row in totals]
 

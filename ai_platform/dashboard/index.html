@@ -190,6 +190,18 @@
       .mini-chart { display: block; width: 100%; height: auto; }
       .mini-chart-label { font-size: 7px; font-weight: 650; fill: var(--muted); }
       .mini-chart-axis { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--muted); margin-top: 0.1rem; }
+      /* Status changes chart: supply in (green, above the line) and out (red,
+         below it). Colours are the same good/critical pair the map uses. */
+      .mini-chart-zero { stroke: var(--border); stroke-width: 1; }
+      .move-hit { fill: transparent; }
+      .move-up { fill: var(--status-good); }
+      .move-down { fill: var(--status-critical); }
+      .move-bar { cursor: pointer; }
+      .move-bar:hover, .move-bar:focus { opacity: 0.8; stroke: var(--fg); stroke-width: 1; outline: none; }
+      .move-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.8rem; font-size: 0.68rem; color: var(--muted); margin-top: 0.2rem; }
+      .move-legend .swatch { display: inline-flex; align-items: center; gap: 0.3rem; }
+      .move-legend .dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; }
+      .move-legend .net { margin-left: auto; font-weight: 650; color: var(--fg); }
       .drilldown-head { margin-top: 3rem; }
       .drilldown-head h2 { margin-bottom: 0.15rem; }
 
@@ -607,7 +619,7 @@
               <div id="chartNewVessels"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
             </div>
             <div class="trend-chart">
-              <div class="trend-chart-title">Status changes (Fixed/Open/On Subs)</div>
+              <div class="trend-chart-title" title="Supply moving in and out, per day. A vessel is counted on the day its new status takes effect, not the day it was reported. Green (+): Fixed or On Subs back to Open. Red (&minus;): Open to Fixed or On Subs. Fixed to On Subs counts for nothing. A vessel that simply goes quiet (Likely Fixed) is not counted. Click a bar to list its vessels.">Supply moves: back to Open (+) / to Fixed or On Subs (&minus;)</div>
               <div id="chartStatusChanges"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
             </div>
             <div class="trend-chart">
@@ -1571,11 +1583,122 @@
         }));
       }
 
+      // ---- Status changes: supply moving in and out -----------------------
+      // One pair of bars per day on a shared scale. Green above the centre
+      // line is a vessel returning to OPEN (+1); red below it is a vessel
+      // leaving OPEN for FIXED or ON SUBS (-1); FIXED <-> ON SUBS counts for
+      // nothing. Dated by the day the new status takes effect. The full
+      // definition, and what it deliberately leaves out, is the comment above
+      // _STATUS_MOVES_CTE in backend/dashboard_queries.py.
+      const MINUS = "\u2212";
+      const signed = (n) => (n > 0 ? `+${formatNumber(n)}` : n < 0 ? `${MINUS}${formatNumber(-n)}` : "0");
+
+      function regionMoveBreakdownHtml(regions) {
+        return (regions || []).map(
+          (r) => `<div class="t-value">${escapeHtml(r.region)}: +${formatNumber(r.up)} / ${MINUS}${formatNumber(r.down)}</div>`
+        ).join("");
+      }
+
+      // Same idea as seriesForActiveRegion, but a day has two numbers to narrow.
+      function seriesForActiveRegionMoves(series) {
+        if (!activeRegionFilter) return series;
+        return series.map((d) => {
+          const hit = (d.regions || []).find((r) => r.region === activeRegionFilter);
+          return { ...d, up: hit ? hit.up : 0, down: hit ? hit.down : 0 };
+        });
+      }
+
+      function renderMoveChart(container, series) {
+        if (!series.length) {
+          container.innerHTML = '<p class="muted" style="font-size:0.8rem;">No data.</p>';
+          return;
+        }
+        const W = 260, H = 124, PAD_X = 2, PAD_T = 14, PAD_B = 14;
+        const plotW = W - PAD_X * 2;
+        const plotH = H - PAD_T - PAD_B;
+        const half = plotH / 2;
+        const mid = PAD_T + half;
+        // One scale for both halves so a green bar and a red bar of the same
+        // height mean the same number of vessels.
+        const maxVal = Math.max(1, ...series.map((d) => Math.max(d.up, d.down)));
+        const slot = plotW / series.length;
+        const barW = Math.max(2, slot - 2);
+        const dayLabel = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const upTotal = series.reduce((n, d) => n + d.up, 0);
+        const downTotal = series.reduce((n, d) => n + d.down, 0);
+
+        const cols = series.map((d, i) => {
+          const slotX = PAD_X + i * slot;
+          const x = slotX + (slot - barW) / 2;
+          const upH = d.up ? Math.max(1, (d.up / maxVal) * half) : 0;
+          const downH = d.down ? Math.max(1, (d.down / maxVal) * half) : 0;
+          const upLabel = `${dayLabel(d.day)}: ${d.up} back to open, click to list them`;
+          const downLabel = `${dayLabel(d.day)}: ${d.down} to fixed or on subs, click to list them`;
+          const up = d.up ? `
+            <text x="${(x + barW / 2).toFixed(1)}" y="${Math.max(9, mid - upH - 3).toFixed(1)}" text-anchor="middle" class="mini-chart-label">${signed(d.up)}</text>
+            <rect class="move-bar move-up" data-dir="up" x="${x.toFixed(1)}" y="${(mid - upH).toFixed(1)}" width="${barW.toFixed(1)}" height="${upH.toFixed(1)}" rx="2" tabindex="0" role="button" aria-label="${upLabel}"></rect>` : "";
+          const down = d.down ? `
+            <text x="${(x + barW / 2).toFixed(1)}" y="${(mid + downH + 8).toFixed(1)}" text-anchor="middle" class="mini-chart-label">${signed(-d.down)}</text>
+            <rect class="move-bar move-down" data-dir="down" x="${x.toFixed(1)}" y="${mid.toFixed(1)}" width="${barW.toFixed(1)}" height="${downH.toFixed(1)}" rx="2" tabindex="0" role="button" aria-label="${downLabel}"></rect>` : "";
+          return `
+            <g class="move-col" data-index="${i}">
+              <rect class="move-hit" x="${slotX.toFixed(1)}" y="${PAD_T}" width="${slot.toFixed(1)}" height="${plotH}"></rect>${up}${down}
+            </g>`;
+        }).join("");
+
+        container.innerHTML = `
+          <svg viewBox="0 0 ${W} ${H}" class="mini-chart" role="img" aria-label="Daily supply moves: vessels back to open above the line, vessels to fixed or on subs below it. Hover a day for its detail, click a bar to list its vessels.">
+            <line class="mini-chart-zero" x1="${PAD_X}" x2="${W - PAD_X}" y1="${mid}" y2="${mid}"></line>
+            ${cols}
+          </svg>
+          <div class="move-legend">
+            <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Back to Open (+)</span>
+            <span class="swatch"><span class="dot" style="background:var(--status-critical)"></span>To Fixed / On Subs (${MINUS})</span>
+            <span class="net" title="${formatNumber(upTotal)} vessels back to open, ${formatNumber(downTotal)} to fixed or on subs, over these ${series.length} days">Net ${signed(upTotal - downTotal)}</span>
+          </div>
+          <div class="mini-chart-axis"><span>${escapeHtml(dayLabel(series[0].day))}</span><span>${escapeHtml(dayLabel(series[series.length - 1].day))}</span></div>
+        `;
+
+        const tooltip = document.getElementById("chartTooltip");
+        container.querySelectorAll("g.move-col").forEach((col) => {
+          const d = series[Number(col.dataset.index)];
+          const show = () => {
+            const html = `
+              <div class="t-title">${escapeHtml(dayLabel(d.day))}</div>
+              <div class="t-value">+${formatNumber(d.up)} back to Open</div>
+              <div class="t-value">${MINUS}${formatNumber(d.down)} to Fixed / On Subs</div>
+              <div class="t-value">Net ${signed(d.up - d.down)}</div>
+              ${regionMoveBreakdownHtml(d.regions)}
+            `;
+            const box = col.getBoundingClientRect();
+            showTooltip(tooltip, html, box.left + box.width / 2, box.top - 6);
+          };
+          const hide = () => hideTooltip(tooltip);
+          col.addEventListener("pointerenter", show);
+          col.addEventListener("focusin", show);
+          col.addEventListener("pointerleave", hide);
+          col.addEventListener("focusout", hide);
+          col.querySelectorAll(".move-bar").forEach((bar) => {
+            const activate = () => {
+              hideTooltip(tooltip);
+              filterVesselsByDay("status_changes", d.day, bar.dataset.dir);
+            };
+            bar.addEventListener("click", activate);
+            bar.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activate();
+              }
+            });
+          });
+        });
+      }
+
       function renderDailyTrendsCharts() {
         if (!dailyCountsCache) return;
         const data = dailyCountsCache;
         renderMiniBarChart(document.getElementById("chartNewVessels"), seriesForActiveRegion(data.new_vessels), "var(--open)", "new_vessels");
-        renderMiniBarChart(document.getElementById("chartStatusChanges"), seriesForActiveRegion(data.status_changes), "var(--accent)", "status_changes");
+        renderMoveChart(document.getElementById("chartStatusChanges"), seriesForActiveRegionMoves(data.status_changes));
         renderMiniBarChart(document.getElementById("chartNewOrders"), seriesForActiveRegion(data.new_orders), "var(--fixed)", "new_orders");
       }
 
@@ -1708,7 +1831,13 @@
       // box stays enabled throughout and keeps narrowing whatever's
       // currently loaded, day-filtered or not.
       let activeDayFilter = null;
-      const DAY_FILTER_LABELS = { new_vessels: "declared open", status_changes: "with a status change" };
+      // What the vessel tracker's banner calls the vessels a bar counted.
+      function dayFilterLabel({ metric, direction }) {
+        if (metric === "new_vessels") return "declared open";
+        if (direction === "up") return "returning to open";
+        if (direction === "down") return "moving to fixed or on subs";
+        return "with a supply move";
+      }
       const DAY_FILTER_CONTROLS = ["vesselStatus", "vesselRegion", "vesselSort"];
 
       // The vessel tracker only ever shows something once the trader has
@@ -1725,8 +1854,8 @@
         );
       }
 
-      async function filterVesselsByDay(metric, day) {
-        activeDayFilter = { metric, day };
+      async function filterVesselsByDay(metric, day, direction = null) {
+        activeDayFilter = { metric, day, direction };
         DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
         await loadVessels();
         scrollToVessels();
@@ -1781,15 +1910,16 @@
         if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
         let url;
         if (activeDayFilter) {
-          const { metric, day } = activeDayFilter;
+          const { metric, day, direction } = activeDayFilter;
           const params = new URLSearchParams({ metric, day });
+          if (direction) params.set("direction", direction);
           if (dailyTrendsRange) {
             params.set("range_since", dailyTrendsRange.since);
             params.set("range_until", dailyTrendsRange.until);
           }
           url = `/api/dashboard/vessels/by-day?${params}`;
           document.getElementById("vesselDayFilterLabel").textContent =
-            `Showing vessels ${DAY_FILTER_LABELS[metric]} on ${formatDate(day)}`;
+            `Showing vessels ${dayFilterLabel(activeDayFilter)} on ${formatDate(day)}`;
           banner.classList.remove("hidden");
         } else {
           const status = document.getElementById("vesselStatus").value;
