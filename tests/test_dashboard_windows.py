@@ -1,8 +1,5 @@
 """Regression coverage for dashboard comparison periods (no database required)."""
 
-# Naive UTC timestamps are the database binding contract under test.
-# ruff: noqa: DTZ001
-
 import unittest
 from datetime import UTC, datetime, timedelta, timezone
 
