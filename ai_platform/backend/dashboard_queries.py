@@ -9,8 +9,8 @@ gold tables the deployed gold-loader Lambda actually keeps up to date --
 not the plain ``tonnage``/``order`` tables this module used until this
 revision: those had no loader anywhere in this repository, turned out to
 be a stale/smaller snapshot, and ``tonnage.order_id`` was confirmed live
-precision-corrupted (a lossy float round-trip somewhere upstream), unlike
-``tonnage_test.order_id``. See ``infra/sql/dashboard_gold_views.sql``'s
+precision-corrupted (a lossy float round-trip somewhere upstream).
+``tonnage_test`` has no ``order_id`` at all. See ``infra/sql/dashboard_gold_views.sql``'s
 header for the full comparison.
 
 Deliberately not part of ``ai_platform.backend.tables`` -- that package's

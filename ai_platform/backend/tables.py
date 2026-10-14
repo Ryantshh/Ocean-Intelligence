@@ -390,12 +390,10 @@ TONNAGE = TableSpec(
         "eta",
         "update_date",
         "first_date_received",
-        "order_id",
     ),
     display_noun="vessels",
     column_expressions={
         "commercial_status": STATUS_EXPRESSION.format(column='"commercial_status"'),
-        "order_id": ORDER_ID_AS_TEXT,
     },
     semantic_columns=(),
     matches=(

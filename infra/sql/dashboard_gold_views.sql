@@ -12,11 +12,7 @@
 -- tonnage.order_id (NUMERIC) is precision-corrupted for effectively every
 -- row (confirmed live -- e.g. stored as 1.52324E+17 instead of the full
 -- 18-digit value, and a random sample all show the same trailing-zeros
--- float-round-trip fingerprint). tonnage_test.order_id (BIGINT) is not
--- corrupted -- confirmed live at full precision -- and every one of
--- tonnage_test's 11,190 rows successfully joins to order_test on order_id
--- (100%, tested directly), where tonnage/order's join could never have
--- matched anything. tonnage_test/order_test are also a superset: every
+-- float-round-trip fingerprint). tonnage_test/order_test are also a superset: every
 -- vessel_id in tonnage and every order_id in "order" is present in the
 -- _test tables too, plus ~85 more of each -- because the _test tables are
 -- fed by the pipeline that's actually deployed and still running
@@ -61,13 +57,17 @@
 -- "fresh"), everywhere a view reads tonnage_test/order_test directly. See
 -- that function's comment for why.
 --
--- order_id precision: both tonnage_test.order_id and order_test.order_id
--- are BIGINT (int8), full precision confirmed live. scripts/glue_transform.py's
+-- tonnage_test has no order_id: the placeholder vessel -> order link the
+-- pipeline used to fill in by hash was removed, so no view here links
+-- vessels to orders.
+--
+-- order_id precision: order_test.order_id is BIGINT (int8), full
+-- precision confirmed live. scripts/glue_transform.py's
 -- with_stable_order_id() deliberately caps generated order_ids at 18
 -- digits so they fit int8 -- but 18 digits still exceeds JS's
 -- Number.MAX_SAFE_INTEGER (2^53-1, ~16 digits), so a raw numeric order_id
--- would silently corrupt in any browser's JSON.parse. Every view below
--- casts order_id to text regardless; application code must keep it a
+-- would silently corrupt in any browser's JSON.parse. Anything that
+-- exposes order_id must cast it to text; application code must keep it a
 -- string end to end -- never `Number(order_id)` in JS.
 -- =====================================================================
 
@@ -129,7 +129,6 @@ CREATE OR REPLACE VIEW vessel_current_status AS
 WITH ranked AS (
   SELECT
     t.vessel_id,
-    t.order_id,
     t.dwt,
     t.ship_type,
     t.ship_size,
@@ -263,7 +262,6 @@ active_bookings AS (
 )
 SELECT
   r.vessel_id,
-  r.order_id::text                          AS order_id,       -- see precision note above -- clean full-precision BIGINT on this source, unlike the old public.tonnage
   r.dwt,
   r.ship_type,
   r.ship_size,
@@ -648,17 +646,3 @@ SELECT dashboard_status, COUNT(*) AS vessel_count
 FROM vessel_current_status
 GROUP BY dashboard_status
 ORDER BY dashboard_status;
-
--- ---------------------------------------------------------------------
--- 6. Vessel <-> order join example
--- Both sides cast to text (defensive, though both are already clean
--- BIGINT on this source). Unlike the old public.tonnage/public."order"
--- source, this join is not merely illustrative: verified live that all
--- 11,190 rows of tonnage_test successfully join to order_test on
--- order_id (100%), so this can actually be relied on if a future feature
--- needs the vessel<->order link.
--- ---------------------------------------------------------------------
--- SELECT v.vessel_id, v.dashboard_status, o.order_id, o.load_port
--- FROM vessel_current_status v
--- JOIN public.order_test o ON v.order_id = o.order_id::text
--- WHERE v.order_id IS NOT NULL;

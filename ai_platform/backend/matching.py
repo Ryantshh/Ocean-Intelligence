@@ -40,15 +40,8 @@ MATCHER_PROMPT = Path(__file__).with_name("matcher_agent.md").read_text(encoding
 MAX_PARALLEL_MATCHERS = 5
 """Matchers running at once, against a data pool of six connections."""
 
-MATCH_COLUMNS: tuple[str, ...] = (
-    "order_id",
-    *(column for column in TONNAGE.display_columns if column != "order_id"),
-)
-"""Columns of a match row in the results panel: the order matched, then the vessel.
-
-The vessel's own ``order_id`` is dropped: those links are synthetic, and a second
-``order_id`` column would read as the order the vessel was matched to.
-"""
+MATCH_COLUMNS: tuple[str, ...] = ("order_id", *TONNAGE.display_columns)
+"""Columns of a match row in the results panel: the order matched, then the vessel."""
 
 
 def _search_results(
@@ -348,8 +341,7 @@ def _panel_rows(results: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     Returns
     -------
     list of dict
-        Rows keyed by ``MATCH_COLUMNS``; the vessel's own synthetic ``order_id`` is
-        replaced by the matched order's.
+        Rows keyed by ``MATCH_COLUMNS``, with ``order_id`` set to the matched order's.
     """
     return [
         {

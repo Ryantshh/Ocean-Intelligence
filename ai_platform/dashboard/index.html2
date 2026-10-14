@@ -613,7 +613,6 @@
         { key: "dwt", label: "DWT" },
         { key: "ship_type", label: "Ship type" },
         { key: "ship_size", label: "Ship size" },
-        { key: "order_id", label: "Order ID" },
       ];
 
       let currentRecords = null; // array, newest first; null = nothing loaded

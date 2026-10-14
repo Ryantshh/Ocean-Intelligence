@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS public.trader_override_audit (
     open_area TEXT,
     open_date_start TIMESTAMP,
     open_date_end TIMESTAMP,
+    -- order_assignment/old_order_assignment are legacy: tonnage_test no
+    -- longer has an order_id, so the app neither writes nor reads them.
+    -- Kept so past audit rows keep their values; safe to drop.
     order_assignment TEXT,
     entered_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
