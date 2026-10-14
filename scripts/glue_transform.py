@@ -5,7 +5,6 @@ run locally with the same CLI arguments.
 """
 
 import argparse
-import hashlib
 import io
 import logging
 import os
@@ -289,95 +288,6 @@ def normalize_id_series(series: pd.Series) -> pd.Series:
     return series.map(_normalize).astype("object")
 
 
-def stable_bucket(value: str, modulus: int) -> int:
-    """Map a value to a bucket in [0, modulus) deterministically across runs.
-
-    Uses hashlib rather than Python's built-in hash(), which is salted per
-    process and would reshuffle every assignment on every run.
-    """
-    if modulus <= 0:
-        raise ValueError("modulus must be positive")
-    digest = hashlib.sha256(str(value).encode("utf-8")).hexdigest()
-    return int(digest, 16) % modulus
-
-
-def assign_order_ids(tonnage_pdf: pd.DataFrame, order_id_pool: list[str]) -> pd.DataFrame:
-    """Link every tonnage vessel to exactly one order_id from the orders table.
-
-    THIS IS NOT REAL VESSEL-TO-CARGO MATCHING. None of the actual matching
-    conditions (size class, weight lift, laycan/position fit, physical limits,
-    gear fit, liveness) are evaluated here. It exists purely so the silver
-    tonnage and orders tables can be joined on order_id for simulation and
-    downstream testing until the real matching engine lands.
-
-    Properties:
-      - Every vessel that doesn't already carry an order_id gets one, as long
-        as the pool is non-empty.
-      - One order_id per vessel, and every row of the same vessel shares it.
-      - Assignment is unique while orders last: an order is claimed by at most
-        one vessel, so with more orders than vessels some orders are simply
-        left unassigned (expected, and fine).
-      - Deterministic: the starting pick is a stable hash of vessel_id, so the
-        same vessel lands on the same order across runs given the same pool.
-      - If vessels outnumber orders, uniqueness is dropped rather than leaving
-        vessels unlinked: the surplus vessels reuse their hashed pick.
-    """
-    if tonnage_pdf is None or tonnage_pdf.empty or "vessel_id" not in tonnage_pdf.columns:
-        return tonnage_pdf
-
-    pool = sorted({value for value in normalize_id_series(pd.Series(order_id_pool, dtype="object")) if value})
-    if not pool:
-        logger.warning("orders pool is empty - tonnage rows will be written without an order_id")
-        return tonnage_pdf
-
-    vessels = normalize_id_series(tonnage_pdf["vessel_id"])
-    if "order_id" in tonnage_pdf.columns:
-        existing = normalize_id_series(tonnage_pdf["order_id"])
-    else:
-        existing = pd.Series([""] * len(tonnage_pdf), index=tonnage_pdf.index, dtype="object")
-
-    # Anything already linked keeps its link, and its order counts as claimed.
-    claimed = {value for value in existing if value}
-    mapping: dict[str, str] = {}
-    for vessel, order_id in zip(vessels, existing):
-        if vessel and order_id and vessel not in mapping:
-            mapping[vessel] = order_id
-
-    pending = sorted({vessel for vessel in vessels if vessel and vessel not in mapping})
-    pool_size = len(pool)
-
-    for vessel in pending:
-        start = stable_bucket(vessel, pool_size)
-        chosen = pool[start]
-        if len(claimed) < pool_size:
-            # Probe forward from the hashed slot for the first free order.
-            for offset in range(pool_size):
-                candidate = pool[(start + offset) % pool_size]
-                if candidate not in claimed:
-                    chosen = candidate
-                    break
-        claimed.add(chosen)
-        mapping[vessel] = chosen
-
-    assigned = vessels.map(lambda vessel: mapping.get(vessel, ""))
-    tonnage_pdf = tonnage_pdf.copy()
-    tonnage_pdf["order_id"] = [
-        current if current else fallback
-        for current, fallback in zip(existing, assigned)
-    ]
-
-    linked = sum(1 for value in tonnage_pdf["order_id"] if value)
-    logger.debug(
-        "linked %d/%d tonnage rows (%d distinct vessels) to %d/%d orders",
-        linked,
-        len(tonnage_pdf),
-        len(mapping),
-        len(claimed),
-        pool_size,
-    )
-    return tonnage_pdf
-
-
 def transform_tonnage(df: DataFrame) -> DataFrame:
     selected = df.select(
         select_or_null(df, "update_date", ["Update Date", "update_date"]),
@@ -395,15 +305,11 @@ def transform_tonnage(df: DataFrame) -> DataFrame:
         select_or_null(df, "open_date_start", ["Open Dates Start", "Open Date Start", "open_date_start"]),
         select_or_null(df, "open_date_end", ["Open Dates End", "Open Date End", "open_date_end"]),
         select_or_null(df, "first_date_received", ["First Date Received", "first_date_received"]),
-        # order_id is a LINK to the orders table, never generated from tonnage
-        # content. Bronze almost certainly doesn't carry one, in which case
-        # this stays null here and is filled by assign_order_ids() inside
-        # write_dataset(), once the orders table has been published.
-        select_or_null(df, "order_id", ["Order ID", "Order Id", "OrderID", "order_id"]),
     )
     # Tonnage rows are identified by vessel_id, which is already a natural
-    # per-vessel key in the source data - no generated ID column.
-    return selected.withColumn("order_id", F.col("order_id").cast("string"))
+    # per-vessel key in the source data - no generated ID column. There is
+    # deliberately no order_id here: tonnage carries no link to orders.
+    return selected
 
 
 def transform_orders(df: DataFrame) -> DataFrame:
@@ -591,13 +497,8 @@ def write_dataset(
     database_name: str,
     table_name: str,
     region: str,
-    order_id_pool: Optional[list[str]] = None,
 ) -> pd.DataFrame:
-    """Merge this batch into the published dataset and return the merged frame.
-
-    Returns the final merged pandas DataFrame so main() can feed the published
-    orders table's order_id values back in as the pool for tonnage.
-    """
+    """Merge this batch into the published dataset and return the merged frame."""
     import boto3
 
     logger.info("writing dataset to %s (table=%s)", output_path, table_name)
@@ -606,14 +507,11 @@ def write_dataset(
     bucket = parsed.netloc
     prefix = parsed.path.lstrip("/")
 
-    is_tonnage = table_name.endswith("tonnage_silver")
-
-    if is_tonnage:
+    if table_name.endswith("tonnage_silver"):
         object_key = f"{prefix.rstrip('/')}/tonnage.json" if prefix else "tonnage.json"
-        # vessel_id is the natural per-vessel key in the source data. Note this
-        # collapses the table to one current row per vessel; to keep the daily
-        # snapshots instead, use ["vessel_id", "update_date"] - assign_order_ids()
-        # works either way, since it assigns per vessel, not per row.
+        # vessel_id is the natural per-vessel key in the source data; together
+        # with the open window and first_date_received it identifies one
+        # position report.
         dedup_key_columns = ["vessel_id", "open_date_start", "open_date_end", "first_date_received"]
     elif table_name.endswith("orders_silver"):
         object_key = f"{prefix.rstrip('/')}/orders.json" if prefix else "orders.json"
@@ -632,7 +530,7 @@ def write_dataset(
         combined_pdf = new_pdf
 
     # The published file may still carry columns from an older version of the
-    # silver schema (e.g. record_id). Concatenating resurrects them as an
+    # silver schema (e.g. record_id, or tonnage's former order_id). Concatenating resurrects them as an
     # all-null column, so prune the merged frame back to the current schema.
     # This also fixes column ordering in the output JSON.
     expected_columns = [field.name for field in df.schema.fields]
@@ -649,13 +547,6 @@ def write_dataset(
         # keep="last" -> when the same record appears in both the existing
         # file and the new batch, the new batch's version wins (an update).
         combined_pdf = combined_pdf.drop_duplicates(subset=dedup_key_columns, keep="last")
-
-    if is_tonnage:
-        # Done here, after the merge, in plain pandas: the whole published set
-        # of vessels is assigned in one pass (so uniqueness holds globally),
-        # and there's no pandas -> Spark -> pandas round-trip to trip over
-        # Arrow's schema inference on a freshly added string column.
-        combined_pdf = assign_order_ids(combined_pdf, order_id_pool or [])
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         local_json_path = os.path.join(tmp_dir, "data.json")
@@ -717,9 +608,6 @@ def main() -> None:
     tonnage_output_path = f"{silver_prefix}tonnage/"
     orders_output_path = f"{silver_prefix}orders/"
 
-    # Orders go first: the published orders table is the pool of valid
-    # order_id values that tonnage rows are then linked to.
-    order_id_pool: list[str] = []
     if orders_silver is not None:
         orders_merged = write_dataset(
             glue_context,
@@ -729,9 +617,6 @@ def main() -> None:
             args.glue_orders_table,
             args.region,
         )
-        if orders_merged is not None and "order_id" in orders_merged.columns:
-            order_id_pool = [value for value in normalize_id_series(orders_merged["order_id"]) if value]
-        logger.info("%d order_id values available for tonnage linking", len(order_id_pool))
         if orders_merged is not None and not orders_merged.empty:
             preview_columns = [c for c in ("order_id", "load_port", "discharge_port", "update_date") if c in orders_merged.columns]
             logger.debug("orders preview:\n%s", orders_merged[preview_columns].head(5).to_string(index=False))
@@ -744,13 +629,9 @@ def main() -> None:
             args.glue_database,
             args.glue_tonnage_table,
             args.region,
-            order_id_pool=order_id_pool,
         )
-        # Printed from the merged pandas frame, not tonnage_silver.show(): the
-        # order_id link is filled in inside write_dataset, so the Spark
-        # DataFrame still shows it as null at this point.
         if tonnage_merged is not None and not tonnage_merged.empty:
-            preview_columns = [c for c in ("vessel_id", "order_id", "update_date") if c in tonnage_merged.columns]
+            preview_columns = [c for c in ("vessel_id", "commercial_status", "update_date") if c in tonnage_merged.columns]
             logger.debug("tonnage preview:\n%s", tonnage_merged[preview_columns].head(5).to_string(index=False))
 
     if input_files:

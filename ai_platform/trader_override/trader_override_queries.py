@@ -154,8 +154,7 @@ def tonnage_row_snapshot_sql(base_tonnage_row_key: str, vessel_id: str) -> tuple
     """
     return (
         (
-            "SELECT commercial_status, open_area, open_date_start, open_date_end, "
-            "order_id::text AS order_id "
+            "SELECT commercial_status, open_area, open_date_start, open_date_end "
             "FROM public.tonnage_test WHERE tonnage_row_key = $1 AND vessel_id = $2"
         ),
         [base_tonnage_row_key, vessel_id],
@@ -197,8 +196,7 @@ def vessel_history_sql(vessel_id: str) -> tuple[str, list]:
         (
             "SELECT tonnage_row_key, vessel_id, update_date, parent_zone, vessel_status, dwt, "
             "commercial_status, ship_type, ship_size, ballast_laden, destination, "
-            "open_area, eta, open_date_start, open_date_end, first_date_received, "
-            "order_id::text AS order_id "
+            "open_area, eta, open_date_start, open_date_end, first_date_received "
             "FROM public.tonnage_test WHERE vessel_id = $1 "
             "ORDER BY update_date DESC NULLS LAST"
         ),
@@ -214,7 +212,6 @@ def override_tonnage_row_sql(
     open_area: str | None = None,
     open_date_start: str | None = None,
     open_date_end: str | None = None,
-    order_assignment: str | None = None,
 ) -> tuple[str, list]:
     """Replace one ``tonnage_test`` row with a copy carrying the trader's edits.
 
@@ -231,8 +228,7 @@ def override_tonnage_row_sql(
     ``ship_size``, ``ballast_laden``, ``destination``, ``eta``, the four
     ``*_embedding`` columns, ``embedding_source_hash``, ``gold_loaded_at``)
     is copied from the base row unchanged. A field the trader *can* touch
-    but left blank this submission (``open_area``, the open dates,
-    ``order_assignment``) is also copied from the base row rather than
+    but left blank this submission (``open_area``, the open dates) is also copied from the base row rather than
     cleared -- only ``commercial_status`` is always the trader's value,
     since the form requires it.
 
@@ -261,10 +257,6 @@ def override_tonnage_row_sql(
 
     A new ``tonnage_row_key`` (``tonnage_test``'s primary key) is generated
     here rather than left to a default, since the column has none.
-    ``order_assignment`` is written straight into ``order_id`` -- the only
-    ``tonnage_test`` column an "order assignment" could mean -- so, like
-    every other field here, it can be overwritten by the next real Shipfix
-    report for the vessel; there is no override table protecting it.
 
     Parameters
     ----------
@@ -281,7 +273,7 @@ def override_tonnage_row_sql(
         ``vessel_current_status``'s booking-window logic -- every other
         value is still written here, but reads as OPEN on the Dashboard
         tab.
-    open_area, open_date_start, open_date_end, order_assignment : optional
+    open_area, open_date_start, open_date_end : optional
         The rest of what a trader might have fresh word on -- all
         optional, since a trader may only have new word on the status, not
         a full re-report; whatever's left blank falls back to the base
@@ -300,9 +292,6 @@ def override_tonnage_row_sql(
     # an HTML <input type="date">; parsed to date objects via _parse_date so
     # asyncpg's own type inference on the $6/$7::timestamp casts (which
     # requires a real date/datetime, not a str) accepts them.
-    # order_assignment stays a str, cast text -> bigint in SQL; a non-numeric
-    # value surfaces as a plain database error (502), same convention as
-    # everywhere else in this module.
     return (
         (
             "WITH base AS ("
@@ -315,7 +304,7 @@ def override_tonnage_row_sql(
             ") "
             "INSERT INTO public.tonnage_test ("
             "  tonnage_row_key, vessel_id, update_date, commercial_status, open_area,"
-            "  open_date_start, open_date_end, order_id, first_date_received,"
+            "  open_date_start, open_date_end, first_date_received,"
             "  parent_zone, vessel_status, dwt, ship_type, ship_size, ballast_laden,"
             "  destination, eta, vessel_status_embedding, destination_embedding,"
             "  parent_zone_embedding, open_area_embedding, embedding_source_hash, gold_loaded_at"
@@ -330,7 +319,6 @@ def override_tonnage_row_sql(
             "  COALESCE($5, base.open_area),"
             "  COALESCE($6::timestamp, base.open_date_start),"
             "  COALESCE($7::timestamp, base.open_date_end),"
-            "  COALESCE($8::text::bigint, base.order_id),"
             "  base.first_date_received,"
             "  base.parent_zone, base.vessel_status, base.dwt, base.ship_type, base.ship_size,"
             "  base.ballast_laden, base.destination, base.eta,"
@@ -339,11 +327,11 @@ def override_tonnage_row_sql(
             "  base.embedding_source_hash, base.gold_loaded_at "
             "FROM base CROSS JOIN removed "
             "RETURNING vessel_id, update_date, commercial_status, open_area, "
-            "open_date_start, open_date_end, order_id::text AS order_id"
+            "open_date_start, open_date_end"
         ),
         [
             base_tonnage_row_key, vessel_id, new_tonnage_row_key, commercial_status,
-            open_area, _parse_date(open_date_start), _parse_date(open_date_end), order_assignment,
+            open_area, _parse_date(open_date_start), _parse_date(open_date_end),
         ],
     )
 
@@ -351,13 +339,14 @@ def override_tonnage_row_sql(
 # Columns every audit insert/select below lists explicitly, in this order.
 # The old_* columns are nullable -- rows logged before this column set
 # existed have them NULL, meaning "unknown before-value", not "unchanged".
+# The table's order_assignment/old_order_assignment columns are neither read
+# nor written any more: tonnage_test no longer has an order_id to assign.
 _AUDIT_COLUMNS = (
     "id", "vessel_id",
     "old_override_status", "override_status",
     "old_open_area", "open_area",
     "old_open_date_start", "open_date_start",
     "old_open_date_end", "open_date_end",
-    "old_order_assignment", "order_assignment",
     "entered_by", "created_at",
 )
 
@@ -370,12 +359,10 @@ def insert_audit_sql(
     open_area: str | None = None,
     open_date_start: object = None,
     open_date_end: object = None,
-    order_assignment: str | None = None,
     old_override_status: str | None = None,
     old_open_area: str | None = None,
     old_open_date_start: object = None,
     old_open_date_end: object = None,
-    old_order_assignment: str | None = None,
 ) -> tuple[str, list]:
     """Log one trader submission to ``trader_override_audit``, before and after.
 
@@ -403,13 +390,13 @@ def insert_audit_sql(
         form requires it).
     entered_by : str
         Free-text trader identifier -- the dashboard route has no login.
-    open_area, order_assignment : optional
-        The vessel's resulting values for those columns, from the same
+    open_area : optional
+        The vessel's resulting value for that column, from the same
         ``RETURNING`` row -- already plain text, no parsing needed here.
     open_date_start, open_date_end : optional
         Same, but ``date``/``datetime`` objects (asyncpg's own decoding of
         a ``timestamp`` column, same as the ``RETURNING`` row yields).
-    old_override_status, old_open_area, old_order_assignment : optional
+    old_override_status, old_open_area : optional
         The overridden row's own values for those columns, straight from
         :func:`tonnage_row_snapshot_sql` -- already plain text, no parsing
         needed here.
@@ -425,23 +412,21 @@ def insert_audit_sql(
         "vessel_id, old_override_status, override_status, "
         "old_open_area, open_area, "
         "old_open_date_start, open_date_start, "
-        "old_open_date_end, open_date_end, "
-        "old_order_assignment, order_assignment, entered_by"
+        "old_open_date_end, open_date_end, entered_by"
     )
     returning = ", ".join(_AUDIT_COLUMNS)
     return (
         (
             f"INSERT INTO public.trader_override_audit ({columns}) "
             "VALUES ($1, $2, $3, $4, $5, $6::timestamp, $7::timestamp, "
-            "$8::timestamp, $9::timestamp, $10, $11, $12) "
+            "$8::timestamp, $9::timestamp, $10) "
             f"RETURNING {returning}"
         ),
         [
             vessel_id, old_override_status, override_status,
             old_open_area, open_area,
             old_open_date_start, open_date_start,
-            old_open_date_end, open_date_end,
-            old_order_assignment, order_assignment, entered_by,
+            old_open_date_end, open_date_end, entered_by,
         ],
     )
 

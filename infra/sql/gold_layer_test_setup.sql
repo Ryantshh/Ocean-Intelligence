@@ -63,7 +63,6 @@ CREATE TABLE IF NOT EXISTS public.tonnage_test (
     open_date_start TIMESTAMP,
     open_date_end TIMESTAMP,
     first_date_received TIMESTAMP,
-    order_id BIGINT,
     vessel_status_embedding vector(512),
     destination_embedding vector(512),
     parent_zone_embedding vector(512),
@@ -71,3 +70,12 @@ CREATE TABLE IF NOT EXISTS public.tonnage_test (
     embedding_source_hash TEXT,
     gold_loaded_at TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- tonnage_test used to carry an order_id column: a placeholder link to
+-- order_test that scripts/glue_transform.py filled in by hash, not by any
+-- real vessel-to-cargo matching. It has been removed from the pipeline,
+-- the dashboard views and the app; this drops it from databases created
+-- before that change. Apply infra/sql/dashboard_gold_views.sql first --
+-- vessel_current_status used to select this column, and Postgres refuses
+-- the drop while a view still depends on it.
+ALTER TABLE public.tonnage_test DROP COLUMN IF EXISTS order_id;

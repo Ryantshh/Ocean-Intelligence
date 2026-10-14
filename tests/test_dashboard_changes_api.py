@@ -1,8 +1,5 @@
 """Exercise the HTTP route with fixed clocks; database access is mocked."""
 
-# The driver requires naive UTC bounds.
-# ruff: noqa: DTZ001
-
 import unittest
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
