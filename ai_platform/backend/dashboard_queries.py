@@ -103,12 +103,13 @@ _ORDERS_COLUMNS_SAFE = (
 # it open, with that day as the start of its open window. This does NOT
 # mean "first ever seen in the data" (an earlier, rejected definition
 # built on vessel_current_status.first_date_received). Since every segment
-# in vessel_status_history comes from a real reported row, this is also
-# exactly the "became OPEN" subset of what vessel_status_changes_sql
-# tracks -- deliberately NOT excluded from that query's own results:
-# "new vessels" is a narrower, separately-labeled highlight of the same
-# underlying events, not a mutually-exclusive category, so an into-OPEN
-# transition is expected to appear under both headings in the change feed.
+# in vessel_status_history comes from a real reported row, a vessel that
+# returns to OPEN is also one of the "+" supply moves that
+# vessel_status_changes_sql lists -- deliberately NOT excluded from that
+# query's results: "new vessels" is a narrower, separately-labeled highlight
+# (it also includes a vessel's very first segment, and requires recent
+# contact), not a mutually-exclusive category, so a return to OPEN can
+# appear under both headings in the change feed.
 #
 # A second branch used to be unioned in here, counting vessels that rolled
 # into "presumed open" via the 5-day recency fallback. Removed because it
@@ -160,6 +161,67 @@ _NEW_VESSEL_EVENTS_CTE = (
     "WHERE t.vessel_id = h.vessel_id "
     "AND t.update_date <  h.open_date_start + interval '1 day' "
     "AND t.update_date >= h.open_date_start - interval '5 days')"
+)
+
+
+# ---- Status changes chart: supply moving in and out ----------------------
+#
+# DEFINITION (the Daily Trends "Status changes" chart; keep this block in
+# step with the chart's caption in dashboard/index.html):
+#
+# The chart is a plus/minus view of supply, one pair of bars per day.
+#   UP   (+1, green): a vessel goes FIXED or ON SUBS -> OPEN.
+#   DOWN (-1, red):   a vessel goes OPEN -> FIXED or ON SUBS.
+#   Anything else counts for nothing, in particular FIXED <-> ON SUBS: both
+#   take the vessel off the market, so supply does not move. ON SUBS is
+#   treated exactly like FIXED throughout.
+#
+# A move is dated by the day the NEW status TAKES EFFECT -- the start of the
+# segment that carries it (``open_date_start``) -- not by the day the report
+# arrived. A vessel whose status becomes FIXED on 5 October is in the 5
+# October bar however early that was reported. Consequences worth knowing:
+#   * Nothing dated after "now" is counted, so the chart cannot show a
+#     forecast. The old report-day bucketing could: 27 of 51 "back to OPEN"
+#     events in one 14-day window described an OPEN window that had not yet
+#     started, against 7 of 53 on the other side.
+#   * A late report that back-dates a change moves a bar for a past day. That
+#     is information arriving, not the clock advancing, and the same is true
+#     of the New Vessels chart.
+#   * Bars are whole calendar days. (The old report-day version had a partial
+#     first and last bar; ``open_date_start`` is a date, so there is nothing
+#     to clip.)
+#
+# KNOWN LIMIT: a vessel that goes quiet for 5 days becomes LIKELY FIXED on
+# the tiles, but vessel_status_history has no such status, so that is not an
+# event here. The down side therefore counts reported fixtures only, and
+# understates how much supply leaves the market. The 5-day freshness rule is
+# also not applied to the events themselves (the New Vessels chart does apply
+# it). Both are by decision, not oversight.
+#
+# A vessel's first-ever segment is the baseline and is not a move. Adjacent
+# segments are compared by ``open_date_start`` order, and
+# ``status IS DISTINCT FROM prev_status`` is checked explicitly because a
+# reporting gap that returns to the same status is not a change.
+#
+# Shared by every query below that computes it so the bar, its region split
+# and the click-through can't disagree -- and, since 6 Oct 2026, the Change
+# Feed's "Supply moves" list (:func:`vessel_status_changes_sql`), so the
+# feed and the chart count the same events. Yields one row per move:
+# (vessel_id, parent_zone, day, direction, prev_status, status) with
+# direction 'up' or 'down'.
+_STATUS_MOVES_CTE = (
+    "SELECT vessel_id, parent_zone, day, direction, prev_status, status FROM ("
+    "  SELECT vessel_id, parent_zone, open_date_start::date AS day, status, prev_status, "
+    "  CASE "
+    "    WHEN status = 'OPEN' AND prev_status IN ('FIXED', 'ON SUBS') THEN 'up' "
+    "    WHEN prev_status = 'OPEN' AND status IN ('FIXED', 'ON SUBS') THEN 'down' "
+    "  END AS direction "
+    "  FROM ("
+    "    SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status "
+    "    FROM vessel_status_history"
+    "  ) ordered "
+    "  WHERE NOT is_first_segment AND status IS DISTINCT FROM prev_status"
+    ") classified WHERE direction IS NOT NULL"
 )
 
 
@@ -469,46 +531,42 @@ def daily_new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
 
 
 def daily_status_changes_sql(since: datetime, until: datetime) -> tuple[str, list]:
-    """Day-bucketed count of FIXED/OPEN/ON SUBS transitions, one row per calendar day.
+    """Day-bucketed supply moves, one row per calendar day.
 
-    Backed by ``vessel_status_history``, with ``prev_status`` recomputed
-    via ``LAG`` ordered by ``open_date_start`` the same way
-    :func:`vessel_status_changes_sql` does -- see its docstring for why
-    ``status IS DISTINCT FROM prev_status`` is checked explicitly rather
-    than assumed from adjacency alone (a reporting gap that returns to the
-    same status isn't a change), and why a vessel's first-ever segment
-    (``is_first_segment``) is excluded. Does NOT exclude transitions into
-    'OPEN' -- those also count here, in addition to being separately
-    highlighted by :func:`daily_new_vessels_sql`'s own bar; the overlap
-    is intentional, see :func:`vessel_status_changes_sql`.
+    A plus/minus view: ``up`` counts vessels returning to OPEN and ``down``
+    counts vessels leaving it for FIXED or ON SUBS, each dated by the day
+    the new status takes effect. See :data:`_STATUS_MOVES_CTE` for the full
+    definition, including what is deliberately not counted.
 
     Parameters
     ----------
     since : datetime
-        Range start, from :func:`daily_range_start`.
+        Range start, from :func:`daily_range_start`. Only its calendar day
+        matters: bars are whole days.
     until : datetime
-        The simulated "now" itself.
+        The simulated "now" itself. A move effective at or after this
+        instant is not counted, so the last bar holds today's moves so far.
 
     Returns
     -------
     tuple
-        ``(sql, params)``; rows have ``day`` (date) and ``count`` (int).
+        ``(sql, params)``; rows have ``day`` (date), ``up`` (int),
+        ``down`` (int) and ``count`` (int, ``up + down``: gross moves).
     """
     return (
         (
             "WITH days AS ("
             "  SELECT generate_series(date_trunc('day', $1::timestamp), date_trunc('day', $2::timestamp), interval '1 day')::date AS day"
-            "), ordered AS ("
-            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
-            "  FROM vessel_status_history"
+            f"), moves AS ({_STATUS_MOVES_CTE}"
             "), counts AS ("
-            "  SELECT date_trunc('day', update_date)::date AS day, COUNT(*) AS n"
-            "  FROM ordered"
-            "  WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment"
-            "  AND status IS DISTINCT FROM prev_status"
+            "  SELECT day, COUNT(*) FILTER (WHERE direction = 'up') AS up, "
+            "         COUNT(*) FILTER (WHERE direction = 'down') AS down "
+            "  FROM moves "
+            "  WHERE day >= date_trunc('day', $1::timestamp)::date AND day::timestamp < $2::timestamp "
             "  GROUP BY 1"
             ") "
-            "SELECT d.day, COALESCE(c.n, 0)::int AS count "
+            "SELECT d.day, COALESCE(c.up, 0)::int AS up, COALESCE(c.down, 0)::int AS down, "
+            "(COALESCE(c.up, 0) + COALESCE(c.down, 0))::int AS count "
             "FROM days d LEFT JOIN counts c USING (day) "
             "ORDER BY d.day"
         ),
@@ -605,9 +663,13 @@ def daily_new_vessels_by_region_sql(since: datetime, until: datetime) -> tuple[s
 
 
 def daily_status_changes_by_region_sql(since: datetime, until: datetime) -> tuple[str, list]:
-    """Per-region breakdown of FIXED/OPEN/ON SUBS transitions, one row per (day, region).
+    """Per-region breakdown of supply moves, one row per (day, region).
 
-    Includes transitions into 'OPEN' -- see :func:`daily_status_changes_sql`.
+    Same definition as :func:`daily_status_changes_sql` (see
+    :data:`_STATUS_MOVES_CTE`), split by the zone(s) on the segment the move
+    lands in. A move spanning several zones is counted once per zone, so
+    summing a day's rows can exceed that day's total -- the convention the
+    other two charts' region breakdowns already follow.
 
     Parameters
     ----------
@@ -619,23 +681,22 @@ def daily_status_changes_by_region_sql(since: datetime, until: datetime) -> tupl
     Returns
     -------
     tuple
-        ``(sql, params)``; rows have ``day`` (date), ``region`` (str), and
-        ``count`` (int), ordered by day then descending count.
+        ``(sql, params)``; rows have ``day`` (date), ``region`` (str), ``up``
+        (int), ``down`` (int) and ``count`` (int, ``up + down``), ordered by
+        day then descending count.
     """
     return (
         (
-            "WITH ordered AS ("
-            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
-            "  FROM vessel_status_history"
-            ") "
-            "SELECT date_trunc('day', update_date)::date AS day, "
-            "trim(zone) AS region, COUNT(*) AS count "
-            "FROM ordered, "
-            "LATERAL regexp_split_to_table(trim(COALESCE(parent_zone, '')), '\\s*,\\s*') AS zone "
-            "WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment "
-            "AND status IS DISTINCT FROM prev_status "
+            f"WITH moves AS ({_STATUS_MOVES_CTE}) "
+            "SELECT m.day, trim(zone) AS region, "
+            "COUNT(*) FILTER (WHERE m.direction = 'up')::int AS up, "
+            "COUNT(*) FILTER (WHERE m.direction = 'down')::int AS down, "
+            "COUNT(*)::int AS count "
+            "FROM moves m, "
+            "LATERAL regexp_split_to_table(trim(COALESCE(m.parent_zone, '')), '\\s*,\\s*') AS zone "
+            "WHERE m.day >= date_trunc('day', $1::timestamp)::date AND m.day::timestamp < $2::timestamp "
             "AND trim(zone) <> '' "
-            "GROUP BY 1, 2 ORDER BY 1, 3 DESC"
+            "GROUP BY 1, 2 ORDER BY 1, 5 DESC"
         ),
         [since, until],
     )
@@ -694,6 +755,7 @@ def vessels_on_day_sql(
     *,
     range_since: datetime | None = None,
     range_until: datetime | None = None,
+    direction: str | None = None,
 ) -> tuple[str, list]:
     """Current-status rows for the vessels counted in one Daily Trends bar.
 
@@ -741,6 +803,13 @@ def vessels_on_day_sql(
         The same window bounds the chart's own query used (see
         :func:`daily_range_start` / ``dashboard.py``'s ``daily_counts``),
         so this day's bounds can be clipped to match its bar exactly.
+        ``range_since`` only applies to the New Vessels bar; a status-move
+        bar is a whole calendar day, and ``range_until`` still stops it
+        counting anything dated after "now".
+    direction : "up", "down" or None
+        Status Changes only: restrict to vessels returning to OPEN ("up") or
+        leaving it for FIXED / ON SUBS ("down"), i.e. the green or the red
+        bar. None returns both. Ignored for New Vessels.
 
     Returns
     -------
@@ -748,7 +817,10 @@ def vessels_on_day_sql(
         ``(sql, params)``; same row shape as :func:`vessels_sql`.
     """
     start, end = _day_bounds(day)
-    if range_since is not None:
+    if range_since is not None and metric == "new_vessels":
+        # Only the New Vessels bar is dated at instant resolution against the
+        # chart's range. Status moves are dated by whole calendar day, so
+        # clipping their start to range_since would drop part of a real bar.
         start = max(start, range_since.replace(tzinfo=None))
     if range_until is not None:
         end = min(end, range_until.replace(tzinfo=None))
@@ -758,14 +830,13 @@ def vessels_on_day_sql(
             "SELECT DISTINCT vessel_id FROM events WHERE day >= $1 AND day < $2"
         )
     else:
+        # ``direction`` is checked against a whitelist and only then
+        # interpolated, so no caller-supplied text reaches the statement.
+        direction_clause = f" AND direction = '{direction}'" if direction in ("up", "down") else ""
         matched = (
-            "WITH ordered AS ("
-            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
-            "  FROM vessel_status_history"
-            ") "
-            "SELECT DISTINCT vessel_id FROM ordered "
-            "WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment "
-            "AND status IS DISTINCT FROM prev_status"
+            f"WITH moves AS ({_STATUS_MOVES_CTE}) "
+            "SELECT DISTINCT vessel_id FROM moves "
+            f"WHERE day::timestamp >= $1 AND day::timestamp < $2{direction_clause}"
         )
     sql = (
         f"WITH matched AS ({matched}) "
@@ -907,30 +978,46 @@ def new_vessels_sql(since: datetime, until: datetime) -> tuple[str, list]:
 
 
 def vessel_status_changes_sql(since: datetime, until: datetime) -> tuple[str, list]:
-    """Status transitions (e.g. On Subs -> Fixed) within the window.
+    """Supply moves in the window: the Change Feed's "Supply moves" list.
 
-    ``vessel_status_history`` no longer stores ``prev_status`` directly, so
-    it's recomputed here via ``LAG`` ordered by ``open_date_start`` -- the
-    segment's own chronological position, not ``update_date``. Adjacent
-    segments in that view are always a real status change *unless* there's
-    a reporting gap between them (no row covered the days in between) that
-    happens to return to the same status afterward -- e.g. OPEN, silence,
-    then OPEN again is not a change even though it's two separate segments
-    -- so ``status IS DISTINCT FROM prev_status`` is checked explicitly
-    rather than assumed from the segment boundary alone.
+    These are exactly the events the Daily Trends "Supply moves" chart
+    counts, so the two agree. A vessel returning to OPEN from FIXED or ON
+    SUBS is "up"; a vessel leaving OPEN for FIXED or ON SUBS is "down";
+    FIXED <-> ON SUBS is not listed. Each is dated by the day the new status
+    takes effect. The definition, and what it deliberately leaves out, is the
+    comment above :data:`_STATUS_MOVES_CTE`.
 
-    Also excludes a vessel's first-ever segment (``is_first_segment``) --
-    it has no prior segment to have changed *from*, so it's not itself a
-    status change (its ``prev_status`` is NULL, which is already
-    "distinct" from anything, so this exclusion isn't implied by the
-    check above).
+    Window: effective dates are whole calendar days (midnight), so the time of
+    day in ``since`` only decides whether ``since``'s own day is included, and
+    it is not unless ``since`` is itself midnight. In practice that means
+    day-on-day on a Tuesday lists Tuesday's moves, on a Monday it lists
+    Saturday's, Sunday's and Monday's, and week-on-week lists the seven whole
+    days. The row count equals the sum of the chart's bars for those same
+    days. Nothing effective at or after ``until`` ("now") is listed.
 
-    Does NOT exclude transitions into 'OPEN' -- this is deliberately the
-    complete, unrestricted transition log (any status -> any status).
-    :func:`new_vessels_sql` reports the same into-OPEN events too, under
-    its own narrower "new vessel" heading -- that's an intentional
-    overlap, not a duplicate to avoid: "new vessels" is a spotlighted
-    subset of this list, not a mutually-exclusive category.
+    DEFINITION CHANGE, 6 Oct 2026. This list used to be every status
+    transition in ``vessel_status_history`` (any status -> any status,
+    FIXED <-> ON SUBS included) whose report *arrived* in the window
+    (``update_date``). It was changed because it disagreed with the chart.
+    Over one week the old list had 52 rows and the chart 50, but only 23 of
+    those events were in both: 20 were reported in the week yet took effect
+    after "now", 8 took effect before the week began, and 1 was FIXED <-> ON
+    SUBS. What that means in practice:
+
+    * A change now appears when it *takes effect*, not when it is reported. A
+      change reported today for next week no longer shows until next week;
+      one reported late for an earlier day shows on that earlier day, in an
+      earlier window.
+    * FIXED <-> ON SUBS no longer appears anywhere in the Change Feed (the
+      field-changes group already excludes status). It is still visible in a
+      vessel's status history trail.
+    * Rows carry ``effective_date`` and ``direction`` instead of the history
+      columns they used to (``update_date``, ``open_date_end`` and so on).
+    * The same limit as the chart: a vessel going quiet (LIKELY FIXED) is not
+      an event, and the 5-day freshness rule is not applied here.
+
+    ``new_vessels`` overlaps this list by design: a vessel returning to OPEN
+    can appear under both headings.
 
     Parameters
     ----------
@@ -942,18 +1029,18 @@ def vessel_status_changes_sql(since: datetime, until: datetime) -> tuple[str, li
     Returns
     -------
     tuple
-        ``(sql, params)``.
+        ``(sql, params)``; rows have ``vessel_id``, ``prev_status``,
+        ``status``, ``direction`` ('up' or 'down') and ``effective_date``
+        (a midnight timestamp), newest day first, returns-to-open first
+        within a day.
     """
     return (
         (
-            "WITH ordered AS ("
-            "  SELECT *, LAG(status) OVER (PARTITION BY vessel_id ORDER BY open_date_start) AS prev_status"
-            "  FROM vessel_status_history"
-            ") "
-            "SELECT * FROM ordered "
-            "WHERE update_date >= $1 AND update_date < $2 AND NOT is_first_segment "
-            "AND status IS DISTINCT FROM prev_status "
-            "ORDER BY update_date DESC"
+            f"WITH moves AS ({_STATUS_MOVES_CTE}) "
+            "SELECT vessel_id, prev_status, status, direction, day::timestamp AS effective_date "
+            "FROM moves "
+            "WHERE day::timestamp >= $1 AND day::timestamp < $2 "
+            "ORDER BY day DESC, direction DESC, vessel_id"
         ),
         [since, until],
     )
