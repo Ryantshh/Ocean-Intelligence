@@ -7,9 +7,6 @@ access is mocked, so these pin the SQL text and the API wiring; the numbers
 themselves were checked against a Python recomputation on the live data.
 """
 
-# The driver requires naive UTC bounds.
-# ruff: noqa: DTZ001
-
 import unittest
 from datetime import date, datetime
 from pathlib import Path
