@@ -66,7 +66,6 @@ TONNAGE_COLUMNS = (
     "open_date_start",
     "open_date_end",
     "first_date_received",
-    "order_id",
     "embedding_source_hash",
 )
 
@@ -164,7 +163,6 @@ def handler(event, context):
 
     for row in tonnage_rows:
         row["tonnage_row_key"] = _tonnage_row_key(row)
-        row["order_id"] = _as_bigint(row.get("order_id"))
         row["embedding_source_hash"] = embeddings.source_hash(row, embeddings.TONNAGE_EMBED_FIELDS)
         row["_dynamo_key"] = f"{TONNAGE_ROW_KEY_PREFIX}{row['tonnage_row_key']}"
 

@@ -104,7 +104,6 @@ class OverrideRequest(BaseModel):
     open_area: str | None = Field(default=None, max_length=120)
     open_date_start: str | None = None
     open_date_end: str | None = None
-    order_assignment: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/vessels")
@@ -181,9 +180,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
         404 if ``vessel_id`` isn't a real vessel in ``tonnage_test``, or if
         ``base_tonnage_row_key`` no longer matches an existing row for it
         (edited/deleted concurrently, or a stale key from an old page load);
-        502 on a database failure (including an ``order_assignment`` that
-        isn't a valid integer -- rejected by the ``::bigint`` cast in the
-        insert).
+        502 on a database failure.
     """
     exists = await _run(*toq.vessel_exists_sql(body.vessel_id))
     if not exists:
@@ -214,7 +211,6 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             open_area=body.open_area,
             open_date_start=body.open_date_start,
             open_date_end=body.open_date_end,
-            order_assignment=body.order_assignment,
         )
     )
     if not rows:
@@ -241,12 +237,10 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
                 open_area=new_row["open_area"],
                 open_date_start=_to_timestamp(new_row["open_date_start"]),
                 open_date_end=_to_timestamp(new_row["open_date_end"]),
-                order_assignment=new_row["order_id"],
                 old_override_status=snapshot["commercial_status"],
                 old_open_area=snapshot["open_area"],
                 old_open_date_start=_to_timestamp(snapshot["open_date_start"]),
                 old_open_date_end=_to_timestamp(snapshot["open_date_end"]),
-                old_order_assignment=snapshot["order_id"],
             )
         )
     except HTTPException as exc:

@@ -352,26 +352,13 @@
       .history-trail li:not(:last-child)::after { content: "\2192"; color: var(--muted); margin-left: 0.4rem; }
 
       /* ---- top-level tabs --------------------------------------------------
-         One bar serves every page: Chat, Dashboard, Vessel Override, Order
-         Override. It must stay the only .tabs element -- it is position: fixed,
-         so a second one would be drawn on top of it rather than below.
-
-         Wide windows: an OPAQUE pill fixed in the empty middle of the chat's
-         60px header (Chainlit keeps its own controls at the left and right
-         edges), so chat stays full screen. Opaque on purpose: --bg is a solid
-         colour in both themes, so whatever scrolls beneath the bar is hidden
-         by it rather than showing through the buttons.
-
-         Narrow windows: that middle gap closes and the pill runs into
-         Chainlit's "Ocean Intelligence agent" selector, so the bar becomes an
-         opaque rail down the left edge and the pages are inset by its width
-         instead of sitting underneath it. 1180px is an estimate of where the
-         collision starts (Chainlit's header can't be measured from here);
-         raise or lower it in the single @media rule below.
-
-         Before sign-in (body.nav-locked) the bar is not shown at all: the only
-         thing on screen is the chat frame's login page. */
-      :root { --rail-w: 9.5rem; }
+         The Chat / Dashboard bar is an OPAQUE pill fixed in the empty middle
+         of the chat's 60px header (Chainlit keeps its own controls at the left
+         and right edges), so chat stays full screen. Opaque on purpose: --bg
+         is a solid colour in both themes, so whatever scrolls beneath the bar
+         is hidden by it rather than showing through the buttons. The
+         dashboard and override pages are switched by a second, .sub-tabs bar
+         inside <main> (below), which is not fixed. */
       .tabs {
         position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30;
         display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem;
@@ -391,21 +378,14 @@
          keeps it loaded, so neither side reloads when switching tabs. */
       #tab-chat { position: fixed; inset: 0; }
       #chatFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
-      @media (max-width: 1180px) {
-        .tabs {
-          top: 0; bottom: 0; left: 0; transform: none; width: var(--rail-w);
-          flex-direction: column; align-items: stretch; justify-content: flex-start;
-          gap: 0.35rem; padding: 0.9rem 0.6rem; overflow-y: auto;
-          border: 0; border-right: 1px solid var(--border); border-radius: 0; box-shadow: none;
-        }
-        .tab-btn { text-align: left; white-space: normal; }
-        #tab-chat { left: var(--rail-w); }
-        main { margin: 0 0 0 var(--rail-w); padding-top: 3rem; }
+      .tab-btn.hidden { display: none; }
+      /* Dashboard / override pages, switched inside <main>: an ordinary bar
+         at the top of the page, not pinned over the chat header like the
+         top-level Chat / Dashboard bar. */
+      .sub-tabs {
+        position: static; transform: none; height: auto;
+        flex-wrap: wrap; margin-bottom: 1.5rem;
       }
-      /* Signed out: no bar, and nothing is held back for it. */
-      body.nav-locked .tabs { display: none; }
-      body.nav-locked #tab-chat { left: 0; }
-      body.nav-locked main { margin-left: auto; }
 
       /* ---- trader override form ------------------------------------------
          Own component classes, scoped to #overrides-section where they'd
@@ -591,12 +571,10 @@
       .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
   </head>
-  <body class="nav-locked">
+  <body>
     <nav class="tabs">
       <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
       <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
-      <button type="button" class="tab-btn" data-tab="tonnage-overrides">Vessel Override</button>
-      <button type="button" class="tab-btn" data-tab="order-overrides">Order Override</button>
     </nav>
 
     <div id="tab-chat" class="tab-panel">
@@ -610,6 +588,12 @@
         <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
+
+      <nav class="tabs sub-tabs">
+        <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage Status Override</button>
+        <button type="button" class="tab-btn" data-tab="order-overrides">Order Status Override</button>
+      </nav>
 
       <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
@@ -857,16 +841,6 @@
               Click a row to compare your update against that trip instead of the newest one --
               submitting always adds a new report rather than editing the row you clicked.
             </p>
-            <p class="sub" style="margin-bottom:0.5rem; font-size:0.78rem;">
-              This table leaves out <code>order_id</code> on purpose. Every
-              <code>tonnage_test</code> row carries one -- the order the Shipfix
-              pipeline has provisionally matched this vessel's report against --
-              but it's an order-side attribute surfaced on the vessel record, not
-              something this tonnage form edits, so it's hidden here rather than
-              shown as a plain, uneditable number. It isn't editable from the
-              Order Override tab either yet -- that tab only covers an
-              order's own laycan window for now.
-            </p>
             <input
               type="text" id="currentRecordSearch" class="record-search"
               placeholder="Search this vessel's records&hellip;" autocomplete="off"
@@ -1096,60 +1070,27 @@
       updateThemeButton();
 
       // ---- top-level tabs ---------------------------------------------
+      // Two bars: the pinned Chat / Dashboard bar swaps the chat frame for
+      // <main>; the .sub-tabs bar inside <main> swaps its own pages. Each
+      // bar only touches its own buttons, so switching a sub-tab keeps
+      // "Dashboard" highlighted up top.
       document.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-          document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+          const nav = btn.closest("nav");
+          const tab = btn.dataset.tab;
+          const main = document.querySelector("main");
+          nav.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
           btn.classList.add("active");
-          document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
-          // <main> starts hidden because Chat is the default tab, and it holds
-          // the dashboard and both override panels -- so every tab except Chat
-          // needs it shown. Without this a click on Dashboard marks the panel
-          // visible inside a <main> that is still display:none: a blank page.
-          document.querySelector("main").classList.toggle("hidden", btn.dataset.tab === "chat");
-          document.querySelector("main").classList.toggle(
-            "wide", btn.dataset.tab === "tonnage-overrides" || btn.dataset.tab === "order-overrides"
-          );
+          if (nav.classList.contains("sub-tabs")) {
+            main.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+            document.getElementById(`tab-${tab}`).classList.remove("hidden");
+            main.classList.toggle("wide", tab === "tonnage-overrides" || tab === "order-overrides");
+          } else {
+            document.getElementById("tab-chat").classList.toggle("hidden", tab !== "chat");
+            main.classList.toggle("hidden", tab === "chat");
+          }
         });
       });
-
-      // ---- sign-in gate for the tab bar -------------------------------------
-      // Login is Chainlit's own page inside the chat frame, so the outer page
-      // has to ask. /chat/user answers 401 to an anonymous request and 200 when
-      // signed in (or when login is not required at all, in which case the bar
-      // should simply show). The bar starts hidden (body.nav-locked in the
-      // markup) so it never flashes over the login page, and only a definite
-      // 401 locks it again -- a network blip or a restarting server leaves
-      // whatever is showing alone.
-      const SESSION_RECHECK_LOCKED_MS = 2000; // waiting for someone to sign in
-      const SESSION_RECHECK_OPEN_MS = 60000;  // noticing a sign-out or expiry
-      let signedIn = null;                    // null until the first answer
-      let sessionTimer = null;
-
-      function setSignedIn(next) {
-        if (next === signedIn) return;
-        const wasSignedIn = signedIn === true;
-        signedIn = next;
-        document.body.classList.toggle("nav-locked", !next);
-        // Signed out part-way through a session: send them to the login page
-        // rather than stranding them on a dashboard with no way to navigate.
-        if (!next && wasSignedIn) document.querySelector('.tab-btn[data-tab="chat"]').click();
-      }
-
-      async function checkSession() {
-        clearTimeout(sessionTimer);
-        try {
-          const response = await fetch("/chat/user", { credentials: "same-origin", cache: "no-store" });
-          if (response.status === 401) setSignedIn(false);
-          else if (response.ok) setSignedIn(true);
-          // any other status: leave things as they are
-        } catch {
-          // offline or restarting: leave things as they are
-        }
-        sessionTimer = setTimeout(checkSession, signedIn ? SESSION_RECHECK_OPEN_MS : SESSION_RECHECK_LOCKED_MS);
-      }
-      document.addEventListener("visibilitychange", () => { if (!document.hidden) checkSession(); });
-      checkSession();
 
       function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>"']/g, (ch) => (
@@ -1818,8 +1759,8 @@
       // delegated set of listeners covers all of them, including rows that are
       // re-rendered on every page change and the Change Feed's expanded modal.
       const ID_KINDS = {
-        vessel: { tab: "tonnage-overrides", label: "Open in Vessel Override" },
-        order: { tab: "order-overrides", label: "Open in Order Override" },
+        vessel: { tab: "tonnage-overrides", label: "Open in Tonnage Status Override" },
+        order: { tab: "order-overrides", label: "Open in Order Status Override" },
       };
 
       function idChip(kind, id) {
@@ -1935,7 +1876,7 @@
         // The Change Feed's expanded view is a full-screen overlay; leave it open
         // and it would sit on top of the form we are about to show.
         closeChangeGroupModal();
-        // Clicking the tab button is what reveals <main> and the right panel.
+        // Clicking the sub-tab button is what shows the right panel.
         document.querySelector(`.tab-btn[data-tab="${ID_KINDS[kind].tab}"]`).click();
         if (kind === "vessel") startVesselOverride(id);
         else startOrderOverride(id);
@@ -2902,9 +2843,7 @@
         return `${String(year - 1).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       }
 
-      // Every tonnage_test column vessel_history_sql selects is shown,
-      // except order_id -- deliberately left out of this table; see the
-      // explanatory note above the Current Record panel in the HTML.
+      // Every tonnage_test column vessel_history_sql selects is shown.
       // Order is NOT Supabase's ordinal position: the overridable fields
       // are pulled to the front, right after the vessel_id identifier, so
       // what this form submits is visible without scrolling; the remaining

@@ -71,7 +71,6 @@ Displayed but not filterable:
 | `eta` | AIS estimate for that destination, not the open window |
 | `ship_size` | Capesize on every row |
 | `ship_type` | Bulk Carrier on 99.8% |
-| `order_id` | synthetic link, see Data caveats in the README |
 
 Nothing on vessels is searched by meaning.
 
