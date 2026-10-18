@@ -2,7 +2,9 @@
 so the gold loader can tell what changed without ever running a SELECT
 against Supabase.
 
-Keys are ``order#<order_id>`` / ``tonnage#<tonnage_row_key>``. glue_transform.py
+Keys are ``order#<order_id>#<order_seq>`` / ``tonnage#<tonnage_row_key>``.
+Orders recorded before order_seq existed sit under ``order#<order_id>``,
+which handler.py's _adopt_legacy_order_hashes() still reads. glue_transform.py
 republishes the whole silver dataset every run, not a delta, so without this
 most rows here are identical to what gold already has -- instead of asking
 Postgres what's already there, the loader asks DynamoDB whether this row's

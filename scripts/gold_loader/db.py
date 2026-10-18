@@ -84,7 +84,7 @@ def upsert(
     connection,
     table: str,
     rows: list[dict[str, Any]],
-    pk_column: str,
+    pk_columns: tuple[str, ...],
     columns: tuple[str, ...],
     embedding_columns: tuple[str, ...],
 ) -> None:
@@ -94,7 +94,7 @@ def upsert(
     all_columns = [*columns, *embedding_columns]
     column_list = ", ".join(all_columns)
     placeholder_list = ", ".join(["%s"] * len(columns) + ["%s::vector"] * len(embedding_columns))
-    assignments = ", ".join(f"{col} = EXCLUDED.{col}" for col in all_columns if col != pk_column)
+    assignments = ", ".join(f"{col} = EXCLUDED.{col}" for col in all_columns if col not in pk_columns)
     # No WHERE guard here on purpose: `rows` is expected to already be
     # filtered down to genuinely new/changed rows by the caller, via
     # handler.py's _select_changed()/_select_stale() (diffed against
@@ -106,7 +106,7 @@ def upsert(
     # Postgres only ever sees rows that actually need writing.
     sql = (
         f"INSERT INTO public.{table} ({column_list}) VALUES ({placeholder_list}) "
-        f"ON CONFLICT ({pk_column}) DO UPDATE SET {assignments}"
+        f"ON CONFLICT ({', '.join(pk_columns)}) DO UPDATE SET {assignments}"
     )
 
     cursor = connection.cursor()
@@ -127,7 +127,7 @@ def update_core_only(
     connection,
     table: str,
     rows: list[dict[str, Any]],
-    pk_column: str,
+    pk_columns: tuple[str, ...],
     columns: tuple[str, ...],
 ) -> None:
     """Update only the core (non-embedding) columns of rows that are known to
@@ -148,14 +148,15 @@ def update_core_only(
     if not rows:
         return
 
-    update_columns = [col for col in columns if col != pk_column]
+    update_columns = [col for col in columns if col not in pk_columns]
     assignments = ", ".join(f"{col} = %s" for col in update_columns)
-    sql = f"UPDATE public.{table} SET {assignments} WHERE {pk_column} = %s"
+    key_match = " AND ".join(f"{col} = %s" for col in pk_columns)
+    sql = f"UPDATE public.{table} SET {assignments} WHERE {key_match}"
 
     cursor = connection.cursor()
     for start in range(0, len(rows), BATCH_SIZE):
         batch = rows[start : start + BATCH_SIZE]
-        params = [[row.get(col) for col in update_columns] + [row[pk_column]] for row in batch]
+        params = [[row.get(col) for col in update_columns] + [row[col] for col in pk_columns] for row in batch]
         cursor.executemany(sql, params)
         logger.debug("core-only updated batch %d-%d in public.%s", start, start + len(batch), table)
     connection.commit()

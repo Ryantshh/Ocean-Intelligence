@@ -64,7 +64,7 @@ Parameters:
 
 Resources:
   # ------------------------------------------------ row-level dedup state ----
-  # One item per silver order/tonnage row (source_key = "order#<order_id>" /
+  # One item per silver order/tonnage row (source_key = "order#<order_id>#<order_seq>" /
   # "tonnage#<tonnage_row_key>"), storing that row's content hash -- see
   # scripts/gold_loader/run_tracker.py. Lets the loader diff against gold
   # without ever running a SELECT against Supabase.

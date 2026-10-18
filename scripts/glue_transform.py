@@ -329,7 +329,14 @@ def transform_orders(df: DataFrame) -> DataFrame:
         select_or_null(df, "cargo_weight_max", ["Cargo Weight Max", "Cargo Weight Max.1", "cargo_weight_max"]),
         select_or_null(df, "assigned", ["Assigned", "Assigned (T/F)", "assigned"]),
     )
-    return with_stable_order_id(selected)
+    with_id = with_stable_order_id(selected)
+    # Left null here: an occurrence number depends on what's already
+    # published, so number_order_occurrences() fills it in write_dataset().
+    return with_id.select(
+        "order_id",
+        F.lit(None).cast("int").alias("order_seq"),
+        *[column for column in with_id.columns if column != "order_id"],
+    )
 
 
 def with_stable_order_id(df: DataFrame) -> DataFrame:
@@ -462,6 +469,68 @@ def create_or_update_glue_table(glue_client, database_name: str, table_name: str
         glue_client.create_table(DatabaseName=database_name, TableInput=table_input)
 
 
+def number_order_occurrences(orders_pdf: pd.DataFrame, published: pd.Series) -> pd.DataFrame:
+    """Number each order sharing an order_id as order_seq 1, 2, ...
+
+    order_id is a hash of ten content fields, so two genuinely different
+    orders can share one. They're kept as separate rows, told apart by
+    order_seq, together the gold table's primary key.
+
+    `published` marks the rows read back from the published file; the rest
+    are this batch. Within a batch nothing is dropped: two rows sharing an
+    order_id each get their own number, even when every column is equal (the
+    2025 file repeats orders across report quarters, and silver carries no
+    field telling those apart). A batch row equal in every column but
+    order_seq to a row already published is dropped, though -- that's the
+    same row arriving again, from a re-run or a reprocessed file, and
+    numbering it would add the whole file over again each time.
+
+    A number, once published, never moves -- gold rows are keyed on it. New
+    occurrences take the next numbers after the highest already taken for
+    that order_id, in the order they arrived.
+    """
+    if orders_pdf.empty:
+        return orders_pdf
+
+    content_columns = [column for column in orders_pdf.columns if column != "order_seq"]
+    # Absent, not just null, from a file published before order_seq existed.
+    if "order_seq" in orders_pdf.columns:
+        seq = pd.to_numeric(orders_pdf["order_seq"], errors="coerce")
+    else:
+        seq = pd.Series(float("nan"), index=orders_pdf.index)
+    # Such a file held one row per order_id, so each is its first occurrence.
+    orders_pdf = orders_pdf.assign(order_seq=seq.mask(published & seq.isna(), 1))
+
+    published_rows = orders_pdf[published]
+    batch_rows = orders_pdf[~published]
+    # merge() matches nulls with nulls, as an exact-copy test needs.
+    seen = batch_rows[content_columns].merge(
+        published_rows[content_columns].drop_duplicates(), how="left", indicator=True
+    )["_merge"].eq("both").to_numpy()
+    batch_rows = batch_rows[~seen]
+
+    taken = batch_rows["order_id"].map(published_rows.groupby("order_id")["order_seq"].max()).fillna(0)
+    arrival = batch_rows.groupby("order_id").cumcount() + 1
+    batch_rows = batch_rows.assign(order_seq=taken + arrival)
+
+    combined = pd.concat([published_rows, batch_rows])
+    combined["order_seq"] = combined["order_seq"].astype("int64")
+    return combined.sort_values(["order_id", "order_seq"], ignore_index=True)
+
+
+def _parse_ndjson(body: str) -> pd.DataFrame:
+    # Force the ID columns to stay strings: pandas will happily re-parse a
+    # 19-digit ID as int64 or (past int64 range) as a lossy float.
+    try:
+        return pd.read_json(
+            io.StringIO(body),
+            lines=True,
+            dtype={"order_id": "string", "vessel_id": "string"},
+        )
+    except (TypeError, ValueError):
+        return pd.read_json(io.StringIO(body), lines=True)
+
+
 def read_existing_json(s3_client, bucket: str, key: str) -> Optional[pd.DataFrame]:
     """Read an existing newline-delimited JSON object from S3, if it exists."""
     try:
@@ -478,16 +547,7 @@ def read_existing_json(s3_client, bucket: str, key: str) -> Optional[pd.DataFram
     if not body.strip():
         return None
 
-    # Force the ID columns to stay strings: pandas will happily re-parse a
-    # 19-digit ID as int64 or (past int64 range) as a lossy float.
-    try:
-        return pd.read_json(
-            io.StringIO(body),
-            lines=True,
-            dtype={"order_id": "string", "vessel_id": "string"},
-        )
-    except (TypeError, ValueError):
-        return pd.read_json(io.StringIO(body), lines=True)
+    return _parse_ndjson(body)
 
 
 def write_dataset(
@@ -507,27 +567,41 @@ def write_dataset(
     bucket = parsed.netloc
     prefix = parsed.path.lstrip("/")
 
+    is_orders = table_name.endswith("orders_silver")
+
     if table_name.endswith("tonnage_silver"):
         object_key = f"{prefix.rstrip('/')}/tonnage.json" if prefix else "tonnage.json"
         # vessel_id is the natural per-vessel key in the source data; together
         # with the open window and first_date_received it identifies one
         # position report.
         dedup_key_columns = ["vessel_id", "open_date_start", "open_date_end", "first_date_received"]
-    elif table_name.endswith("orders_silver"):
+    elif is_orders:
         object_key = f"{prefix.rstrip('/')}/orders.json" if prefix else "orders.json"
-        dedup_key_columns = ["order_id"]
+        # Not deduped on order_id: distinct orders can share one, see
+        # number_order_occurrences().
+        dedup_key_columns = None
     else:
         object_key = f"{prefix.rstrip('/')}/data.json" if prefix else "data.json"
         dedup_key_columns = None
 
     s3_client = boto3.client("s3", region_name=region)
     new_pdf = df.toPandas()
+    if is_orders:
+        # Through the same JSON round trip the published rows took, so an
+        # exact copy compares equal to its published self --
+        # number_order_occurrences() would otherwise see a datetime here
+        # against a string there and keep both.
+        new_pdf = _parse_ndjson(new_pdf.to_json(orient="records", lines=True, date_format="iso"))
 
     existing_pdf = read_existing_json(s3_client, bucket, object_key)
     if existing_pdf is not None and not existing_pdf.empty:
         combined_pdf = pd.concat([existing_pdf, new_pdf], ignore_index=True, sort=False)
+        published_count = len(existing_pdf)
     else:
         combined_pdf = new_pdf
+        published_count = 0
+    # Which rows came from the published file -- concat put them first.
+    published = pd.Series(combined_pdf.index < published_count, index=combined_pdf.index)
 
     # The published file may still carry columns from an older version of the
     # silver schema (e.g. record_id, or tonnage's former order_id). Concatenating resurrects them as an
@@ -547,6 +621,9 @@ def write_dataset(
         # keep="last" -> when the same record appears in both the existing
         # file and the new batch, the new batch's version wins (an update).
         combined_pdf = combined_pdf.drop_duplicates(subset=dedup_key_columns, keep="last")
+
+    if is_orders:
+        combined_pdf = number_order_occurrences(combined_pdf, published)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         local_json_path = os.path.join(tmp_dir, "data.json")

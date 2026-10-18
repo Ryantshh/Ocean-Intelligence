@@ -16,8 +16,15 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- (order_id, order_seq) is the primary key: order_seq numbers each
+-- occurrence of an order_id (1, 2, ...), not a count of them, so duplicate
+-- orders can coexist. Nothing produces order_seq > 1 yet --
+-- glue_transform.py's write_dataset() still dedups orders on order_id --
+-- so order_test_order_id_key keeps order_id unique on its own for now.
+-- Drop that constraint once the ETL assigns real order_seq values.
 CREATE TABLE IF NOT EXISTS public.order_test (
-    order_id BIGINT PRIMARY KEY,
+    order_id BIGINT NOT NULL,
+    order_seq SMALLINT NOT NULL DEFAULT 1 CHECK (order_seq >= 1),
     date_received TIMESTAMP,
     update_date TIMESTAMP,
     laycan_start TIMESTAMP,
@@ -38,8 +45,35 @@ CREATE TABLE IF NOT EXISTS public.order_test (
     discharge_parent_zone_embedding vector(512),
     load_zone_embedding vector(512),
     embedding_source_hash TEXT,
-    gold_loaded_at TIMESTAMP NOT NULL DEFAULT now()
+    gold_loaded_at TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (order_id, order_seq),
+    CONSTRAINT order_test_order_id_key UNIQUE (order_id)
 );
+
+-- Brings an order_test created before order_seq existed (primary key on
+-- order_id alone) up to the shape above. A no-op on a table that already
+-- has it.
+ALTER TABLE public.order_test
+    ADD COLUMN IF NOT EXISTS order_seq SMALLINT NOT NULL DEFAULT 1 CHECK (order_seq >= 1);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.order_test'::regclass
+          AND contype = 'p'
+          AND pg_get_constraintdef(oid) = 'PRIMARY KEY (order_id, order_seq)'
+    ) THEN
+        ALTER TABLE public.order_test DROP CONSTRAINT IF EXISTS order_test_pkey;
+        ALTER TABLE public.order_test ADD PRIMARY KEY (order_id, order_seq);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.order_test'::regclass AND conname = 'order_test_order_id_key'
+    ) THEN
+        ALTER TABLE public.order_test ADD CONSTRAINT order_test_order_id_key UNIQUE (order_id);
+    END IF;
+END $$;
 
 -- tonnage_row_key stands in for the composite key
 -- (vessel_id, open_date_start, open_date_end, first_date_received) that
