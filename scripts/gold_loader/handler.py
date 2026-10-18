@@ -33,6 +33,7 @@ logger = get_logger("gold_loader")
 
 ORDERS_COLUMNS = (
     "order_id",
+    "order_seq",
     "date_received",
     "update_date",
     "laycan_start",
@@ -69,6 +70,15 @@ TONNAGE_COLUMNS = (
     "embedding_source_hash",
 )
 
+ORDERS_KEY_COLUMNS = ("order_id", "order_seq")
+TONNAGE_KEY_COLUMNS = ("tonnage_row_key",)
+
+# The row hash covers every column except the key, which is already in the
+# DynamoDB key itself. Leaving order_seq out keeps every order's hash the
+# same as it was before the column existed, so adding it re-wrote nothing.
+ORDERS_HASH_COLUMNS = tuple(col for col in ORDERS_COLUMNS if col not in ORDERS_KEY_COLUMNS)
+TONNAGE_HASH_COLUMNS = tuple(col for col in TONNAGE_COLUMNS if col not in TONNAGE_KEY_COLUMNS)
+
 ORDERS_EMBEDDING_COLUMNS = tuple(f"{field}_embedding" for field in embeddings.ORDERS_EMBED_FIELDS)
 TONNAGE_EMBEDDING_COLUMNS = tuple(f"{field}_embedding" for field in embeddings.TONNAGE_EMBED_FIELDS)
 MAX_UPLOAD_BYTES = 495 * 1024 * 1024
@@ -91,6 +101,41 @@ def _tonnage_row_key(row: dict) -> str:
 
 def _as_bigint(value):
     return int(value) if value not in (None, "") else None
+
+
+def _order_dynamo_key(row: dict) -> str:
+    return f"{ORDER_ROW_KEY_PREFIX}{row['order_id']}#{row['order_seq']}"
+
+
+def _legacy_order_dynamo_key(row: dict) -> str:
+    """The pre-order_seq key, "order#<order_id>".
+
+    Every hash recorded before order_seq existed is stored under this. Only
+    an order_seq of 1 can have one, since nothing before then could hold a
+    second occurrence of an order_id.
+    """
+    return f"{ORDER_ROW_KEY_PREFIX}{row['order_id']}"
+
+
+def _adopt_legacy_order_hashes(order_rows: list[dict], existing: dict) -> list[dict]:
+    """Serve orders still recorded under their legacy key from that record.
+
+    Without this, every order would miss on its new key once, and be
+    re-embedded (and re-billed by Cohere) and rewritten despite being
+    unchanged. Each adopted entry is copied into `existing` under the new
+    key, and the adopted rows are returned so the caller can write their
+    hash under the new key whether or not they changed -- after that run,
+    nothing needs the legacy key again.
+    """
+    adopted = []
+    for row in order_rows:
+        if row["_dynamo_key"] in existing or row["order_seq"] != 1:
+            continue
+        legacy = existing.get(_legacy_order_dynamo_key(row))
+        if legacy is not None:
+            existing[row["_dynamo_key"]] = legacy
+            adopted.append(row)
+    return adopted
 
 
 def _select_changed(rows: list[dict], columns: tuple[str, ...], existing: dict) -> list[dict]:
@@ -137,6 +182,18 @@ def _select_stale(rows: list[dict], existing: dict) -> tuple[list[dict], list[di
     return stale, core_only
 
 
+def _record_hashes(dynamodb_client, hash_table: str, rows: list[dict]) -> None:
+    row_hashes = {
+        row["_dynamo_key"]: {
+            run_tracker.ROW_HASH_ATTR: row["_row_hash"],
+            run_tracker.EMBEDDING_HASH_ATTR: row["embedding_source_hash"],
+        }
+        for row in rows
+    }
+    if row_hashes:
+        run_tracker.put_row_hashes(dynamodb_client, hash_table, row_hashes)
+
+
 def handler(event, context):
     logger.info("gold_loader run starting")
 
@@ -158,8 +215,11 @@ def handler(event, context):
 
     for row in order_rows:
         row["order_id"] = _as_bigint(row.get("order_id"))
+        # silver doesn't carry order_seq yet -- glue_transform.py still dedups
+        # orders on order_id -- so every order is its first occurrence.
+        row["order_seq"] = int(row.get("order_seq") or 1)
         row["embedding_source_hash"] = embeddings.source_hash(row, embeddings.ORDERS_EMBED_FIELDS)
-        row["_dynamo_key"] = f"{ORDER_ROW_KEY_PREFIX}{row['order_id']}"
+        row["_dynamo_key"] = _order_dynamo_key(row)
 
     for row in tonnage_rows:
         row["tonnage_row_key"] = _tonnage_row_key(row)
@@ -171,15 +231,18 @@ def handler(event, context):
     # every run, so without this, every row here (not just the genuinely new
     # or changed ones) would get sent to Postgres.
     all_keys = [row["_dynamo_key"] for row in order_rows] + [row["_dynamo_key"] for row in tonnage_rows]
-    existing_row_hashes = run_tracker.get_row_hashes(dynamodb_client, hash_table, all_keys)
+    legacy_keys = [_legacy_order_dynamo_key(row) for row in order_rows if row["order_seq"] == 1]
+    existing_row_hashes = run_tracker.get_row_hashes(dynamodb_client, hash_table, all_keys + legacy_keys)
+    adopted_orders = _adopt_legacy_order_hashes(order_rows, existing_row_hashes)
     logger.info(
-        "found %d/%d row hash(es) already recorded in DynamoDB",
-        len(existing_row_hashes),
+        "found %d/%d row hash(es) already recorded in DynamoDB (%d order(s) via their legacy key)",
+        sum(1 for key in all_keys if key in existing_row_hashes),
         len(all_keys),
+        len(adopted_orders),
     )
 
-    changed_orders = _select_changed(order_rows, ORDERS_COLUMNS[1:], existing_row_hashes)
-    changed_tonnage = _select_changed(tonnage_rows, TONNAGE_COLUMNS[1:], existing_row_hashes)
+    changed_orders = _select_changed(order_rows, ORDERS_HASH_COLUMNS, existing_row_hashes)
+    changed_tonnage = _select_changed(tonnage_rows, TONNAGE_HASH_COLUMNS, existing_row_hashes)
     logger.info(
         "%d/%d order rows and %d/%d tonnage rows are new or changed",
         len(changed_orders),
@@ -191,6 +254,7 @@ def handler(event, context):
     if not changed_orders and not changed_tonnage:
         # Every row's hash already matches DynamoDB -- exit before opening a
         # Supabase connection or calling Cohere at all.
+        _record_hashes(dynamodb_client, hash_table, adopted_orders)
         summary = {
             "skipped": True,
             "reason": "no order or tonnage rows changed since the last successful gold load",
@@ -252,8 +316,10 @@ def handler(event, context):
             len(core_only_orders),
             orders_table,
         )
-        db.upsert(connection, orders_table, stale_orders, "order_id", ORDERS_COLUMNS, ORDERS_EMBEDDING_COLUMNS)
-        db.update_core_only(connection, orders_table, core_only_orders, "order_id", ORDERS_COLUMNS)
+        db.upsert(
+            connection, orders_table, stale_orders, ORDERS_KEY_COLUMNS, ORDERS_COLUMNS, ORDERS_EMBEDDING_COLUMNS
+        )
+        db.update_core_only(connection, orders_table, core_only_orders, ORDERS_KEY_COLUMNS, ORDERS_COLUMNS)
 
         logger.info(
             "upserting %d tonnage rows (with embeddings) and core-only updating %d into %s",
@@ -262,23 +328,21 @@ def handler(event, context):
             tonnage_table,
         )
         db.upsert(
-            connection, tonnage_table, stale_tonnage, "tonnage_row_key", TONNAGE_COLUMNS, TONNAGE_EMBEDDING_COLUMNS
+            connection, tonnage_table, stale_tonnage, TONNAGE_KEY_COLUMNS, TONNAGE_COLUMNS, TONNAGE_EMBEDDING_COLUMNS
         )
-        db.update_core_only(connection, tonnage_table, core_only_tonnage, "tonnage_row_key", TONNAGE_COLUMNS)
+        db.update_core_only(connection, tonnage_table, core_only_tonnage, TONNAGE_KEY_COLUMNS, TONNAGE_COLUMNS)
     finally:
         connection.close()
 
     # Only record success once the upsert has actually completed -- if the
-    # DB write fails, the run should still look "stale" next time.
-    changed_row_hashes = {
-        row["_dynamo_key"]: {
-            run_tracker.ROW_HASH_ATTR: row["_row_hash"],
-            run_tracker.EMBEDDING_HASH_ATTR: row["embedding_source_hash"],
-        }
-        for row in (*stale_orders, *core_only_orders, *stale_tonnage, *core_only_tonnage)
-    }
-    if changed_row_hashes:
-        run_tracker.put_row_hashes(dynamodb_client, hash_table, changed_row_hashes)
+    # DB write fails, the run should still look "stale" next time. Adopted
+    # orders go along too, so their hash lands under the new key even when
+    # they didn't change; one that did change is in both lists, harmlessly.
+    _record_hashes(
+        dynamodb_client,
+        hash_table,
+        [*stale_orders, *core_only_orders, *stale_tonnage, *core_only_tonnage, *adopted_orders],
+    )
 
     summary = {
         "orders_total": len(order_rows),
