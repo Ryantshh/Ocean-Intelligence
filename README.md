@@ -404,6 +404,12 @@ Endpoints, all under `/api/dashboard/`:
 
 **Definition change log** (newest first; the code comment above `_STATUS_MOVES_CTE` and the docstring of `vessel_status_changes_sql` in `ai_platform/backend/dashboard_queries.py` carry the same record).
 
+- **19 Oct 2026: an order is `(order_id, order_seq)`, and order counts include every `order_seq`.**
+  - *Why:* since #33, `order_id` is no longer unique. It is a hash of ten content fields, so orders identical in all ten share one, numbered apart by `order_seq` (1, 2, ...). Whether such twins are one order recorded twice or separate orders is the trader's call.
+  - *Counts (unchanged formula, new consequence):* the Daily Trends "New orders" bars, the Change Feed's "New orders" list and regional demand all count `order_test` rows, so each `order_seq` counts as an order. Nothing is merged on the trader's behalf.
+  - *What the trader sees:* the order tracker and the Change Feed show `order_seq N of M` beside any order whose `order_id` is shared (M counts orders received up to "now"). The Order Status Override picker lists each `order_seq` separately, the Current Record panel says when the selected order has twins, and an update changes only the `order_seq` selected. The order audit trail records `order_seq`.
+  - *Not changed:* "Send to chat" and the chat agent look orders up by `order_id`, so they return every `order_seq` sharing it.
+
 - **6 Oct 2026: Change Feed "Vessel status changes" became "Supply moves" and now uses the chart's definition.**
   - *Before:* every status transition in `vessel_status_history` (any status to any status, FIXED to ON SUBS included), listed in the window in which its report *arrived* (`update_date`).
   - *After:* only vessels returning to OPEN (+) or leaving OPEN for FIXED / ON SUBS (-), listed on the day the new status *takes effect* (`open_date_start`), the same as the chart.

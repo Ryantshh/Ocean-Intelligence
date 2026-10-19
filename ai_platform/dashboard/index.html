@@ -911,6 +911,7 @@
                     aria-controls="ooOrderList" required
                   />
                   <input type="hidden" id="ooOrder" />
+                  <input type="hidden" id="ooOrderSeq" />
                   <ul class="combobox-list hidden" id="ooOrderList" role="listbox"></ul>
                 </div>
               </label>
@@ -956,10 +957,13 @@
           <div class="record-panel">
             <h3>Current Record</h3>
             <p class="sub" style="margin-bottom:0.5rem;">
-              The order's own record on file. order_id is unique per order --
-              unlike a vessel's position-report history, there's only ever one
-              row here.
+              The order's own record on file, identified by order_id and
+              order_seq. Orders identical in every field order_id is built from
+              share one order_id and are numbered apart by order_seq; whether
+              they are one order recorded twice or separate orders is yours to
+              judge. An update here changes only the order_seq selected.
             </p>
+            <p class="sub" id="ooSeqNote" style="margin-bottom:0.5rem;" hidden></p>
             <div class="table-wrap"><table id="orderCurrentRecordTable">
               <thead><tr></tr></thead>
               <tbody><tr><td class="record-empty">Select an order to see its current record.</td></tr></tbody>
@@ -997,10 +1001,10 @@
         </div>
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
-            <th>Order</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
+            <th>Order</th><th>Order seq</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
             <th>Customer name</th><th>Entered by</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="6"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -1763,9 +1767,27 @@
         order: { tab: "order-overrides", label: "Open in Order Status Override" },
       };
 
-      function idChip(kind, id) {
+      // An order is (order_id, order_seq): orders identical in the ten fields
+      // order_id is hashed from share it, numbered apart by order_seq. So an
+      // order chip carries its order_seq, and the override form opens that
+      // one, not whichever shares its id first.
+      function idChip(kind, id, seq) {
         const safe = escapeHtml(id);
-        return `<span class="rec-id" tabindex="0" data-rec-kind="${kind}" data-rec-id="${safe}">${safe}</span>`;
+        const seqAttr = seq == null ? "" : ` data-rec-seq="${escapeHtml(seq)}"`;
+        return `<span class="rec-id" tabindex="0" data-rec-kind="${kind}" data-rec-id="${safe}"${seqAttr}>${safe}</span>`;
+      }
+
+      // Whether two orders sharing an order_id are one order recorded twice or
+      // two real orders is the trader's call, so every order list says when a
+      // row has twins rather than showing two identical-looking rows.
+      function orderSeqNote(row) {
+        return Number(row.order_seq_count) > 1
+          ? ` <span class="muted">order_seq ${escapeHtml(row.order_seq)} of ${escapeHtml(row.order_seq_count)}</span>`
+          : "";
+      }
+
+      function orderIdCell(row) {
+        return idChip("order", row.order_id, row.order_seq) + orderSeqNote(row);
       }
 
       const recBubble = document.getElementById("recIdBubble");
@@ -1776,7 +1798,7 @@
       function showRecBubble(chip) {
         clearTimeout(recBubbleTimer);
         const kind = chip.dataset.recKind;
-        recBubbleTarget = { kind, id: chip.dataset.recId };
+        recBubbleTarget = { kind, id: chip.dataset.recId, seq: chip.dataset.recSeq };
         recBubbleButton.textContent = `${ID_KINDS[kind].label} ↗`;
         recBubble.style.left = "0px";
         recBubble.style.top = "0px";
@@ -1831,13 +1853,13 @@
         const chip = closestOf(event, ".rec-id");
         if (chip && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
-          openOverrideFor(chip.dataset.recKind, chip.dataset.recId);
+          openOverrideFor(chip.dataset.recKind, chip.dataset.recId, chip.dataset.recSeq);
         }
       });
       // position: fixed would otherwise leave the bubble behind when the page scrolls
       window.addEventListener("scroll", hideRecBubble, true);
       recBubbleButton.addEventListener("click", () => {
-        if (recBubbleTarget) openOverrideFor(recBubbleTarget.kind, recBubbleTarget.id);
+        if (recBubbleTarget) openOverrideFor(recBubbleTarget.kind, recBubbleTarget.id, recBubbleTarget.seq);
       });
 
       // Wipes the vessel form and selects `id` -- the same thing choosing it in
@@ -1859,19 +1881,24 @@
         document.getElementById("ovStatus").focus();
       }
 
-      function startOrderOverride(id) {
+      function startOrderOverride(id, seq) {
         document.getElementById("orderOverrideForm").reset();
         orderHidden().value = "";
+        orderSeqHidden().value = "";
         orderInput().value = "";
         closeOrderList();
         const message = document.getElementById("ooMessage");
         message.className = "form-message";
         message.textContent = "";
-        selectOrder(ordersCache.find((o) => o.order_id === id) || { order_id: id });
+        const orderSeq = Number(seq) || 1;
+        selectOrder(
+          ordersCache.find((o) => o.order_id === id && Number(o.order_seq) === orderSeq)
+            || { order_id: id, order_seq: orderSeq }
+        );
         document.getElementById("ooLaycanStart").focus();
       }
 
-      function openOverrideFor(kind, id) {
+      function openOverrideFor(kind, id, seq) {
         hideRecBubble();
         // The Change Feed's expanded view is a full-screen overlay; leave it open
         // and it would sit on top of the form we are about to show.
@@ -1879,7 +1906,7 @@
         // Clicking the sub-tab button is what shows the right panel.
         document.querySelector(`.tab-btn[data-tab="${ID_KINDS[kind].tab}"]`).click();
         if (kind === "vessel") startVesselOverride(id);
-        else startOrderOverride(id);
+        else startOrderOverride(id, seq);
         window.scrollTo(0, 0);
       }
 
@@ -2171,7 +2198,7 @@
           <tr>
             <td class="pick-col"><input type="checkbox" class="order-pick" aria-label="Select order ${escapeHtml(row.order_id)}"
               data-order-id="${escapeHtml(row.order_id)}" ${selectedOrderIds.has(String(row.order_id)) ? "checked" : ""} /></td>
-            <td>${idChip("order", row.order_id)}</td>
+            <td>${orderIdCell(row)}</td>
             <td>${escapeHtml(row.cargo_type || "—")}</td>
             <td>${escapeHtml(row.load_zone || "—")}</td>
             <td>${escapeHtml(row.discharge_parent_zone || "—")}</td>
@@ -2306,6 +2333,11 @@
         if (!box.classList || !box.classList.contains("order-pick")) return;
         const id = box.dataset.orderId;
         if (box.checked) selectedOrderIds.add(id); else selectedOrderIds.delete(id);
+        // The chat looks orders up by order_id, so a pick covers every order_seq
+        // sharing it; tick its twins on this page to match.
+        document.querySelectorAll("#ordersTable .order-pick").forEach((other) => {
+          if (other.dataset.orderId === id) other.checked = box.checked;
+        });
         document.getElementById("ordersSendNotice").textContent = "";
         updateOrdersSendButton();
         syncOrdersPickAll();
@@ -2527,7 +2559,7 @@
             ["Supply moves", data.vessel_status_changes, (r) => `<li>${idChip("vessel", r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, byDay ? "effective_date" : null,
               "The same supply moves the Daily Trends chart counts, dated by the day the new status takes effect rather than the day it was reported: Fixed or On Subs back to Open, and Open to Fixed or On Subs. Fixed to On Subs is not listed. A change reported today for a later date appears when that date arrives."],
             ["Field changes", data.field_changes, fieldChangeRow, byDay ? "update_date" : null],
-            ["New orders", data.new_orders, (r) => `<li>Order ${idChip("order", r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
+            ["New orders", data.new_orders, (r) => `<li>Order ${orderIdCell(r)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
           ];
           currentChangeGroups = groups;
           el.innerHTML = `
@@ -3333,9 +3365,10 @@
       loadAudit();
 
       // ---- order status override --------------------------------------------
-      // order_id is unique per row in order_test (confirmed live -- no
-      // duplicates), unlike tonnage_test's vessel_id, so there's no reporting
-      // history to page through here: one order, one record. Only laycan_start/
+      // An order is (order_id, order_seq), order_test's primary key: orders
+      // identical in the ten fields order_id is hashed from share one, numbered
+      // apart by order_seq. Each is one row, unlike tonnage_test's vessel_id, so
+      // there's no reporting history to page through here. Only laycan_start/
       // laycan_end are actually written by this form -- customer_name/quantity
       // have no matching order_test column yet (see order_override_queries.py),
       // so they're rendered disabled above rather than silently discarded.
@@ -3346,11 +3379,13 @@
 
       const orderInput = () => document.getElementById("ooOrderInput");
       const orderHidden = () => document.getElementById("ooOrder");
+      const orderSeqHidden = () => document.getElementById("ooOrderSeq");
       const orderList = () => document.getElementById("ooOrderList");
 
       function orderLabel(o) {
         const route = [o.load_port, o.discharge_port].filter(Boolean).join(" → ");
-        return route ? `${o.order_id} — ${route}` : o.order_id;
+        const seq = Number(o.order_seq_count) > 1 ? ` (order_seq ${o.order_seq} of ${o.order_seq_count})` : "";
+        return (route ? `${o.order_id} — ${route}` : o.order_id) + seq;
       }
 
       function closeOrderList() {
@@ -3361,6 +3396,7 @@
 
       const ORDER_RECORD_COLUMNS = [
         { key: "order_id", label: "order id" },
+        { key: "order_seq", label: "order seq" },
         { key: "cargo_type", label: "cargo type" },
         { key: "load_port", label: "load port" },
         { key: "discharge_port", label: "discharge port" },
@@ -3399,6 +3435,14 @@
         const newBody = document.querySelector("#orderNewRecordTable tbody");
         const colCount = ORDER_RECORD_COLUMNS.length;
 
+        const seqNote = document.getElementById("ooSeqNote");
+        const twins = currentOrder ? Number(currentOrder.order_seq_count) : 0;
+        seqNote.hidden = twins <= 1;
+        seqNote.textContent = twins > 1
+          ? `order_id ${currentOrder.order_id} is shared by ${twins} orders (order_seq 1 to ${twins}). `
+            + "Compare them in the order picker before deciding whether they are the same order."
+          : "";
+
         if (!currentOrder) {
           currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order to see its current record.</td></tr>`;
           newBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order first.</td></tr>`;
@@ -3432,7 +3476,7 @@
         newBody.innerHTML = `<tr>${newCells}</tr>`;
       }
 
-      async function loadOrderRecordPanel(orderId) {
+      async function loadOrderRecordPanel(orderId, orderSeq) {
         const currentBody = document.querySelector("#orderCurrentRecordTable tbody");
         const newBody = document.querySelector("#orderNewRecordTable tbody");
         const colCount = ORDER_RECORD_COLUMNS.length;
@@ -3440,7 +3484,9 @@
         currentBody.innerHTML = loadingRow;
         newBody.innerHTML = loadingRow;
         try {
-          currentOrder = await getJson(`/api/order-override/orders/${encodeURIComponent(orderId)}`);
+          currentOrder = await getJson(
+            `/api/order-override/orders/${encodeURIComponent(orderId)}/${encodeURIComponent(orderSeq)}`
+          );
           renderOrderRecordTables();
         } catch (error) {
           currentOrder = null;
@@ -3452,9 +3498,10 @@
 
       function selectOrder(o) {
         orderHidden().value = o.order_id;
+        orderSeqHidden().value = o.order_seq;
         orderInput().value = orderLabel(o);
         closeOrderList();
-        loadOrderRecordPanel(o.order_id);
+        loadOrderRecordPanel(o.order_id, o.order_seq);
       }
 
       function renderOrderSuggestions(query) {
@@ -3501,6 +3548,7 @@
 
       orderInput().addEventListener("input", () => {
         orderHidden().value = "";
+        orderSeqHidden().value = "";
         renderOrderSuggestions(orderInput().value);
       });
       orderInput().addEventListener("focus", () => {
@@ -3552,6 +3600,7 @@
         event.preventDefault();
         const submitBtn = document.getElementById("ooSubmit");
         const orderId = document.getElementById("ooOrder").value;
+        const orderSeq = Number(orderSeqHidden().value);
         const enteredBy = document.getElementById("ooEnteredBy").value.trim();
         const laycanStart = document.getElementById("ooLaycanStart").value;
         const laycanEnd = document.getElementById("ooLaycanEnd").value;
@@ -3560,7 +3609,7 @@
         const cargoWeightMin = cargoWeightMinRaw === "" ? null : Number(cargoWeightMinRaw);
         const cargoWeightMax = cargoWeightMaxRaw === "" ? null : Number(cargoWeightMaxRaw);
 
-        if (!orderId) {
+        if (!orderId || !orderSeq) {
           showOrderFormMessage("error", "Select an order from the list.");
           orderInput().focus();
           return;
@@ -3582,6 +3631,7 @@
         try {
           await postJson("/api/order-override", {
             order_id: orderId,
+            order_seq: orderSeq,
             entered_by: enteredBy,
             laycan_start: toSimulatedDate(laycanStart),
             laycan_end: toSimulatedDate(laycanEnd),
@@ -3589,11 +3639,12 @@
             cargo_weight_max: cargoWeightMax,
             customer_name: document.getElementById("ooCustomerName").value.trim() || null,
           });
-          showOrderFormMessage("success", `Updated the record for order ${orderId}.`);
+          showOrderFormMessage("success", `Updated the record for order ${orderId} (order_seq ${orderSeq}).`);
           document.getElementById("orderOverrideForm").reset();
-          await Promise.all([loadOrderRecordPanel(orderId), loadOrderOptions(), loadOrderAudit()]);
-          const submitted = ordersCache.find((o) => o.order_id === orderId);
+          await Promise.all([loadOrderRecordPanel(orderId, orderSeq), loadOrderOptions(), loadOrderAudit()]);
+          const submitted = ordersCache.find((o) => o.order_id === orderId && Number(o.order_seq) === orderSeq);
           orderHidden().value = orderId;
+          orderSeqHidden().value = orderSeq;
           orderInput().value = submitted ? orderLabel(submitted) : orderId;
         } catch (error) {
           showOrderFormMessage("error", `Could not save update: ${error.message}`);
@@ -3606,6 +3657,7 @@
         return `
           <tr>
             <td>${escapeHtml(row.order_id)}</td>
+            <td>${row.order_seq == null ? AUDIT_DASH : escapeHtml(row.order_seq)}</td>
             <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end")}</td>
             <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber)}</td>
             <td>${row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
@@ -3621,10 +3673,10 @@
           const rows = await getJson("/api/order-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(orderAuditRow).join("")
-            : '<tr><td colspan="6" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="6" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 
