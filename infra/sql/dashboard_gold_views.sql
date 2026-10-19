@@ -531,6 +531,12 @@ demand AS (
   -- None of that is fixed by the window length, because supply is a single
   -- instant and demand is an accumulation however long it runs; the ratio
   -- below compares the two regardless. See the open questions in README.
+  --
+  -- Demand counts order_test rows, so orders sharing an order_id (identical
+  -- in the ten fields it is hashed from, numbered apart by order_seq) count
+  -- once each. That is deliberate: whether they are one order recorded twice
+  -- or separate orders is the trader's call, made on the order tracker,
+  -- which marks such rows; this count does not guess on their behalf.
   WHERE date_received > orders_reference_now() - interval '14 days'
     AND date_received < orders_reference_now()   -- excludes simulated-future orders outright, not just outside the trailing window
     AND trim(zone) <> ''

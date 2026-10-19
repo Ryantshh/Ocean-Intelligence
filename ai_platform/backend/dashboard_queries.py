@@ -82,8 +82,17 @@ ChangeWindow = Literal["dod", "wow"]
 # casts it: an 18-digit bigint order_id survives Postgres and Python fine
 # (confirmed live, e.g. 728280593490835944) but is silently corrupted by
 # any browser's JSON.parse once it crosses into JS.
+#
+# order_id is not unique: it is a hash of ten content fields, so orders
+# identical in all ten share one, numbered apart by order_seq (1, 2, ...;
+# (order_id, order_seq) is the key). Whether two such rows are one order
+# recorded twice or two real orders is the trader's call, so every order
+# list returns order_seq and order_seq_count -- how many visible orders
+# carry that order_id -- for the page to show that a row has twins.
 _ORDERS_COLUMNS_SAFE = (
     "order_id::text AS order_id",
+    "order_seq",
+    "order_seq_count",
     "cargo_type",
     "cargo_weight_min",
     "cargo_weight_max",
@@ -96,6 +105,18 @@ _ORDERS_COLUMNS_SAFE = (
     "date_received",
     "update_date",
     "cargo_description",
+)
+
+# What every order list reads from: order_test's non-future rows, each with
+# order_seq_count counted over all of them, before any list's own filter,
+# so a row filtered onto its own page or day still says it has twins.
+# Columns are listed rather than `*` to keep the embedding columns out.
+_ORDERS_SOURCE = (
+    "(SELECT order_id, order_seq, cargo_type, cargo_weight_min, cargo_weight_max, "
+    "load_port, load_zone, discharge_port, discharge_parent_zone, laycan_start, "
+    "laycan_end, date_received, update_date, cargo_description, "
+    "count(*) OVER (PARTITION BY order_id) AS order_seq_count "
+    "FROM public.order_test WHERE date_received < orders_reference_now()) AS o"
 )
 
 # A vessel becomes "newly open" on the day a resolved OPEN segment begins
@@ -381,9 +402,10 @@ def orders_sql(
 ) -> tuple[str, list]:
     """Order tracker: non-future orders, optionally filtered by region/search.
 
-    Reads ``public.order_test`` directly (no view covers orders, same as
-    :func:`new_orders_sql`), calling ``orders_reference_now()`` inline in
-    the SQL text rather than passing it as a bound parameter -- it needs
+    Reads ``public.order_test`` through ``_ORDERS_SOURCE`` (no view covers
+    orders, same as :func:`new_orders_sql`), which calls
+    ``orders_reference_now()`` inline in the SQL text rather than taking it
+    as a bound parameter -- it needs
     no Python-side computation the way a window's ``since``/``until`` do,
     since "exclude everything not yet simulated-arrived" is the entire
     filter, not a range.
@@ -403,8 +425,10 @@ def orders_sql(
     sort : "date_received" or "laycan_start"
         Column to sort by; whitelisted against ``_ORDER_SORT_COLUMNS``.
     limit, offset : int
-        Page bounds. ``order_id`` is appended to the ``ORDER BY`` as a
-        tie-breaker, same rationale as :func:`vessels_sql`.
+        Page bounds. ``order_id, order_seq`` is appended to the ``ORDER BY``
+        as a tie-breaker, same rationale as :func:`vessels_sql`: ``order_id``
+        alone no longer is one, since two occurrences of an order share it
+        and every column the sort keys use.
 
     Returns
     -------
@@ -413,7 +437,7 @@ def orders_sql(
         Every returned row carries an extra ``total_count`` column, same
         as :func:`vessels_sql`.
     """
-    clauses: list[str] = ["date_received < orders_reference_now()"]
+    clauses: list[str] = []
     params: list[object] = []
     if region is not None:
         params.append(region)
@@ -421,7 +445,7 @@ def orders_sql(
     if search is not None:
         params.append(search)
         clauses.append(f"order_id::text ILIKE '%' || ${len(params)} || '%'")
-    where_sql = " AND ".join(clauses)
+    where_sql = " AND ".join(clauses) or "TRUE"
     order_sql = _ORDER_SORT_COLUMNS[sort]
     columns = ", ".join(_ORDERS_COLUMNS_SAFE)
     params.append(limit)
@@ -429,8 +453,8 @@ def orders_sql(
     params.append(offset)
     offset_param = len(params)
     sql = (
-        f"SELECT {columns}, count(*) OVER() AS total_count FROM public.order_test "
-        f"WHERE {where_sql} ORDER BY {order_sql}, order_id "
+        f"SELECT {columns}, count(*) OVER() AS total_count FROM {_ORDERS_SOURCE} "
+        f"WHERE {where_sql} ORDER BY {order_sql}, order_id, order_seq "
         f"LIMIT ${limit_param} OFFSET ${offset_param}"
     )
     return sql, params
@@ -884,9 +908,9 @@ def orders_on_day_sql(
         end = min(end, range_until.replace(tzinfo=None))
     columns = ", ".join(_ORDERS_COLUMNS_SAFE)
     sql = (
-        f"SELECT {columns} FROM public.order_test "
+        f"SELECT {columns} FROM {_ORDERS_SOURCE} "
         "WHERE date_received >= $1 AND date_received < $2 "
-        "ORDER BY date_received DESC"
+        "ORDER BY date_received DESC, order_id, order_seq"
     )
     return sql, [start, end]
 
@@ -1129,9 +1153,9 @@ def new_orders_sql(since: datetime, until: datetime) -> tuple[str, list]:
     columns = ", ".join(_ORDERS_COLUMNS_SAFE)
     return (
         (
-            f"SELECT {columns} FROM public.order_test "
+            f"SELECT {columns} FROM {_ORDERS_SOURCE} "
             "WHERE date_received >= $1 AND date_received < $2 "
-            "ORDER BY date_received DESC"
+            "ORDER BY date_received DESC, order_id, order_seq"
         ),
         [since, until],
     )

@@ -31,9 +31,13 @@
 -- Audit Trail table just reports empty instead of erroring (same
 -- convention as the tonnage side).
 
+-- order_seq says which of the orders sharing order_id was updated (an order
+-- is (order_id, order_seq) in order_test). Nullable: rows logged before it
+-- existed don't know.
 CREATE TABLE IF NOT EXISTS public.order_override_audit (
     id BIGSERIAL PRIMARY KEY,
     order_id TEXT NOT NULL,
+    order_seq SMALLINT,
     old_laycan_start TIMESTAMP,
     laycan_start TIMESTAMP,
     old_laycan_end TIMESTAMP,
@@ -46,6 +50,10 @@ CREATE TABLE IF NOT EXISTS public.order_override_audit (
     entered_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Brings a table created before order_seq existed up to the shape above.
+ALTER TABLE public.order_override_audit
+    ADD COLUMN IF NOT EXISTS order_seq SMALLINT;
 
 -- Backs the audit trail's newest-first read and its optional per-order filter.
 CREATE INDEX IF NOT EXISTS order_override_audit_order_id_idx
