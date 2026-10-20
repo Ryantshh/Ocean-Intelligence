@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS public.tonnage_test (
     parent_zone TEXT,
     vessel_status TEXT,
     dwt NUMERIC,
+    grain_capacity NUMERIC,
     commercial_status TEXT,
     ship_type TEXT,
     ship_size TEXT,
@@ -113,3 +114,7 @@ CREATE TABLE IF NOT EXISTS public.tonnage_test (
 -- vessel_current_status used to select this column, and Postgres refuses
 -- the drop while a view still depends on it.
 ALTER TABLE public.tonnage_test DROP COLUMN IF EXISTS order_id;
+
+-- grain_capacity (raw "Grain Capacity") was added after tonnage_test was
+-- first created; this adds it to databases created before that change.
+ALTER TABLE public.tonnage_test ADD COLUMN IF NOT EXISTS grain_capacity NUMERIC;

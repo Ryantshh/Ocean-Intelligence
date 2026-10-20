@@ -57,6 +57,7 @@ TONNAGE_COLUMNS = (
     "parent_zone",
     "vessel_status",
     "dwt",
+    "grain_capacity",
     "commercial_status",
     "ship_type",
     "ship_size",
