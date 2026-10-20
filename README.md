@@ -184,6 +184,7 @@ lift each rule.
 | `update_date` | Update Date | When the record was last refreshed or amended | filter |
 | `first_date_received` | First Date Received | When this position was first reported, before revisions | filter |
 | `dwt` | **DWT Summer** | Deadweight at the summer load line — cargo + fuel + stores | filter |
+| `grain_capacity` | Grain Capacity | Maximum cargo volume for free-flowing (grain-type) bulk cargo | unused |
 | `ship_type` | **Ship Types** | Vessel type, e.g. Bulk Carrier | display, 99.8% one value |
 | `ship_size` | **Ship Sizes** | Size segment, e.g. Capesize | display, all Capesize |
 | `vessel_status` | **Status** | AIS navigational status, e.g. Anchored | semantic |
