@@ -3,9 +3,13 @@
 
 Lets a trader record fresh word on an order's laycan window and cargo
 weight range before it reaches Shipfix/the pipeline. Writes straight into
-``public.order_test`` by updating the matching row in place -- ``order_id``
-is unique per row here (unlike ``tonnage_test``'s ``vessel_id``), so there
-is no copy/delete/insert swap to do, and no separate overrides table.
+``public.order_test`` by updating the matching row in place. An order is
+``(order_id, order_seq)``, never ``order_id`` alone: orders identical in the
+ten fields ``order_id`` is hashed from share it, numbered apart by
+``order_seq``, and whether they are one order or two is the trader's call,
+so every endpoint here names both. Each pair is one row (unlike
+``tonnage_test``'s ``vessel_id``), so there is no copy/delete/insert swap to
+do, and no separate overrides table.
 
 ``laycan_start``/``laycan_end``/``cargo_weight_min``/``cargo_weight_max``
 are persisted -- the weight pair standing in for "quantity", since
@@ -67,6 +71,7 @@ class OrderOverrideRequest(BaseModel):
     """
 
     order_id: str = Field(min_length=1, max_length=64)
+    order_seq: int = Field(ge=1)
     entered_by: str = Field(min_length=1, max_length=120)
     laycan_start: str | None = None
     laycan_end: str | None = None
@@ -82,20 +87,23 @@ async def list_orders() -> list[dict[str, Any]]:
     Returns
     -------
     list of dict
-        One row per order, backing the override form's order dropdown.
+        One row per ``(order_id, order_seq)``, backing the override form's
+        order dropdown.
     """
     sql, params = ooq.orders_sql()
     return await _run(sql, params)
 
 
-@router.get("/orders/{order_id}")
-async def order_detail(order_id: str) -> dict[str, Any]:
+@router.get("/orders/{order_id}/{order_seq}")
+async def order_detail(order_id: str, order_seq: int) -> dict[str, Any]:
     """The current on-file record for one order, for the "current record" panel.
 
     Parameters
     ----------
     order_id : str
         Order identifier.
+    order_seq : int
+        Which of the orders sharing ``order_id`` this is.
 
     Returns
     -------
@@ -107,9 +115,11 @@ async def order_detail(order_id: str) -> dict[str, Any]:
     HTTPException
         404 if the order doesn't exist.
     """
-    rows = await _run(*ooq.order_detail_sql(order_id))
+    rows = await _run(*ooq.order_detail_sql(order_id, order_seq))
     if not rows:
-        raise HTTPException(status_code=404, detail=f"Unknown order_id: {order_id!r}")
+        raise HTTPException(
+            status_code=404, detail=f"Unknown order: order_id={order_id!r}, order_seq={order_seq}"
+        )
     return rows[0]
 
 
@@ -132,7 +142,8 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
     ------
     HTTPException
         400 if ``cargo_weight_max`` is less than ``cargo_weight_min`` (both
-        given); 404 if ``order_id`` isn't a real order in ``order_test``;
+        given); 404 if ``(order_id, order_seq)`` isn't a real order in
+        ``order_test``;
         502 on a database failure.
     """
     if (
@@ -147,14 +158,18 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
     # Doubles as the existence check (empty result -> 404) and as the
     # "before" snapshot the audit log needs -- same combined read
     # trader_override_queries.tonnage_row_snapshot_sql does for tonnage.
-    snapshot_rows = await _run(*ooq.order_detail_sql(body.order_id))
+    snapshot_rows = await _run(*ooq.order_detail_sql(body.order_id, body.order_seq))
     if not snapshot_rows:
-        raise HTTPException(status_code=404, detail=f"Unknown order_id: {body.order_id!r}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown order: order_id={body.order_id!r}, order_seq={body.order_seq}",
+        )
     snapshot = snapshot_rows[0]
 
     rows = await _run(
         *ooq.update_order_sql(
             body.order_id,
+            body.order_seq,
             laycan_start=body.laycan_start,
             laycan_end=body.laycan_end,
             cargo_weight_min=body.cargo_weight_min,
@@ -165,7 +180,8 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Order no longer exists for order_id={body.order_id!r} "
+                f"Order no longer exists for order_id={body.order_id!r}, "
+                f"order_seq={body.order_seq} "
                 "-- it may have just been deleted elsewhere. Refresh and try again."
             ),
         )
@@ -175,6 +191,7 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
         await _run(
             *ooq.insert_audit_sql(
                 body.order_id,
+                body.order_seq,
                 body.entered_by,
                 # The audit log's "new" side is the update's own effective
                 # values, not the raw request body -- a field the trader
@@ -198,9 +215,9 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
         # audit table (its setup SQL never applied) must not fail the
         # submission itself, only the Audit Trail table's own read.
         logger.warning(
-            "order_override_audit insert failed for order_id=%r (%s); "
+            "order_override_audit insert failed for order_id=%r, order_seq=%d (%s); "
             "order_test update already committed, continuing",
-            body.order_id, exc.detail,
+            body.order_id, body.order_seq, exc.detail,
         )
 
     return new_row

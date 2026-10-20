@@ -25,6 +25,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from ai_platform.backend.llm import get_chat_model
 from ai_platform.backend.logging_utils import get_logger
+from ai_platform.backend.matching import match_orders
 from ai_platform.backend.prompts import AGENT_SYSTEM
 from ai_platform.backend.tools import ask_user, search_orders_and_tonnage
 
@@ -34,9 +35,10 @@ RUN_LIMIT = 6
 """Model calls allowed per question.
 
 Per question rather than per conversation — a thread limit would stop the agent
-answering after a few turns. A simple search takes two calls, matching takes
-three, a failed search plus clarification takes four, and both together take five,
-so six leaves one spare and catches a loop on its first extra pass.
+answering after a few turns. A simple search or a match on orders already found
+takes two calls, a match whose orders must be searched first takes four, a failed
+search plus clarification takes four, so six leaves room and catches a loop on its
+first extra pass. Matcher calls run inside ``match_orders`` and do not count.
 """
 
 SUMMARISE_AT = 0.8
@@ -88,7 +90,7 @@ _middleware: list[AgentMiddleware[Any, Any, Any]] = [
 
 agent = create_agent(
     model=model,
-    tools=[search_orders_and_tonnage, ask_user],
+    tools=[search_orders_and_tonnage, match_orders, ask_user],
     system_prompt=AGENT_SYSTEM,
     middleware=_middleware,
     checkpointer=InMemorySaver(),

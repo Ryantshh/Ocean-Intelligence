@@ -9,9 +9,9 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -130,13 +130,27 @@ async def _run(sql: str, params: list[Any]) -> list[dict[str, Any]]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+# Page-size cap applies even to a direct/unfiltered API call (curl, a test
+# script, another tool) -- the frontend always passes its own page size,
+# but nothing server-side previously stopped a caller from requesting the
+# whole ~1,000-vessel table (or ~1,500-order table) in one unpaginated
+# SELECT *, which is exactly the shape that turned out to be expensive
+# when exercised repeatedly (dashboard reloads, endpoint sweeps, ad-hoc
+# verification queries) -- see dashboard_gold_views.sql's egress notes.
+DEFAULT_PAGE_SIZE = 15
+MAX_PAGE_SIZE = 200
+
+
 @router.get("/dashboard/vessels")
 async def list_vessels(
     status: dq.DashboardStatus | None = None,
     region: str | None = None,
     sort: dq.SortKey = "update_date",
-) -> list[dict[str, Any]]:
-    """Vessel tracker: current status per vessel, filterable by status/region.
+    search: str | None = None,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    """Vessel tracker: current status per vessel, filterable and paginated.
 
     Parameters
     ----------
@@ -146,16 +160,29 @@ async def list_vessels(
         Case-insensitive substring match against any one of a vessel's
         (possibly several) parent zones -- e.g. "east" matches both
         "East Africa" and "Far East".
+    search : str or None
+        Case-insensitive substring match against ``vessel_id``.
     sort : "eta", "update_date", or "open_date_end"
         Sort key; defaults to most recently updated first.
+    limit : int
+        Rows per page, 1-200. Defaults to the dashboard's own page size.
+    offset : int
+        Rows to skip before the page starts.
 
     Returns
     -------
-    list of dict
-        One row per vessel.
+    dict
+        ``{"rows": [...], "total": N}`` -- ``rows`` is this page, ``total``
+        is the count of every row matching ``status``/``region``/``search``
+        (before paging), so the caller can render a "1-15 of N" pager
+        without a second request.
     """
-    sql, params = dq.vessels_sql(status, region, sort)
-    return await _run(sql, params)
+    sql, params = dq.vessels_sql(status, region, sort, search, limit, offset)
+    rows = await _run(sql, params)
+    total = rows[0]["total_count"] if rows else 0
+    for row in rows:
+        del row["total_count"]
+    return {"rows": rows, "total": total}
 
 
 @router.get("/dashboard/vessels/by-day")
@@ -164,6 +191,7 @@ async def vessels_by_day(
     day: date,
     range_since: datetime | None = None,
     range_until: datetime | None = None,
+    direction: Literal["up", "down"] | None = None,
 ) -> list[dict[str, Any]]:
     """Vessel tracker rows for the vessels counted in one Daily Trends bar.
 
@@ -187,13 +215,19 @@ async def vessels_by_day(
         way that bar's own count was, including at the 14-day window's
         (partial) first and last days. Omit only for an ad-hoc lookup
         outside the chart, where a plain midnight-to-midnight day is fine.
+    direction : "up", "down" or None
+        Status Changes only: "up" is the green bar (vessels returning to
+        OPEN), "down" the red one (vessels leaving it for FIXED / ON SUBS).
+        None returns both. Ignored for New Vessels.
 
     Returns
     -------
     list of dict
         Same shape as :func:`list_vessels`, one row per matched vessel.
     """
-    sql, params = dq.vessels_on_day_sql(metric, day, range_since=range_since, range_until=range_until)
+    sql, params = dq.vessels_on_day_sql(
+        metric, day, range_since=range_since, range_until=range_until, direction=direction
+    )
     return await _run(sql, params)
 
 
@@ -201,23 +235,36 @@ async def vessels_by_day(
 async def list_orders(
     region: str | None = None,
     sort: dq.OrderSortKey = "date_received",
-) -> list[dict[str, Any]]:
-    """Order tracker: non-future orders, filterable by region.
+    search: str | None = None,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    """Order tracker: non-future orders, filterable and paginated.
 
     Parameters
     ----------
     region : str or None
         Case-insensitive substring match against ``load_zone``.
+    search : str or None
+        Case-insensitive substring match against ``order_id``.
     sort : "date_received" or "laycan_start"
         Sort key; defaults to most recently received first.
+    limit : int
+        Rows per page, 1-200. Defaults to the dashboard's own page size.
+    offset : int
+        Rows to skip before the page starts.
 
     Returns
     -------
-    list of dict
-        One row per order.
+    dict
+        ``{"rows": [...], "total": N}``, same shape as :func:`list_vessels`.
     """
-    sql, params = dq.orders_sql(region, sort)
-    return await _run(sql, params)
+    sql, params = dq.orders_sql(region, sort, search, limit, offset)
+    rows = await _run(sql, params)
+    total = rows[0]["total_count"] if rows else 0
+    for row in rows:
+        del row["total_count"]
+    return {"rows": rows, "total": total}
 
 
 @router.get("/dashboard/orders/by-day")
@@ -344,7 +391,7 @@ async def daily_counts(days: int = 14) -> dict[str, Any]:
         "range": {"since": tonnage_since, "until": tonnage_until},
         "orders_range": {"since": orders_since, "until": orders_until},
         "new_vessels": _with_region_breakdown(new_vessels, new_vessels_by_region),
-        "status_changes": _with_region_breakdown(status_changes, status_changes_by_region),
+        "status_changes": _with_move_breakdown(status_changes, status_changes_by_region),
         "new_orders": _with_region_breakdown(new_orders, new_orders_by_region),
     }
 
@@ -374,14 +421,58 @@ def _with_region_breakdown(
     return [{**row, "regions": by_day.get(row["day"], [])} for row in totals]
 
 
-@router.get("/dashboard/regions")
-async def regional_supply_demand() -> list[dict[str, Any]]:
-    """Regional supply (open vessels) vs. demand (recent orders), per region.
+def _with_move_breakdown(
+    totals: list[dict[str, Any]], breakdown: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge the supply-move totals with their per-(day, region) split.
+
+    Same idea as :func:`_with_region_breakdown`, but the Status Changes
+    chart has two bars per day, so each region carries ``up`` and ``down``
+    as well as their sum.
+
+    Parameters
+    ----------
+    totals : list of dict
+        One row per day, from
+        :func:`ai_platform.backend.dashboard_queries.daily_status_changes_sql`.
+    breakdown : list of dict
+        One row per (day, region), from its ``_by_region`` companion.
 
     Returns
     -------
     list of dict
-        One row per region with ``supply`` and ``demand`` counts.
+        ``totals``, each row with a ``regions`` key added.
+    """
+    by_day: dict[Any, list[dict[str, Any]]] = {}
+    for row in breakdown:
+        by_day.setdefault(row["day"], []).append(
+            {
+                "region": row["region"],
+                "up": row["up"],
+                "down": row["down"],
+                "count": row["count"],
+            }
+        )
+    return [{**row, "regions": by_day.get(row["day"], [])} for row in totals]
+
+
+@router.get("/dashboard/regions")
+async def regional_supply_demand() -> list[dict[str, Any]]:
+    """Regional supply (open vessels) vs. demand (recent orders), per region.
+
+    ``supply`` and ``demand`` are both current-snapshot counts and are what
+    the map's bubble size and tight/balanced verdict are built from.
+    ``days_with_supply`` is a confidence signal alongside them, not an input
+    to either: on how many of the last ``persistence_window_days`` simulated
+    days this region carried at least one open vessel. It exists because a
+    single instant cannot distinguish a region that reliably holds tonnage
+    from one that happens to hold some today.
+
+    Returns
+    -------
+    list of dict
+        One row per region with ``supply``, ``demand``, ``days_with_supply``
+        and ``persistence_window_days``.
     """
     sql, params = dq.regions_sql()
     return await _run(sql, params)
@@ -427,14 +518,20 @@ async def ecsa_vessel_history(vessel_id: str) -> list[dict[str, Any]]:
 async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     """Day-on-day or week-on-week change feed.
 
-    ``new_vessels`` and ``vessel_status_changes`` intentionally overlap:
-    ``vessel_status_changes`` is the complete transition log (any status
-    -> any status, including into 'OPEN'), and ``new_vessels`` separately
-    highlights the same into-'OPEN' events under their own heading (the
-    sponsor's "new vessel" -- a row explicitly declaring the vessel open,
-    for trader attention) -- a transition can and should appear under
-    both. See
+    ``vessel_status_changes`` is the Daily Trends chart's own definition,
+    not a log of every transition: vessels returning to OPEN from FIXED or
+    ON SUBS ("up") and vessels leaving OPEN for FIXED or ON SUBS ("down"),
+    each dated by the day the new status takes effect rather than the day it
+    was reported, so its row count equals the chart's bars for the same days.
+    FIXED <-> ON SUBS is not listed. It changed from a report-day log of
+    every transition on 6 Oct 2026; the old and new definitions and the
+    reason are recorded in
     ``ai_platform.backend.dashboard_queries.vessel_status_changes_sql``.
+
+    ``new_vessels`` and ``vessel_status_changes`` intentionally overlap: a
+    vessel returning to OPEN can appear under both headings, ``new_vessels``
+    being the narrower trader-attention highlight (a row explicitly declaring
+    the vessel open).
 
     ``field_changes`` covers everything *except* the FIXED/OPEN/ON SUBS
     transition (that's ``vessel_status_changes``, kept separate so the same

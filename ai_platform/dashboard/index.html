@@ -103,8 +103,6 @@
          a wider page container -- toggled only while that tab is active, so
          the Dashboard tab's own layout/width is never touched. */
       main.wide { max-width: 100rem; }
-      header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-      h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
       h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
       p.sub { color: var(--muted); margin: 0.25rem 0 2rem; }
       /* Matches the chat UI's own button component (shadcn/ui, via
@@ -112,20 +110,14 @@
          every variant -- rounded-md (--radius: .75rem, so 2px less here),
          text-sm font-medium, py-2 px-4, a subtle shadow -- verified
          directly from chainlit/frontend/dist/assets/*.css rather than
-         guessed. Only the fill (solid accent vs. outlined) differs
-         between .cta and .theme-toggle, matching chat's primary vs.
-         secondary button treatment. */
-      a.cta, .theme-toggle {
+         guessed. Outlined, matching chat's secondary button treatment. */
+      .theme-toggle {
         display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
         padding: 0.5rem 1rem; border-radius: 0.625rem;
         font: inherit; font-size: 0.875rem; font-weight: 500; line-height: 1.25rem;
         box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         cursor: pointer; white-space: nowrap;
       }
-      a.cta {
-        background: var(--accent); color: #fff; text-decoration: none; border: none;
-      }
-      .header-actions { display: flex; align-items: center; gap: 0.6rem; }
       .theme-toggle {
         /* Icon-only (size-9 in shadcn terms): square, no text padding --
            overrides the shared text-button padding above. */
@@ -198,6 +190,32 @@
       .mini-chart { display: block; width: 100%; height: auto; }
       .mini-chart-label { font-size: 7px; font-weight: 650; fill: var(--muted); }
       .mini-chart-axis { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--muted); margin-top: 0.1rem; }
+      /* Status changes chart: supply in (green, above the line) and out (red,
+         below it). Colours are the same good/critical pair the map uses. */
+      .mini-chart-zero { stroke: var(--border); stroke-width: 1; }
+      .move-hit { fill: transparent; }
+      .move-up { fill: var(--status-good); }
+      .move-down { fill: var(--status-critical); }
+      .move-bar { cursor: pointer; }
+      .move-bar:hover, .move-bar:focus { opacity: 0.8; stroke: var(--fg); stroke-width: 1; outline: none; }
+      .move-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.8rem; font-size: 0.68rem; color: var(--muted); margin-top: 0.2rem; }
+      .move-legend .swatch { display: inline-flex; align-items: center; gap: 0.3rem; }
+      .move-legend .dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; }
+      .move-legend .net { margin-left: auto; font-weight: 650; color: var(--fg); }
+      /* A vessel / order id that offers a shortcut to its override form: a
+         faint underline on hover, and one shared floating bubble (below). The
+         id itself is plain selectable text -- clicking it does nothing, so a
+         trader can still double-click to copy it. */
+      .rec-id { border-bottom: 1px dotted transparent; }
+      .rec-id:hover, .rec-id:focus-visible { border-bottom-color: var(--muted); outline: none; }
+      #recIdBubble { position: fixed; z-index: 80; display: none; }
+      #recIdBubble.visible { display: block; }
+      #recIdBubble button {
+        font: inherit; font-size: 0.75rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+        padding: 0.3rem 0.65rem; border-radius: 0.55rem; border: 1px solid var(--border);
+        background: var(--card); color: var(--fg); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+      }
+      #recIdBubble button:hover, #recIdBubble button:focus-visible { border-color: var(--accent); outline: none; }
       .drilldown-head { margin-top: 3rem; }
       .drilldown-head h2 { margin-bottom: 0.15rem; }
 
@@ -221,7 +239,8 @@
       .day-group-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); margin: 0.5rem 0 0.15rem; padding-top: 0.35rem; border-top: 1px dashed var(--border); }
       .day-group-header:first-child { border-top: none; padding-top: 0; margin-top: 0; }
 
-      .refresh-bar { display: flex; align-items: center; gap: 0.75rem; font-size: 0.78rem; margin-top: 0.5rem; }
+      .refresh-bar { display: flex; align-items: center; gap: 0.75rem; font-size: 0.78rem; margin-bottom: 1.5rem; }
+      .refresh-bar .theme-toggle { margin-left: auto; }
       .stale-banner {
         margin-top: 0.6rem; padding: 0.6rem 0.9rem; border-radius: 0.6rem; font-size: 0.82rem;
         background: color-mix(in srgb, var(--stale) 14%, transparent); border: 1px solid color-mix(in srgb, var(--stale) 40%, transparent); color: var(--fg);
@@ -321,6 +340,10 @@
       .modal-body ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
       .modal-body li { border-bottom: 1px dashed var(--border); padding-bottom: 0.6rem; }
 
+      .send-to-chat { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-size: 0.78rem; }
+      #ordersTable tfoot .send-row td { border-bottom: none; padding-top: 0.6rem; }
+      .pick-col { width: 1.75rem; }
+      .history-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .history-btn { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
       .history-trail { display: none; padding: 0.5rem 0.6rem 0.75rem; font-size: 0.82rem; }
       .history-trail.open { display: block; }
@@ -329,18 +352,40 @@
       .history-trail li:not(:last-child)::after { content: "\2192"; color: var(--muted); margin-left: 0.4rem; }
 
       /* ---- top-level tabs --------------------------------------------------
-         Underline style, distinct from the pill toggles used for in-section
-         filters (.view-toggle, .window-btn) so page-level navigation doesn't
-         read as just another filter control. */
-      .tabs { display: flex; gap: 0.25rem; margin: 1.5rem 0 0; border-bottom: 1px solid var(--border); }
+         The Chat / Dashboard bar is an OPAQUE pill fixed in the empty middle
+         of the chat's 60px header (Chainlit keeps its own controls at the left
+         and right edges), so chat stays full screen. Opaque on purpose: --bg
+         is a solid colour in both themes, so whatever scrolls beneath the bar
+         is hidden by it rather than showing through the buttons. The
+         dashboard and override pages are switched by a second, .sub-tabs bar
+         inside <main> (below), which is not fixed. */
+      .tabs {
+        position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30;
+        display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem;
+        background: var(--bg); border: 1px solid var(--border); border-radius: 0.9rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+      }
       .tab-btn {
-        font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.65rem 1rem;
-        border: none; border-bottom: 2px solid transparent; background: transparent;
-        color: var(--muted); cursor: pointer; margin-bottom: -1px;
+        font: inherit; font-size: 0.875rem; font-weight: 600; padding: 0.4rem 0.9rem;
+        border: 1px solid transparent; border-radius: 0.6rem; background: transparent;
+        color: var(--muted); cursor: pointer; white-space: nowrap;
       }
       .tab-btn:hover { color: var(--fg); }
-      .tab-btn.active { color: var(--fg); border-bottom-color: var(--accent); }
-      .tab-panel.hidden { display: none; }
+      .tab-btn.active { color: var(--fg); background: var(--card); border-color: var(--border); }
+      .tab-panel.hidden, main.hidden { display: none; }
+      main { padding-top: 5rem; }
+      /* Chat is Chainlit's own /chat page in a full-screen frame. Hiding it
+         keeps it loaded, so neither side reloads when switching tabs. */
+      #tab-chat { position: fixed; inset: 0; }
+      #chatFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
+      .tab-btn.hidden { display: none; }
+      /* Dashboard / override pages, switched inside <main>: an ordinary bar
+         at the top of the page, not pinned over the chat header like the
+         top-level Chat / Dashboard bar. */
+      .sub-tabs {
+        position: static; transform: none; height: auto;
+        flex-wrap: wrap; margin-bottom: 1.5rem;
+      }
 
       /* ---- trader override form ------------------------------------------
          Own component classes, scoped to #overrides-section where they'd
@@ -463,9 +508,11 @@
       }
       /* Audit Trail status coloring -- distinct from the Dashboard tab's
          OPEN/ON SUBS/FIXED badges (.badge-open/-watchlist/-fixed above),
-         since this covers all 12 raw override_status values a trader can
+         since this covers the raw override_status values a trader can
          submit (OVERRIDE_STATUSES in trader_override_queries.py), not the
-         3-way derived dashboard_status. Default (no modifier) stays the
+         4-way derived dashboard_status. Rows logged before the list was
+         narrowed to ON SUBS / FIXED / OPEN can still carry the old values
+         (e.g. AVAILABLE) and simply render with the neutral badge. Default (no modifier) stays the
          neutral card/border look for statuses that are neither good nor
          bad news for the vessel's tonnage. */
       #auditTable thead th, #orderAuditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
@@ -525,25 +572,24 @@
     </style>
   </head>
   <body>
-    <main>
-      <header>
-        <div>
-          <h1>Ocean Intelligence</h1>
-          <p class="sub">Market status overview</p>
-        </div>
-        <div class="header-actions">
-          <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
-          <a class="cta" href="/chat">Open chat</a>
-        </div>
-      </header>
+    <nav class="tabs">
+      <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
+      <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
+    </nav>
 
+    <div id="tab-chat" class="tab-panel">
+      <iframe id="chatFrame" src="/chat" title="Ocean Intelligence chat"></iframe>
+    </div>
+
+    <main class="hidden">
       <div class="refresh-bar">
         <span class="muted" id="lastRefreshed">Loading&hellip;</span>
         <button type="button" id="refreshNowBtn" class="history-btn">Refresh now</button>
+        <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
-      <nav class="tabs">
+      <nav class="tabs sub-tabs">
         <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
         <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage Status Override</button>
         <button type="button" class="tab-btn" data-tab="order-overrides">Order Status Override</button>
@@ -561,11 +607,11 @@
             <span class="value" id="statusTileWatchlist">—</span>
             <span class="label">On Subs</span>
           </button>
-          <button type="button" class="status-tile status-tile-fixed" data-status="FIXED">
+          <button type="button" class="status-tile status-tile-fixed" data-status="FIXED" title="Under a fixture right now: a report whose open window covers today says fixed, and the vessel has been heard from within 5 days. A fixture reported for a future window reads as Open until that window starts, so this count is small by design.">
             <span class="value" id="statusTileFixed">—</span>
             <span class="label">Fixed</span>
           </button>
-          <button type="button" class="status-tile status-tile-likely-fixed" data-status="LIKELY FIXED" title="No row's window covers today, and this vessel hasn't been updated in 5+ days -- treated as probably fixed off-market, not a confirmed fixture.">
+          <button type="button" class="status-tile status-tile-likely-fixed" data-status="LIKELY FIXED" title="Nothing heard about this vessel in 5+ days -- treated as probably fixed off-market rather than still open, whatever its last reported window still claims. Not a confirmed fixture.">
             <span class="value" id="statusTileLikelyFixed">—</span>
             <span class="label">Likely Fixed</span>
           </button>
@@ -580,7 +626,7 @@
                 <button type="button" class="view-btn" data-view="table">Table</button>
               </div>
             </div>
-            <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply). Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Simulated as of today's real date minus one year, not today's actual date.</p>
+            <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply), counted right now so it matches the status tiles above. Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Hover a bubble (or read the Consistency column in the table view) for how many of the last 14 days that region carried any open tonnage &mdash; a region with ships every day is a different proposition from one that happens to have them today. Simulated as of today's real date minus one year, not today's actual date.</p>
             <div id="regionMapFilterBanner" class="day-filter-banner hidden">
               <span id="regionMapFilterLabel"></span>
               <button type="button" id="regionMapFilterClear">Clear filter</button>
@@ -590,7 +636,7 @@
             </div>
             <div id="regionsTableView" class="regions-table-wrap">
               <div class="table-wrap"><table id="regionsTable">
-                <thead><tr><th>Region</th><th>Supply</th><th>Demand</th><th>Status</th></tr></thead>
+                <thead><tr><th>Region</th><th>Supply</th><th title="Orders received in the last 14 simulated days, filed under their load zone.">Demand</th><th title="On how many of the last 14 simulated days this region carried at least one open vessel. A confidence signal for the Supply column, not part of the Status verdict.">Consistency</th><th>Status</th></tr></thead>
                 <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
               </table></div>
             </div>
@@ -603,7 +649,7 @@
               <div id="chartNewVessels"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
             </div>
             <div class="trend-chart">
-              <div class="trend-chart-title">Status changes (Fixed/Open/On Subs)</div>
+              <div class="trend-chart-title" title="Supply moving in and out, per day. A vessel is counted on the day its new status takes effect, not the day it was reported. Green (+): Fixed or On Subs back to Open. Red (&minus;): Open to Fixed or On Subs. Fixed to On Subs counts for nothing. A vessel that simply goes quiet (Likely Fixed) is not counted. Click a bar to list its vessels.">Supply moves: back to Open (+) / to Fixed or On Subs (&minus;)</div>
               <div id="chartStatusChanges"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
             </div>
             <div class="trend-chart">
@@ -616,8 +662,6 @@
       </section>
 
       <div class="drilldown-head">
-        <h2>Records</h2>
-        <p class="sub" style="margin:0.15rem 0 0;">Filter, search, and inspect the underlying vessel, order, and change records behind the summary above.</p>
       </div>
 
       <section id="changes-section">
@@ -701,10 +745,17 @@
         </div>
         <div class="table-wrap"><table id="ordersTable">
           <thead><tr>
+            <th class="pick-col"><input type="checkbox" id="ordersPickAll" aria-label="Select all orders on this page" disabled /></th>
             <th>Order</th><th>Cargo</th><th>Load zone</th><th>Discharge zone</th>
             <th>Laycan</th><th>Weight</th><th>Received</th>
           </tr></thead>
-          <tbody><tr><td colspan="7" class="muted">Loading&hellip;</td></tr></tbody>
+          <tbody><tr><td colspan="8" class="muted">Loading&hellip;</td></tr></tbody>
+          <tfoot><tr class="send-row"><td colspan="8">
+            <div class="send-to-chat">
+              <span class="muted" id="ordersSendNotice"></span>
+              <button type="button" id="ordersSendToChat" class="history-btn" disabled>Send to chat</button>
+            </div>
+          </td></tr></tfoot>
         </table></div>
         <div class="pager" id="ordersPager"></div>
       </section>
@@ -790,16 +841,6 @@
               Click a row to compare your update against that trip instead of the newest one --
               submitting always adds a new report rather than editing the row you clicked.
             </p>
-            <p class="sub" style="margin-bottom:0.5rem; font-size:0.78rem;">
-              This table leaves out <code>order_id</code> on purpose. Every
-              <code>tonnage_test</code> row carries one -- the order the Shipfix
-              pipeline has provisionally matched this vessel's report against --
-              but it's an order-side attribute surfaced on the vessel record, not
-              something this tonnage form edits, so it's hidden here rather than
-              shown as a plain, uneditable number. It isn't editable from the
-              Order Status Override tab either yet -- that tab only covers an
-              order's own laycan window for now.
-            </p>
             <input
               type="text" id="currentRecordSearch" class="record-search"
               placeholder="Search this vessel's records&hellip;" autocomplete="off"
@@ -870,6 +911,7 @@
                     aria-controls="ooOrderList" required
                   />
                   <input type="hidden" id="ooOrder" />
+                  <input type="hidden" id="ooOrderSeq" />
                   <ul class="combobox-list hidden" id="ooOrderList" role="listbox"></ul>
                 </div>
               </label>
@@ -915,10 +957,13 @@
           <div class="record-panel">
             <h3>Current Record</h3>
             <p class="sub" style="margin-bottom:0.5rem;">
-              The order's own record on file. order_id is unique per order --
-              unlike a vessel's position-report history, there's only ever one
-              row here.
+              The order's own record on file, identified by order_id and
+              order_seq. Orders identical in every field order_id is built from
+              share one order_id and are numbered apart by order_seq; whether
+              they are one order recorded twice or separate orders is yours to
+              judge. An update here changes only the order_seq selected.
             </p>
+            <p class="sub" id="ooSeqNote" style="margin-bottom:0.5rem;" hidden></p>
             <div class="table-wrap"><table id="orderCurrentRecordTable">
               <thead><tr></tr></thead>
               <tbody><tr><td class="record-empty">Select an order to see its current record.</td></tr></tbody>
@@ -956,14 +1001,16 @@
         </div>
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
-            <th>Order</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
+            <th>Order</th><th>Order seq</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
             <th>Customer name</th><th>Entered by</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="6"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
     </main>
+
+    <div id="recIdBubble" role="tooltip"><button type="button"></button></div>
 
     <div id="changeGroupModal" class="modal-overlay hidden">
       <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="changeGroupModalTitle">
@@ -1027,15 +1074,25 @@
       updateThemeButton();
 
       // ---- top-level tabs ---------------------------------------------
+      // Two bars: the pinned Chat / Dashboard bar swaps the chat frame for
+      // <main>; the .sub-tabs bar inside <main> swaps its own pages. Each
+      // bar only touches its own buttons, so switching a sub-tab keeps
+      // "Dashboard" highlighted up top.
       document.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-          document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+          const nav = btn.closest("nav");
+          const tab = btn.dataset.tab;
+          const main = document.querySelector("main");
+          nav.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
           btn.classList.add("active");
-          document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("hidden");
-          document.querySelector("main").classList.toggle(
-            "wide", btn.dataset.tab === "tonnage-overrides" || btn.dataset.tab === "order-overrides"
-          );
+          if (nav.classList.contains("sub-tabs")) {
+            main.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+            document.getElementById(`tab-${tab}`).classList.remove("hidden");
+            main.classList.toggle("wide", tab === "tonnage-overrides" || tab === "order-overrides");
+          } else {
+            document.getElementById("tab-chat").classList.toggle("hidden", tab !== "chat");
+            main.classList.toggle("hidden", tab === "chat");
+          }
         });
       });
 
@@ -1222,6 +1279,22 @@
       // no order in this dataset's simulated recent window named that
       // region, which given orders' narrow date coverage is the common case
       // today, not a real signal -- shown neutral, not guessed.
+      // How many of the last N simulated days this region carried at least
+      // one open vessel. Deliberately NOT an input to regionStatus below: the
+      // bubble size and the tight/balanced verdict stay on today's snapshot so
+      // they keep reconciling with the status tiles, the vessel tracker and
+      // what the chatbot returns for the same question. This only qualifies
+      // that snapshot -- 3 open vessels every day for a fortnight is a
+      // different proposition from 3 today and none on the other thirteen.
+      // Returns null when the API predates these fields, so every caller has
+      // to tolerate its absence rather than render "undefined/14".
+      function supplyConsistency(row) {
+        const days = Number(row.days_with_supply);
+        const windowDays = Number(row.persistence_window_days) || 14;
+        if (!Number.isFinite(days)) return null;
+        return { days, windowDays, short: `${days}/${windowDays}` };
+      }
+
       function regionStatus(supply, demand) {
         if (demand === 0) return { key: "no-data", label: "No recent demand data", color: "var(--muted)" };
         const ratio = supply / demand;
@@ -1269,9 +1342,13 @@
           const label = r.supply >= labelThreshold
             ? `<text class="map-bubble-label" x="${x}" y="${y + radius + 11}" text-anchor="middle">${escapeHtml(r.region)}</text>`
             : "";
-          const ariaLabel = `${escapeHtml(r.region)}: ${formatNumber(r.supply)} supply, ${formatNumber(r.demand)} demand, ${status.label}${isActive ? " -- filter active, click to clear" : " -- click to filter the charts and trackers below"}`;
+          const consistency = supplyConsistency(r);
+          const consistencySpeech = consistency
+            ? `, open tonnage on ${consistency.days} of the last ${consistency.windowDays} days`
+            : "";
+          const ariaLabel = `${escapeHtml(r.region)}: ${formatNumber(r.supply)} supply, ${formatNumber(r.demand)} demand, ${status.label}${consistencySpeech}${isActive ? " -- filter active, click to clear" : " -- click to filter the charts and trackers below"}`;
           return `
-            <g data-region="${escapeHtml(r.region)}" data-supply="${r.supply}" data-demand="${r.demand}" data-status="${status.label}">
+            <g data-region="${escapeHtml(r.region)}" data-supply="${r.supply}" data-demand="${r.demand}" data-status="${status.label}" data-days="${consistency ? consistency.days : ""}" data-window="${consistency ? consistency.windowDays : ""}">
               <circle class="map-bubble" cx="${x}" cy="${y}" r="${radius}" fill="${status.color}" fill-opacity="0.82" stroke="${isActive ? "var(--fg)" : "var(--map-water)"}" stroke-width="${isActive ? 3 : 2}"></circle>
               <circle class="map-bubble-hit" cx="${x}" cy="${y}" r="${Math.max(radius, 12)}" tabindex="0" role="button" aria-label="${ariaLabel}"></circle>
               ${label}
@@ -1306,11 +1383,16 @@
           const hit = g.querySelector(".map-bubble-hit");
           const show = () => {
             const region = g.dataset.region, supply = g.dataset.supply, demand = g.dataset.demand, status = g.dataset.status;
+            const days = g.dataset.days, windowDays = g.dataset.window;
+            const consistencyLine = days === "" || windowDays === ""
+              ? ""
+              : `<div class="muted">Open tonnage on ${escapeHtml(days)} of the last ${escapeHtml(windowDays)} days</div>`;
             const html = `
               <div class="t-title">${escapeHtml(region)}</div>
               <div class="t-value">${formatNumber(supply)} open vessels</div>
-              <div class="t-value">${formatNumber(demand)} recent orders</div>
+              <div class="t-value">${formatNumber(demand)} orders in the last 14 days</div>
               <div class="muted">${escapeHtml(status)}</div>
+              ${consistencyLine}
             `;
             const circle = g.querySelector(".map-bubble");
             const cx = parseFloat(circle.getAttribute("cx")), cy = parseFloat(circle.getAttribute("cy"));
@@ -1347,16 +1429,18 @@
       function renderRegionsTable(rows) {
         const tbody = document.querySelector("#regionsTable tbody");
         if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="4" class="muted">No regional data available.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="5" class="muted">No regional data available.</td></tr>';
           return;
         }
         tbody.innerHTML = rows.map((r) => {
           const status = regionStatus(r.supply, r.demand);
+          const consistency = supplyConsistency(r);
           return `
             <tr>
               <td>${escapeHtml(r.region)}</td>
               <td>${formatNumber(r.supply)}</td>
               <td>${formatNumber(r.demand)}</td>
+              <td class="${consistency ? "" : "muted"}">${consistency ? escapeHtml(consistency.short) : "not available"}</td>
               <td><span class="badge" style="background:color-mix(in srgb, ${status.color} 20%, transparent); color:${status.color};">${escapeHtml(status.label)}</span></td>
             </tr>
           `;
@@ -1530,11 +1614,122 @@
         }));
       }
 
+      // ---- Status changes: supply moving in and out -----------------------
+      // One pair of bars per day on a shared scale. Green above the centre
+      // line is a vessel returning to OPEN (+1); red below it is a vessel
+      // leaving OPEN for FIXED or ON SUBS (-1); FIXED <-> ON SUBS counts for
+      // nothing. Dated by the day the new status takes effect. The full
+      // definition, and what it deliberately leaves out, is the comment above
+      // _STATUS_MOVES_CTE in backend/dashboard_queries.py.
+      const MINUS = "\u2212";
+      const signed = (n) => (n > 0 ? `+${formatNumber(n)}` : n < 0 ? `${MINUS}${formatNumber(-n)}` : "0");
+
+      function regionMoveBreakdownHtml(regions) {
+        return (regions || []).map(
+          (r) => `<div class="t-value">${escapeHtml(r.region)}: +${formatNumber(r.up)} / ${MINUS}${formatNumber(r.down)}</div>`
+        ).join("");
+      }
+
+      // Same idea as seriesForActiveRegion, but a day has two numbers to narrow.
+      function seriesForActiveRegionMoves(series) {
+        if (!activeRegionFilter) return series;
+        return series.map((d) => {
+          const hit = (d.regions || []).find((r) => r.region === activeRegionFilter);
+          return { ...d, up: hit ? hit.up : 0, down: hit ? hit.down : 0 };
+        });
+      }
+
+      function renderMoveChart(container, series) {
+        if (!series.length) {
+          container.innerHTML = '<p class="muted" style="font-size:0.8rem;">No data.</p>';
+          return;
+        }
+        const W = 260, H = 124, PAD_X = 2, PAD_T = 14, PAD_B = 14;
+        const plotW = W - PAD_X * 2;
+        const plotH = H - PAD_T - PAD_B;
+        const half = plotH / 2;
+        const mid = PAD_T + half;
+        // One scale for both halves so a green bar and a red bar of the same
+        // height mean the same number of vessels.
+        const maxVal = Math.max(1, ...series.map((d) => Math.max(d.up, d.down)));
+        const slot = plotW / series.length;
+        const barW = Math.max(2, slot - 2);
+        const dayLabel = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const upTotal = series.reduce((n, d) => n + d.up, 0);
+        const downTotal = series.reduce((n, d) => n + d.down, 0);
+
+        const cols = series.map((d, i) => {
+          const slotX = PAD_X + i * slot;
+          const x = slotX + (slot - barW) / 2;
+          const upH = d.up ? Math.max(1, (d.up / maxVal) * half) : 0;
+          const downH = d.down ? Math.max(1, (d.down / maxVal) * half) : 0;
+          const upLabel = `${dayLabel(d.day)}: ${d.up} back to open, click to list them`;
+          const downLabel = `${dayLabel(d.day)}: ${d.down} to fixed or on subs, click to list them`;
+          const up = d.up ? `
+            <text x="${(x + barW / 2).toFixed(1)}" y="${Math.max(9, mid - upH - 3).toFixed(1)}" text-anchor="middle" class="mini-chart-label">${signed(d.up)}</text>
+            <rect class="move-bar move-up" data-dir="up" x="${x.toFixed(1)}" y="${(mid - upH).toFixed(1)}" width="${barW.toFixed(1)}" height="${upH.toFixed(1)}" rx="2" tabindex="0" role="button" aria-label="${upLabel}"></rect>` : "";
+          const down = d.down ? `
+            <text x="${(x + barW / 2).toFixed(1)}" y="${(mid + downH + 8).toFixed(1)}" text-anchor="middle" class="mini-chart-label">${signed(-d.down)}</text>
+            <rect class="move-bar move-down" data-dir="down" x="${x.toFixed(1)}" y="${mid.toFixed(1)}" width="${barW.toFixed(1)}" height="${downH.toFixed(1)}" rx="2" tabindex="0" role="button" aria-label="${downLabel}"></rect>` : "";
+          return `
+            <g class="move-col" data-index="${i}">
+              <rect class="move-hit" x="${slotX.toFixed(1)}" y="${PAD_T}" width="${slot.toFixed(1)}" height="${plotH}"></rect>${up}${down}
+            </g>`;
+        }).join("");
+
+        container.innerHTML = `
+          <svg viewBox="0 0 ${W} ${H}" class="mini-chart" role="img" aria-label="Daily supply moves: vessels back to open above the line, vessels to fixed or on subs below it. Hover a day for its detail, click a bar to list its vessels.">
+            <line class="mini-chart-zero" x1="${PAD_X}" x2="${W - PAD_X}" y1="${mid}" y2="${mid}"></line>
+            ${cols}
+          </svg>
+          <div class="move-legend">
+            <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Back to Open (+)</span>
+            <span class="swatch"><span class="dot" style="background:var(--status-critical)"></span>To Fixed / On Subs (${MINUS})</span>
+            <span class="net" title="${formatNumber(upTotal)} vessels back to open, ${formatNumber(downTotal)} to fixed or on subs, over these ${series.length} days">Net ${signed(upTotal - downTotal)}</span>
+          </div>
+          <div class="mini-chart-axis"><span>${escapeHtml(dayLabel(series[0].day))}</span><span>${escapeHtml(dayLabel(series[series.length - 1].day))}</span></div>
+        `;
+
+        const tooltip = document.getElementById("chartTooltip");
+        container.querySelectorAll("g.move-col").forEach((col) => {
+          const d = series[Number(col.dataset.index)];
+          const show = () => {
+            const html = `
+              <div class="t-title">${escapeHtml(dayLabel(d.day))}</div>
+              <div class="t-value">+${formatNumber(d.up)} back to Open</div>
+              <div class="t-value">${MINUS}${formatNumber(d.down)} to Fixed / On Subs</div>
+              <div class="t-value">Net ${signed(d.up - d.down)}</div>
+              ${regionMoveBreakdownHtml(d.regions)}
+            `;
+            const box = col.getBoundingClientRect();
+            showTooltip(tooltip, html, box.left + box.width / 2, box.top - 6);
+          };
+          const hide = () => hideTooltip(tooltip);
+          col.addEventListener("pointerenter", show);
+          col.addEventListener("focusin", show);
+          col.addEventListener("pointerleave", hide);
+          col.addEventListener("focusout", hide);
+          col.querySelectorAll(".move-bar").forEach((bar) => {
+            const activate = () => {
+              hideTooltip(tooltip);
+              filterVesselsByDay("status_changes", d.day, bar.dataset.dir);
+            };
+            bar.addEventListener("click", activate);
+            bar.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activate();
+              }
+            });
+          });
+        });
+      }
+
       function renderDailyTrendsCharts() {
         if (!dailyCountsCache) return;
         const data = dailyCountsCache;
         renderMiniBarChart(document.getElementById("chartNewVessels"), seriesForActiveRegion(data.new_vessels), "var(--open)", "new_vessels");
-        renderMiniBarChart(document.getElementById("chartStatusChanges"), seriesForActiveRegion(data.status_changes), "var(--accent)", "status_changes");
+        renderMoveChart(document.getElementById("chartStatusChanges"), seriesForActiveRegionMoves(data.status_changes));
         renderMiniBarChart(document.getElementById("chartNewOrders"), seriesForActiveRegion(data.new_orders), "var(--fixed)", "new_orders");
       }
 
@@ -1558,11 +1753,167 @@
       const VESSELS_PAGE_SIZE = 15;
       let vesselsFetched = [];
       let vesselsPage = 0;
+      let vesselsTotal = 0;
+
+      // ---- jump from a record to its override form -------------------------
+      // Every vessel / order id shown in the Change Feed, the vessel tracker,
+      // the order tracker and the ECSA tracker is wrapped by idChip(). Hovering
+      // (or focusing) one shows a single shared bubble; clicking the bubble
+      // opens the matching override tab with that id already selected. One
+      // delegated set of listeners covers all of them, including rows that are
+      // re-rendered on every page change and the Change Feed's expanded modal.
+      const ID_KINDS = {
+        vessel: { tab: "tonnage-overrides", label: "Open in Tonnage Status Override" },
+        order: { tab: "order-overrides", label: "Open in Order Status Override" },
+      };
+
+      // An order is (order_id, order_seq): orders identical in the ten fields
+      // order_id is hashed from share it, numbered apart by order_seq. So an
+      // order chip carries its order_seq, and the override form opens that
+      // one, not whichever shares its id first.
+      function idChip(kind, id, seq) {
+        const safe = escapeHtml(id);
+        const seqAttr = seq == null ? "" : ` data-rec-seq="${escapeHtml(seq)}"`;
+        return `<span class="rec-id" tabindex="0" data-rec-kind="${kind}" data-rec-id="${safe}"${seqAttr}>${safe}</span>`;
+      }
+
+      // Whether two orders sharing an order_id are one order recorded twice or
+      // two real orders is the trader's call, so every order list says when a
+      // row has twins rather than showing two identical-looking rows.
+      function orderSeqNote(row) {
+        return Number(row.order_seq_count) > 1
+          ? ` <span class="muted">order_seq ${escapeHtml(row.order_seq)} of ${escapeHtml(row.order_seq_count)}</span>`
+          : "";
+      }
+
+      function orderIdCell(row) {
+        return idChip("order", row.order_id, row.order_seq) + orderSeqNote(row);
+      }
+
+      const recBubble = document.getElementById("recIdBubble");
+      const recBubbleButton = recBubble.querySelector("button");
+      let recBubbleTarget = null;
+      let recBubbleTimer = null;
+
+      function showRecBubble(chip) {
+        clearTimeout(recBubbleTimer);
+        const kind = chip.dataset.recKind;
+        recBubbleTarget = { kind, id: chip.dataset.recId, seq: chip.dataset.recSeq };
+        recBubbleButton.textContent = `${ID_KINDS[kind].label} ↗`;
+        recBubble.style.left = "0px";
+        recBubble.style.top = "0px";
+        recBubble.classList.add("visible");
+        const anchor = chip.getBoundingClientRect();
+        const box = recBubble.getBoundingClientRect();
+        let top = anchor.top - box.height - 2;
+        if (top < 4) top = anchor.bottom + 2; // no room above (top of the page or a modal): drop below
+        const left = Math.min(Math.max(4, anchor.left), Math.max(4, window.innerWidth - box.width - 4));
+        recBubble.style.left = `${left}px`;
+        recBubble.style.top = `${top}px`;
+      }
+
+      function hideRecBubble() {
+        clearTimeout(recBubbleTimer);
+        recBubble.classList.remove("visible");
+        recBubbleTarget = null;
+      }
+
+      // A short grace period lets the pointer cross the gap between the id and
+      // the bubble without the bubble vanishing under it.
+      function hideRecBubbleSoon() {
+        clearTimeout(recBubbleTimer);
+        recBubbleTimer = setTimeout(hideRecBubble, 180);
+      }
+
+      const closestOf = (event, selector) => (event.target.closest ? event.target.closest(selector) : null);
+
+      document.addEventListener("pointerover", (event) => {
+        const chip = closestOf(event, ".rec-id");
+        if (chip) showRecBubble(chip);
+        else if (closestOf(event, "#recIdBubble")) clearTimeout(recBubbleTimer);
+      });
+      document.addEventListener("pointerout", (event) => {
+        // A finger lifting off fires pointerout at once, which would remove the
+        // bubble before it could be tapped; touch is dismissed by tapping away.
+        if (event.pointerType === "touch") return;
+        if (closestOf(event, ".rec-id") || closestOf(event, "#recIdBubble")) hideRecBubbleSoon();
+      });
+      document.addEventListener("pointerdown", (event) => {
+        if (!closestOf(event, ".rec-id") && !closestOf(event, "#recIdBubble")) hideRecBubble();
+      });
+      document.addEventListener("focusin", (event) => {
+        const chip = closestOf(event, ".rec-id");
+        if (chip) showRecBubble(chip);
+      });
+      document.addEventListener("focusout", (event) => {
+        if (closestOf(event, ".rec-id")) hideRecBubbleSoon();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") { hideRecBubble(); return; }
+        const chip = closestOf(event, ".rec-id");
+        if (chip && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          openOverrideFor(chip.dataset.recKind, chip.dataset.recId, chip.dataset.recSeq);
+        }
+      });
+      // position: fixed would otherwise leave the bubble behind when the page scrolls
+      window.addEventListener("scroll", hideRecBubble, true);
+      recBubbleButton.addEventListener("click", () => {
+        if (recBubbleTarget) openOverrideFor(recBubbleTarget.kind, recBubbleTarget.id, recBubbleTarget.seq);
+      });
+
+      // Wipes the vessel form and selects `id` -- the same thing choosing it in
+      // the picker does (hidden field, label, Current Record panel), after
+      // clearing everything that was already typed, entered-by included. That
+      // matches what the form does after a successful submit.
+      function startVesselOverride(id) {
+        document.getElementById("overrideForm").reset();
+        populateStatusOptions();
+        vesselHidden().value = "";
+        vesselInput().value = "";
+        closeVesselList();
+        const message = document.getElementById("ovMessage");
+        message.className = "form-message";
+        message.textContent = "";
+        // The picker cache may not have loaded (or may not hold this vessel):
+        // fall back to the bare id, which selectVessel labels as just the id.
+        selectVessel(vesselsCache.find((v) => v.vessel_id === id) || { vessel_id: id });
+        document.getElementById("ovStatus").focus();
+      }
+
+      function startOrderOverride(id, seq) {
+        document.getElementById("orderOverrideForm").reset();
+        orderHidden().value = "";
+        orderSeqHidden().value = "";
+        orderInput().value = "";
+        closeOrderList();
+        const message = document.getElementById("ooMessage");
+        message.className = "form-message";
+        message.textContent = "";
+        const orderSeq = Number(seq) || 1;
+        selectOrder(
+          ordersCache.find((o) => o.order_id === id && Number(o.order_seq) === orderSeq)
+            || { order_id: id, order_seq: orderSeq }
+        );
+        document.getElementById("ooLaycanStart").focus();
+      }
+
+      function openOverrideFor(kind, id, seq) {
+        hideRecBubble();
+        // The Change Feed's expanded view is a full-screen overlay; leave it open
+        // and it would sit on top of the form we are about to show.
+        closeChangeGroupModal();
+        // Clicking the sub-tab button is what shows the right panel.
+        document.querySelector(`.tab-btn[data-tab="${ID_KINDS[kind].tab}"]`).click();
+        if (kind === "vessel") startVesselOverride(id);
+        else startOrderOverride(id, seq);
+        window.scrollTo(0, 0);
+      }
 
       function vesselRow(row) {
         return `
           <tr>
-            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${idChip("vessel", row.vessel_id)}</td>
             <td>${statusBadge(row.dashboard_status)}</td>
             <td>${escapeHtml(row.parent_zone || "—")}</td>
             <td>${formatNumber(row.dwt)}</td>
@@ -1573,23 +1924,37 @@
         `;
       }
 
-      // Vessel ID search runs client-side over the already-fetched,
-      // status/region-filtered set (fetched once per server-side filter
-      // change) -- instant as-you-type filtering with no per-keystroke
-      // request, then sliced to one page so a 1000+-row result never all
-      // lands in the DOM at once.
+      // Day-filter results (clicking a Daily Trends bar) are small and
+      // fetched whole in one shot -- vessel ID search and paging over them
+      // stay client-side, same as before. Everything else (the normal
+      // status/region/search filter path) is now paginated server-side:
+      // vesselsFetched is exactly the current page and vesselsTotal is the
+      // true matching count, both already computed by the server, so
+      // there's nothing left to filter or slice here -- doing so again
+      // would be redundant at best and wrong at worst (slicing an
+      // already-15-row page by a nonzero page offset would return nothing).
       function renderVesselsTable() {
         const tbody = document.querySelector("#vesselsTable tbody");
         const pager = document.getElementById("vesselsPager");
         const search = document.getElementById("vesselSearch").value.trim().toLowerCase();
-        const filtered = search
-          ? vesselsFetched.filter((r) => r.vessel_id.toLowerCase().includes(search))
-          : vesselsFetched;
 
-        const pageCount = Math.max(1, Math.ceil(filtered.length / VESSELS_PAGE_SIZE));
-        vesselsPage = Math.min(vesselsPage, pageCount - 1);
+        let pageRows, total;
+        if (activeDayFilter) {
+          const filtered = search
+            ? vesselsFetched.filter((r) => r.vessel_id.toLowerCase().includes(search))
+            : vesselsFetched;
+          total = filtered.length;
+          const dayPageCount = Math.max(1, Math.ceil(total / VESSELS_PAGE_SIZE));
+          vesselsPage = Math.min(vesselsPage, dayPageCount - 1);
+          const dayStart = vesselsPage * VESSELS_PAGE_SIZE;
+          pageRows = filtered.slice(dayStart, dayStart + VESSELS_PAGE_SIZE);
+        } else {
+          total = vesselsTotal;
+          pageRows = vesselsFetched;
+        }
+
+        const pageCount = Math.max(1, Math.ceil(total / VESSELS_PAGE_SIZE));
         const start = vesselsPage * VESSELS_PAGE_SIZE;
-        const pageRows = filtered.slice(start, start + VESSELS_PAGE_SIZE);
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(vesselRow).join("")
@@ -1597,8 +1962,8 @@
             ? '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>'
             : '<tr><td colspan="7" class="muted">Choose a status or region filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
 
-        const rangeLabel = filtered.length
-          ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+        const rangeLabel = total
+          ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, total)} of ${formatNumber(total)}`
           : "0 of 0";
         pager.innerHTML = `
           <span>${rangeLabel}</span>
@@ -1608,13 +1973,17 @@
             <button type="button" id="vesselsNext" ${vesselsPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
           </div>
         `;
+        // A day-filter's full result set is already in memory (see above),
+        // so paging through it is a free re-render. The normal path only
+        // ever holds one page in memory, so paging through it needs a
+        // fresh server request for the newly-requested page.
         document.getElementById("vesselsPrev").addEventListener("click", () => {
           vesselsPage -= 1;
-          renderVesselsTable();
+          if (activeDayFilter) renderVesselsTable(); else loadVessels(false, true);
         });
         document.getElementById("vesselsNext").addEventListener("click", () => {
           vesselsPage += 1;
-          renderVesselsTable();
+          if (activeDayFilter) renderVesselsTable(); else loadVessels(false, true);
         });
       }
 
@@ -1648,7 +2017,13 @@
       // box stays enabled throughout and keeps narrowing whatever's
       // currently loaded, day-filtered or not.
       let activeDayFilter = null;
-      const DAY_FILTER_LABELS = { new_vessels: "declared open", status_changes: "with a status change" };
+      // What the vessel tracker's banner calls the vessels a bar counted.
+      function dayFilterLabel({ metric, direction }) {
+        if (metric === "new_vessels") return "declared open";
+        if (direction === "up") return "returning to open";
+        if (direction === "down") return "moving to fixed or on subs";
+        return "with a supply move";
+      }
       const DAY_FILTER_CONTROLS = ["vesselStatus", "vesselRegion", "vesselSort"];
 
       // The vessel tracker only ever shows something once the trader has
@@ -1665,8 +2040,8 @@
         );
       }
 
-      async function filterVesselsByDay(metric, day) {
-        activeDayFilter = { metric, day };
+      async function filterVesselsByDay(metric, day, direction = null) {
+        activeDayFilter = { metric, day, direction };
         DAY_FILTER_CONTROLS.forEach((id) => { document.getElementById(id).disabled = true; });
         await loadVessels();
         scrollToVessels();
@@ -1695,14 +2070,21 @@
         });
       });
 
-      async function loadVessels(isRefresh = false) {
+      // isPageNav distinguishes a deliberate Previous/Next click (keep
+      // whatever page the trader is on) from every other call -- a filter,
+      // sort, or search change, or the initial load -- which is a new
+      // query and has no reason to preserve a page number from before.
+      // isRefresh (the hourly auto-refresh) also keeps the current page.
+      async function loadVessels(isRefresh = false, isPageNav = false) {
         const tbody = document.querySelector("#vesselsTable tbody");
         const banner = document.getElementById("vesselDayFilterBanner");
+        if (!isRefresh && !isPageNav) vesselsPage = 0;
         // Nothing to fetch, and nothing should show, until the trader
         // applies some filter -- see hasActiveVesselFilter().
         if (!hasActiveVesselFilter()) {
           banner.classList.add("hidden");
           vesselsFetched = [];
+          vesselsTotal = 0;
           vesselsPage = 0;
           renderVesselsTable();
           return;
@@ -1714,29 +2096,41 @@
         if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
         let url;
         if (activeDayFilter) {
-          const { metric, day } = activeDayFilter;
+          const { metric, day, direction } = activeDayFilter;
           const params = new URLSearchParams({ metric, day });
+          if (direction) params.set("direction", direction);
           if (dailyTrendsRange) {
             params.set("range_since", dailyTrendsRange.since);
             params.set("range_until", dailyTrendsRange.until);
           }
           url = `/api/dashboard/vessels/by-day?${params}`;
           document.getElementById("vesselDayFilterLabel").textContent =
-            `Showing vessels ${DAY_FILTER_LABELS[metric]} on ${formatDate(day)}`;
+            `Showing vessels ${dayFilterLabel(activeDayFilter)} on ${formatDate(day)}`;
           banner.classList.remove("hidden");
         } else {
           const status = document.getElementById("vesselStatus").value;
           const region = document.getElementById("vesselRegion").value.trim();
           const sort = document.getElementById("vesselSort").value;
-          const params = new URLSearchParams({ sort });
+          const search = document.getElementById("vesselSearch").value.trim();
+          const params = new URLSearchParams({
+            sort,
+            limit: String(VESSELS_PAGE_SIZE),
+            offset: String(vesselsPage * VESSELS_PAGE_SIZE),
+          });
           if (status) params.set("status", status);
           if (region) params.set("region", region);
+          if (search) params.set("search", search);
           url = `/api/dashboard/vessels?${params}`;
           banner.classList.add("hidden");
         }
         try {
-          vesselsFetched = await getJson(url);
-          vesselsPage = 0;
+          if (activeDayFilter) {
+            vesselsFetched = await getJson(url);
+          } else {
+            const data = await getJson(url);
+            vesselsFetched = data.rows;
+            vesselsTotal = data.total;
+          }
           renderVesselsTable();
         } catch (error) {
           if (isRefresh) throw error;
@@ -1750,9 +2144,13 @@
       // own day-filter banner) rather than sharing code with it -- orders
       // and vessels have different columns and no shared identity, so
       // there's nothing real to factor out beyond a naming convention.
-      const ORDERS_PAGE_SIZE = 15;
+      const ORDERS_PAGE_SIZE = 25;
+      // Ticked orders, kept across pages and filter changes until sent.
+      const selectedOrderIds = new Set();
+      const ORDER_SELECTION_CAP = 25;
       let ordersFetched = [];
       let ordersPage = 0;
+      let ordersTotal = 0;
       let activeOrderDayFilter = null;
       const ORDER_DAY_FILTER_CONTROLS = ["orderRegion", "orderSort"];
 
@@ -1798,7 +2196,9 @@
       function orderRow(row) {
         return `
           <tr>
-            <td>${escapeHtml(row.order_id)}</td>
+            <td class="pick-col"><input type="checkbox" class="order-pick" aria-label="Select order ${escapeHtml(row.order_id)}"
+              data-order-id="${escapeHtml(row.order_id)}" ${selectedOrderIds.has(String(row.order_id)) ? "checked" : ""} /></td>
+            <td>${orderIdCell(row)}</td>
             <td>${escapeHtml(row.cargo_type || "—")}</td>
             <td>${escapeHtml(row.load_zone || "—")}</td>
             <td>${escapeHtml(row.discharge_parent_zone || "—")}</td>
@@ -1809,27 +2209,42 @@
         `;
       }
 
+      // See renderVesselsTable()'s comment -- same split between a
+      // fully-in-memory day-filter result (client-side search/paging) and
+      // the normal path, where ordersFetched is already exactly one
+      // server-paginated page and ordersTotal the true matching count.
       function renderOrdersTable() {
         const tbody = document.querySelector("#ordersTable tbody");
         const pager = document.getElementById("ordersPager");
         const search = document.getElementById("orderSearch").value.trim().toLowerCase();
-        const filtered = search
-          ? ordersFetched.filter((r) => r.order_id.toLowerCase().includes(search))
-          : ordersFetched;
 
-        const pageCount = Math.max(1, Math.ceil(filtered.length / ORDERS_PAGE_SIZE));
-        ordersPage = Math.min(ordersPage, pageCount - 1);
+        let pageRows, total;
+        if (activeOrderDayFilter) {
+          const filtered = search
+            ? ordersFetched.filter((r) => r.order_id.toLowerCase().includes(search))
+            : ordersFetched;
+          total = filtered.length;
+          const dayPageCount = Math.max(1, Math.ceil(total / ORDERS_PAGE_SIZE));
+          ordersPage = Math.min(ordersPage, dayPageCount - 1);
+          const dayStart = ordersPage * ORDERS_PAGE_SIZE;
+          pageRows = filtered.slice(dayStart, dayStart + ORDERS_PAGE_SIZE);
+        } else {
+          total = ordersTotal;
+          pageRows = ordersFetched;
+        }
+
+        const pageCount = Math.max(1, Math.ceil(total / ORDERS_PAGE_SIZE));
         const start = ordersPage * ORDERS_PAGE_SIZE;
-        const pageRows = filtered.slice(start, start + ORDERS_PAGE_SIZE);
 
         tbody.innerHTML = pageRows.length
           ? pageRows.map(orderRow).join("")
           : hasActiveOrderFilter()
-            ? '<tr><td colspan="7" class="muted">No orders match these filters.</td></tr>'
-            : '<tr><td colspan="7" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
+            ? '<tr><td colspan="8" class="muted">No orders match these filters.</td></tr>'
+            : '<tr><td colspan="8" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
+        syncOrdersPickAll();
 
-        const rangeLabel = filtered.length
-          ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, filtered.length)} of ${formatNumber(filtered.length)}`
+        const rangeLabel = total
+          ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, total)} of ${formatNumber(total)}`
           : "0 of 0";
         pager.innerHTML = `
           <span>${rangeLabel}</span>
@@ -1841,27 +2256,119 @@
         `;
         document.getElementById("ordersPrev").addEventListener("click", () => {
           ordersPage -= 1;
-          renderOrdersTable();
+          if (activeOrderDayFilter) renderOrdersTable(); else loadOrders(false, true);
         });
         document.getElementById("ordersNext").addEventListener("click", () => {
           ordersPage += 1;
-          renderOrdersTable();
+          if (activeOrderDayFilter) renderOrdersTable(); else loadOrders(false, true);
         });
       }
 
-      async function loadOrders(isRefresh = false) {
+      // Header box reflects the visible page only: checked when every row on it is
+      // ticked, mixed when some are, since the server returns one page at a time.
+      function syncOrdersPickAll() {
+        const pickAll = document.getElementById("ordersPickAll");
+        const boxes = [...document.querySelectorAll("#ordersTable .order-pick")];
+        const tickedCount = boxes.filter((box) => box.checked).length;
+        pickAll.disabled = boxes.length === 0;
+        pickAll.checked = boxes.length > 0 && tickedCount === boxes.length;
+        pickAll.indeterminate = tickedCount > 0 && tickedCount < boxes.length;
+      }
+
+      function updateOrdersSendButton() {
+        const btn = document.getElementById("ordersSendToChat");
+        const count = selectedOrderIds.size;
+        const overCap = count > ORDER_SELECTION_CAP;
+        btn.disabled = count === 0 || overCap;
+        btn.textContent = overCap
+          ? `Select ${ORDER_SELECTION_CAP} or fewer`
+          : count ? `Send ${count} to chat` : "Send to chat";
+      }
+
+      // Writes into Chainlit's composer inside the chat frame. React ignores a
+      // plain .value assignment, so the prototype setter plus a bubbling input
+      // event is what makes the controlled textarea register the text.
+      function writeToChatComposer(text) {
+        const frame = document.getElementById("chatFrame");
+        const frameWindow = frame && frame.contentWindow;
+        const input = frameWindow && frameWindow.document.querySelector("#chat-input");
+        if (!input || input.tagName !== "TEXTAREA") return false;
+        const setter = Object.getOwnPropertyDescriptor(
+          frameWindow.HTMLTextAreaElement.prototype, "value",
+        )?.set;
+        if (!setter) return false;
+        setter.call(input, text);
+        input.dispatchEvent(new frameWindow.Event("input", { bubbles: true }));
+        input.focus();
+        return true;
+      }
+
+      async function sendOrdersToChat() {
+        const ids = [...selectedOrderIds];
+        if (!ids.length || ids.length > ORDER_SELECTION_CAP) return;
+        const prompt = ids.length === 1
+          ? `Find order with order id: ${ids[0]} and provide details for it`
+          : `Find orders with order ids: ${ids.join(", ")} and provide details for them`;
+        const notice = document.getElementById("ordersSendNotice");
+        document.querySelector('.tab-btn[data-tab="chat"]').click();
+        if (writeToChatComposer(prompt)) {
+          notice.textContent = "";
+        } else {
+          try {
+            await navigator.clipboard.writeText(prompt);
+            notice.textContent = "Chat not ready — prompt copied, paste with Ctrl+V";
+          } catch {
+            notice.textContent = "Could not reach the chat or the clipboard";
+          }
+          return;
+        }
+        selectedOrderIds.clear();
+        updateOrdersSendButton();
+        document.querySelectorAll("#ordersTable .order-pick").forEach((box) => { box.checked = false; });
+        syncOrdersPickAll();
+      }
+
+      document.querySelector("#ordersTable tbody").addEventListener("change", (event) => {
+        const box = event.target;
+        if (!box.classList || !box.classList.contains("order-pick")) return;
+        const id = box.dataset.orderId;
+        if (box.checked) selectedOrderIds.add(id); else selectedOrderIds.delete(id);
+        // The chat looks orders up by order_id, so a pick covers every order_seq
+        // sharing it; tick its twins on this page to match.
+        document.querySelectorAll("#ordersTable .order-pick").forEach((other) => {
+          if (other.dataset.orderId === id) other.checked = box.checked;
+        });
+        document.getElementById("ordersSendNotice").textContent = "";
+        updateOrdersSendButton();
+        syncOrdersPickAll();
+      });
+      document.getElementById("ordersPickAll").addEventListener("change", (event) => {
+        const shouldTick = event.target.checked;
+        document.querySelectorAll("#ordersTable .order-pick").forEach((box) => {
+          box.checked = shouldTick;
+          if (shouldTick) selectedOrderIds.add(box.dataset.orderId); else selectedOrderIds.delete(box.dataset.orderId);
+        });
+        document.getElementById("ordersSendNotice").textContent = "";
+        updateOrdersSendButton();
+        syncOrdersPickAll();
+      });
+      document.getElementById("ordersSendToChat").addEventListener("click", sendOrdersToChat);
+
+      async function loadOrders(isRefresh = false, isPageNav = false) {
         const tbody = document.querySelector("#ordersTable tbody");
         const banner = document.getElementById("orderDayFilterBanner");
+        if (!isRefresh && !isPageNav) ordersPage = 0;
         // Nothing to fetch, and nothing should show, until the trader
         // applies some filter -- see hasActiveOrderFilter().
         if (!hasActiveOrderFilter()) {
           banner.classList.add("hidden");
           ordersFetched = [];
+          ordersTotal = 0;
           ordersPage = 0;
           renderOrdersTable();
           return;
         }
-        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
+        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading&hellip;</td></tr>';
         let url;
         if (activeOrderDayFilter) {
           const { day } = activeOrderDayFilter;
@@ -1877,18 +2384,29 @@
         } else {
           const region = document.getElementById("orderRegion").value.trim();
           const sort = document.getElementById("orderSort").value;
-          const params = new URLSearchParams({ sort });
+          const search = document.getElementById("orderSearch").value.trim();
+          const params = new URLSearchParams({
+            sort,
+            limit: String(ORDERS_PAGE_SIZE),
+            offset: String(ordersPage * ORDERS_PAGE_SIZE),
+          });
           if (region) params.set("region", region);
+          if (search) params.set("search", search);
           url = `/api/dashboard/orders?${params}`;
           banner.classList.add("hidden");
         }
         try {
-          ordersFetched = await getJson(url);
-          ordersPage = 0;
+          if (activeOrderDayFilter) {
+            ordersFetched = await getJson(url);
+          } else {
+            const data = await getJson(url);
+            ordersFetched = data.rows;
+            ordersTotal = data.total;
+          }
           renderOrdersTable();
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load orders: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load orders: ${escapeHtml(error.message)}</td></tr>`;
           document.getElementById("ordersPager").innerHTML = "";
         }
       }
@@ -1911,12 +2429,21 @@
       // per-day vessel-name breakdown within the DoD/WoW window, not one
       // flat list -- rows already arrive newest-first from the API, so
       // insertion-ordered day buckets stay newest-first too.
+      // The API sends a midnight timestamp as a bare date ("2025-10-05"), and
+      // new Date() reads that as UTC midnight -- which is the PREVIOUS evening
+      // for anyone west of UTC, so a day's group would be headed with the day
+      // before. A bare date is built as a local date instead; anything with a
+      // time on it is parsed as before.
+      function parseFeedDate(raw) {
+        const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(raw));
+        return bare ? new Date(Number(bare[1]), Number(bare[2]) - 1, Number(bare[3])) : new Date(raw);
+      }
       function groupByDay(rows, dateField) {
         const groups = new Map();
         for (const row of rows) {
           const raw = row[dateField];
           const day = raw
-            ? new Date(raw).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" })
+            ? parseFeedDate(raw).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" })
             : "Unknown date";
           if (!groups.has(day)) groups.set(day, []);
           groups.get(day).push(row);
@@ -1932,9 +2459,13 @@
         if (!rows.length) return '<p class="muted" style="font-size:0.8rem;">None in this window.</p>';
         const shown = limit ? rows.slice(0, limit) : rows;
         let html = "";
-        for (const [day, dayRows] of groupByDay(shown, dateField)) {
-          html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
-          html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
+        if (dateField) {
+          for (const [day, dayRows] of groupByDay(shown, dateField)) {
+            html += `<div class="day-group-header">${escapeHtml(day)} <span class="muted">(${dayRows.length})</span></div>`;
+            html += `<ul>${dayRows.map(renderItem).join("")}</ul>`;
+          }
+        } else {
+          html += `<ul>${shown.map(renderItem).join("")}</ul>`;
         }
         if (limit && rows.length > shown.length) {
           html += `<p class="muted" style="font-size:0.75rem;">+${formatNumber(rows.length - shown.length)} more not shown</p>`;
@@ -1959,7 +2490,7 @@
             return `<div class="field-diff"><span class="field-name">${escapeHtml(label)}:</span> <span class="field-old">${format(row[prev])}</span> &rarr; <span class="field-new">${format(row[cur])}</span></div>`;
           })
           .join("");
-        return `<li>${escapeHtml(row.vessel_id)}${diffs}</li>`;
+        return `<li>${idChip("vessel", row.vessel_id)}${diffs}</li>`;
       }
 
       const EXPAND_ICON_SVG = `
@@ -2011,11 +2542,24 @@
         if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
         try {
           const data = await getJson(`/api/dashboard/changes?window=${window_}`);
+          // Day-on-day reads as one move since the last working day, so its
+          // entries are listed flat (dateField null) rather than bucketed by
+          // date. Week-on-week spans seven days, where the per-day split is
+          // the point. The bucketing was also actively misleading on DoD:
+          // "New vessels" is dated by open_date_start -- the day a vessel
+          // comes open, not the day anyone reported it -- so a Monday window
+          // reaching back over a weekend showed "Saturday (24)" on a day
+          // when zero reports were actually submitted.
+          const byDay = window_ === "wow";
           const groups = [
-            ["New vessels", data.new_vessels, (r) => `<li>${escapeHtml(r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, "new_as_of"],
-            ["Vessel status changes", data.vessel_status_changes, (r) => `<li>${escapeHtml(r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, "update_date"],
-            ["Field changes", data.field_changes, fieldChangeRow, "update_date"],
-            ["New orders", data.new_orders, (r) => `<li>Order ${escapeHtml(r.order_id)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, "date_received"],
+            ["New vessels", data.new_vessels, (r) => `<li>${idChip("vessel", r.vessel_id)} &mdash; ${statusBadge(r.dashboard_status)}</li>`, byDay ? "new_as_of" : null],
+            // Same events as the Daily Trends chart (see _STATUS_MOVES_CTE in
+            // dashboard_queries.py): dated by the day the new status takes effect,
+            // so week-on-week groups by that day, not by when it was reported.
+            ["Supply moves", data.vessel_status_changes, (r) => `<li>${idChip("vessel", r.vessel_id)}: ${escapeHtml(r.prev_status)} &rarr; ${escapeHtml(r.status)}</li>`, byDay ? "effective_date" : null,
+              "The same supply moves the Daily Trends chart counts, dated by the day the new status takes effect rather than the day it was reported: Fixed or On Subs back to Open, and Open to Fixed or On Subs. Fixed to On Subs is not listed. A change reported today for a later date appears when that date arrives."],
+            ["Field changes", data.field_changes, fieldChangeRow, byDay ? "update_date" : null],
+            ["New orders", data.new_orders, (r) => `<li>Order ${orderIdCell(r)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
           ];
           currentChangeGroups = groups;
           el.innerHTML = `
@@ -2026,10 +2570,10 @@
               Simulated as of ${escapeHtml(data.tonnage_reference_now.slice(0, 10))} (UTC) &mdash; today's real date minus one year, not today's actual date.
             </p>
             <div class="change-groups">
-              ${groups.map(([title, rows, render, dateField], i) => `
+              ${groups.map(([title, rows, render, dateField, help], i) => `
                 <div class="change-group">
                   <button type="button" class="change-group-expand" data-group-index="${i}" aria-label="Expand ${escapeHtml(title)}">${EXPAND_ICON_SVG}</button>
-                  <h3>${title} <span class="change-count">${rows.length}</span></h3>
+                  <h3${help ? ` title="${escapeHtml(help)}"` : ""}>${title} <span class="change-count">${rows.length}</span></h3>
                   ${changeList(rows, render, dateField)}
                 </div>
               `).join("")}
@@ -2071,7 +2615,7 @@
       function ecsaRow(row) {
         return `
           <tr>
-            <td>${escapeHtml(row.vessel_id)}</td>
+            <td>${idChip("vessel", row.vessel_id)}</td>
             <td>${statusBadge(row.dashboard_status)}</td>
             <td>${escapeHtml(row.parent_zone || "—")}</td>
             <td>${escapeHtml(row.open_area || "—")}</td>
@@ -2218,7 +2762,7 @@
       });
 
       // ---- trader status override ------------------------------------------
-      const OVERRIDE_STATUSES = ["AVAILABLE", "ON SUBS", "FIXED"];
+      const OVERRIDE_STATUSES = ["ON SUBS", "FIXED", "OPEN"]; // keep in step with trader_override_queries.py
 
       // Open date start/end are bounded against the trader's real calendar
       // today, not the Dashboard's simulated clock -- toSimulatedDate() only
@@ -2331,9 +2875,7 @@
         return `${String(year - 1).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       }
 
-      // Every tonnage_test column vessel_history_sql selects is shown,
-      // except order_id -- deliberately left out of this table; see the
-      // explanatory note above the Current Record panel in the HTML.
+      // Every tonnage_test column vessel_history_sql selects is shown.
       // Order is NOT Supabase's ordinal position: the overridable fields
       // are pulled to the front, right after the vessel_id identifier, so
       // what this form submits is visible without scrolling; the remaining
@@ -2643,22 +3185,14 @@
         }
       }
 
-      // Maps every OVERRIDE_STATUSES value (trader_override_queries.py) to
-      // a badge color: red for statuses that mean the tonnage is off the
-      // market or the deal fell through, green for statuses that mean it's
-      // successfully booked/secured, amber for genuinely uncertain ones,
-      // and the plain neutral badge (no class) for the rest.
+      // Maps an audit row's override_status to a badge color: green for the
+      // two that take the vessel off the market, neutral (no class) for
+      // OPEN. Audit rows written before OVERRIDE_STATUSES was narrowed to
+      // ON SUBS / FIXED / OPEN can carry other values; those fall through
+      // to the neutral badge rather than being dropped or miscolored.
       const AUDIT_STATUS_CLASS = {
         FIXED: "badge-good",
         "ON SUBS": "badge-good",
-        CONTRACT: "badge-good",
-        "BALLAST FIXED": "badge-good",
-        FAILED: "badge-bad",
-        CANCELLED: "badge-bad",
-        "DO NOT COUNT": "badge-bad",
-        "POSS FIXED": "badge-caution",
-        WATCHLIST: "badge-caution",
-        RELET: "badge-caution",
       };
 
       function auditStatusBadge(status) {
@@ -2831,9 +3365,10 @@
       loadAudit();
 
       // ---- order status override --------------------------------------------
-      // order_id is unique per row in order_test (confirmed live -- no
-      // duplicates), unlike tonnage_test's vessel_id, so there's no reporting
-      // history to page through here: one order, one record. Only laycan_start/
+      // An order is (order_id, order_seq), order_test's primary key: orders
+      // identical in the ten fields order_id is hashed from share one, numbered
+      // apart by order_seq. Each is one row, unlike tonnage_test's vessel_id, so
+      // there's no reporting history to page through here. Only laycan_start/
       // laycan_end are actually written by this form -- customer_name/quantity
       // have no matching order_test column yet (see order_override_queries.py),
       // so they're rendered disabled above rather than silently discarded.
@@ -2844,11 +3379,13 @@
 
       const orderInput = () => document.getElementById("ooOrderInput");
       const orderHidden = () => document.getElementById("ooOrder");
+      const orderSeqHidden = () => document.getElementById("ooOrderSeq");
       const orderList = () => document.getElementById("ooOrderList");
 
       function orderLabel(o) {
         const route = [o.load_port, o.discharge_port].filter(Boolean).join(" → ");
-        return route ? `${o.order_id} — ${route}` : o.order_id;
+        const seq = Number(o.order_seq_count) > 1 ? ` (order_seq ${o.order_seq} of ${o.order_seq_count})` : "";
+        return (route ? `${o.order_id} — ${route}` : o.order_id) + seq;
       }
 
       function closeOrderList() {
@@ -2859,6 +3396,7 @@
 
       const ORDER_RECORD_COLUMNS = [
         { key: "order_id", label: "order id" },
+        { key: "order_seq", label: "order seq" },
         { key: "cargo_type", label: "cargo type" },
         { key: "load_port", label: "load port" },
         { key: "discharge_port", label: "discharge port" },
@@ -2897,6 +3435,14 @@
         const newBody = document.querySelector("#orderNewRecordTable tbody");
         const colCount = ORDER_RECORD_COLUMNS.length;
 
+        const seqNote = document.getElementById("ooSeqNote");
+        const twins = currentOrder ? Number(currentOrder.order_seq_count) : 0;
+        seqNote.hidden = twins <= 1;
+        seqNote.textContent = twins > 1
+          ? `order_id ${currentOrder.order_id} is shared by ${twins} orders (order_seq 1 to ${twins}). `
+            + "Compare them in the order picker before deciding whether they are the same order."
+          : "";
+
         if (!currentOrder) {
           currentBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order to see its current record.</td></tr>`;
           newBody.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order first.</td></tr>`;
@@ -2930,7 +3476,7 @@
         newBody.innerHTML = `<tr>${newCells}</tr>`;
       }
 
-      async function loadOrderRecordPanel(orderId) {
+      async function loadOrderRecordPanel(orderId, orderSeq) {
         const currentBody = document.querySelector("#orderCurrentRecordTable tbody");
         const newBody = document.querySelector("#orderNewRecordTable tbody");
         const colCount = ORDER_RECORD_COLUMNS.length;
@@ -2938,7 +3484,9 @@
         currentBody.innerHTML = loadingRow;
         newBody.innerHTML = loadingRow;
         try {
-          currentOrder = await getJson(`/api/order-override/orders/${encodeURIComponent(orderId)}`);
+          currentOrder = await getJson(
+            `/api/order-override/orders/${encodeURIComponent(orderId)}/${encodeURIComponent(orderSeq)}`
+          );
           renderOrderRecordTables();
         } catch (error) {
           currentOrder = null;
@@ -2950,9 +3498,10 @@
 
       function selectOrder(o) {
         orderHidden().value = o.order_id;
+        orderSeqHidden().value = o.order_seq;
         orderInput().value = orderLabel(o);
         closeOrderList();
-        loadOrderRecordPanel(o.order_id);
+        loadOrderRecordPanel(o.order_id, o.order_seq);
       }
 
       function renderOrderSuggestions(query) {
@@ -2999,6 +3548,7 @@
 
       orderInput().addEventListener("input", () => {
         orderHidden().value = "";
+        orderSeqHidden().value = "";
         renderOrderSuggestions(orderInput().value);
       });
       orderInput().addEventListener("focus", () => {
@@ -3050,6 +3600,7 @@
         event.preventDefault();
         const submitBtn = document.getElementById("ooSubmit");
         const orderId = document.getElementById("ooOrder").value;
+        const orderSeq = Number(orderSeqHidden().value);
         const enteredBy = document.getElementById("ooEnteredBy").value.trim();
         const laycanStart = document.getElementById("ooLaycanStart").value;
         const laycanEnd = document.getElementById("ooLaycanEnd").value;
@@ -3058,7 +3609,7 @@
         const cargoWeightMin = cargoWeightMinRaw === "" ? null : Number(cargoWeightMinRaw);
         const cargoWeightMax = cargoWeightMaxRaw === "" ? null : Number(cargoWeightMaxRaw);
 
-        if (!orderId) {
+        if (!orderId || !orderSeq) {
           showOrderFormMessage("error", "Select an order from the list.");
           orderInput().focus();
           return;
@@ -3080,6 +3631,7 @@
         try {
           await postJson("/api/order-override", {
             order_id: orderId,
+            order_seq: orderSeq,
             entered_by: enteredBy,
             laycan_start: toSimulatedDate(laycanStart),
             laycan_end: toSimulatedDate(laycanEnd),
@@ -3087,11 +3639,12 @@
             cargo_weight_max: cargoWeightMax,
             customer_name: document.getElementById("ooCustomerName").value.trim() || null,
           });
-          showOrderFormMessage("success", `Updated the record for order ${orderId}.`);
+          showOrderFormMessage("success", `Updated the record for order ${orderId} (order_seq ${orderSeq}).`);
           document.getElementById("orderOverrideForm").reset();
-          await Promise.all([loadOrderRecordPanel(orderId), loadOrderOptions(), loadOrderAudit()]);
-          const submitted = ordersCache.find((o) => o.order_id === orderId);
+          await Promise.all([loadOrderRecordPanel(orderId, orderSeq), loadOrderOptions(), loadOrderAudit()]);
+          const submitted = ordersCache.find((o) => o.order_id === orderId && Number(o.order_seq) === orderSeq);
           orderHidden().value = orderId;
+          orderSeqHidden().value = orderSeq;
           orderInput().value = submitted ? orderLabel(submitted) : orderId;
         } catch (error) {
           showOrderFormMessage("error", `Could not save update: ${error.message}`);
@@ -3104,6 +3657,7 @@
         return `
           <tr>
             <td>${escapeHtml(row.order_id)}</td>
+            <td>${row.order_seq == null ? AUDIT_DASH : escapeHtml(row.order_seq)}</td>
             <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end")}</td>
             <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber)}</td>
             <td>${row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
@@ -3119,10 +3673,10 @@
           const rows = await getJson("/api/order-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(orderAuditRow).join("")
-            : '<tr><td colspan="6" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="6" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 

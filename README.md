@@ -125,7 +125,7 @@ Teal is a Lambda doing real work, blue is a data read/write, amber is a routing 
 
 ## 3. Data caveats
 
-**Vessel-to-order links are synthetic.** The tonnage source contains no Order ID column, and no relationship between vessels and orders exists in the source data. `assign_order_ids` generates this relationship artificially, assigning each vessel an `order_id` from the orders pool solely to permit the two tables to be joined. These are not real Cargill fixtures, and any feature presenting them as genuine vessel matches is displaying fabricated data.
+**Vessels are not linked to orders.** The tonnage source contains no Order ID column, and no relationship between vessels and orders exists in the source data. `tonnage_test` therefore has no `order_id`. (The pipeline used to invent one by hash, `assign_order_ids`, purely so the two tables could be joined; that placeholder link was removed from the pipeline, the gold table, the dashboard, the chat agent and the trader override.) Whether a vessel is taken is read from `commercial_status` (FIXED / ON SUBS within the report's open window), not from any order link.
 
 **A required column contains no data.** `assigned` is 100% null; `commercial_status` is 79.2% null. These are deficiencies in the source workbooks rather than pipeline defects, and both affect core deliverables — vessel-order matching and US-2.2 respectively. (`assigned_vessel_name` had the same 100%-null problem and has since been dropped from `order_test` entirely, along with the pipeline code that wrote it — it was never populated by any source workbook.)
 
@@ -195,7 +195,6 @@ lift each rule.
 | `open_date_end` | **Open Dates End** | Last day of the open window | filter |
 | `destination` | Destination | Port currently reported via AIS as its destination | display, dropped |
 | `eta` | **ETA** | Estimated arrival at the AIS-reported destination | display, dropped |
-| `order_id` | Order ID | Order this vessel is assigned to — **synthetic**, see Data caveats | display |
 | `embedding_source_hash` | — | Pipeline: detects when text changed | unused |
 | `gold_loaded_at` | — | Pipeline: when the row was written | unused |
 
@@ -257,15 +256,17 @@ Every outbound call the running app makes, by function.
 through asyncpg. Chainlit writes threads, steps and elements to the environment schema through
 SQLAlchemy. Neither knows about the other, and they use different drivers.
 
-`get_dsn()` strips the `+asyncpg` marker from `CHAINLIT_DATABASE_URL` — SQLAlchemy needs it,
-asyncpg rejects it. `fetch_rows` opens a connection per call with a 30-second timeout and is
-read-only by construction: every value is a bound parameter and every column name comes from
-the package, never from the model.
+`get_dsn()` reads `DATA_DATABASE_URL`, falling back to `CHAINLIT_DATABASE_URL`, and strips the
+`+asyncpg` marker — SQLAlchemy needs it, asyncpg rejects it. `fetch_rows` borrows from a shared
+pool with a 30-second timeout and is read-only by construction: every value is a bound
+parameter and every column name comes from the package, never from the model.
 
 **The session pooler caps at 15 concurrent connections.** Exceeding it surfaces as
-`EMAXCONNSESSION`, counting Chainlit's SQLAlchemy pool and every `fetch_rows` call together.
-`db.py`'s own docstring notes the connection pool that belongs there once query rate justifies
-one.
+`EMAXCONNSESSION`, and Chainlit then reports "Thread not found". Chainlit's storage stays on
+the session pooler (port 5432) because it sets `search_path` per connection. `fetch_rows` goes
+through the transaction pooler (port 6543) via `DATA_DATABASE_URL`, with the prepared-statement
+cache off and `OI_WORKING_DATE` set per transaction, so dashboard bursts no longer use session
+slots.
 
 **Two failure modes that are silent rather than loud.** `embed_search_terms` must send
 `input_type="search_query"` against the `search_document` the gold loader wrote with; a
@@ -355,7 +356,7 @@ Served by the same FastAPI app as the chat, at `/` (`ai_platform/dashboard/index
 
 **Before first use**, apply the views once: `psql "$SUPABASE_DB_URL" -f infra/sql/dashboard_gold_views.sql` (or paste into the Supabase SQL editor). Idempotent, like `gold_layer_test_setup.sql`, and not applied automatically by anything in this repo. (Applied and verified live as of this writing.)
 
-**Data source is `tonnage_test`/`order_test`, not the plain `tonnage`/`order`.** This dashboard originally read `public.tonnage`/`public."order"`, but neither has a loader anywhere in this repository, and they turned out to be a stale, smaller snapshot with a real defect: `tonnage.order_id` (`numeric`) is precision-corrupted for effectively every row, confirmed live (e.g. stored as `1.52324E+17` instead of its full 18-digit value — a lossy float round-trip somewhere upstream). `tonnage_test`/`order_test` — the vector-embedded tables the deployed gold-loader Lambda (`scripts/gold_loader`) actually keeps current, per its `EventBridge -> GoldLoaderLambda` trigger on every Glue success — don't have that defect (`order_id` is clean `bigint` on both, confirmed live), are a strict superset of the old source (1,122 vessels vs. 1,037; 1,949 orders vs. 1,864), and their vessel↔order join actually resolves: 100% of `tonnage_test` rows join to `order_test` on `order_id`, tested directly, versus effectively 0% on the old source (consistent with `filterable_fields.md`'s note that the old `tonnage.order_id` "matches zero rows in orders" — it couldn't, the values no longer round-tripped).
+**Data source is `tonnage_test`/`order_test`, not the plain `tonnage`/`order`.** This dashboard originally read `public.tonnage`/`public."order"`, but neither has a loader anywhere in this repository, and they turned out to be a stale, smaller snapshot with a real defect: `tonnage.order_id` (`numeric`) is precision-corrupted for effectively every row, confirmed live (e.g. stored as `1.52324E+17` instead of its full 18-digit value — a lossy float round-trip somewhere upstream). `tonnage_test`/`order_test` — the vector-embedded tables the deployed gold-loader Lambda (`scripts/gold_loader`) actually keeps current, per its `EventBridge -> GoldLoaderLambda` trigger on every Glue success — don't have that defect (`order_test.order_id` is clean `bigint`, confirmed live), are a strict superset of the old source (1,122 vessels vs. 1,037; 1,949 orders vs. 1,864). (`tonnage_test` no longer has an `order_id` at all — see Data caveats.)
 
 Endpoints, all under `/api/dashboard/`:
 
@@ -367,7 +368,7 @@ Endpoints, all under `/api/dashboard/`:
 | Enum arity | `ballast_laden` and `commercial_status` take one value; ids take a list |
 | Result size | Beyond roughly 950 rows the model's context is exceeded and the query fails with a message asking you to narrow. One month of tonnage is about 1,000 rows |
 | Aggregation | None. No `GROUP BY`, no averages, no top-N |
-| Joins | One table per question. `tonnage_test.order_id` does now join to `order_test` for all 11,105 rows, but those links are **synthetic** — see Data caveats — so they must not be presented as real fixtures |
+| Joins | One table per question. `tonnage_test` has no `order_id`, so there is no vessel↔order join — see Data caveats |
 | Row meaning | A tonnage row is a reported position, not a vessel — 11,105 rows cover 1,037 vessels. The agent reads only the newest report per vessel, so a tonnage search returns at most 1,037 rows unless history is asked for |
 | Memory | Retrieved rows do not survive the turn. Follow-ups re-query rather than recall, so "show me the third one" has no list to index |
 | Relative dates | Resolved against `ai_platform/backend/clock.py`'s `working_date()` (real UTC date minus a fixed 365-day `DATA_LAG`, since the dataset's real activity sits about a year behind the database's true clock) — the extraction system prompt states this date explicitly ("Today is ..., resolve every relative date against it"), so "next month" is computed, not guessed. By default (`include_future=False`) both tables also apply this as a horizon: `update_date` on or before it, so a bare query never surfaces simulated-future rows unless the user explicitly asks about upcoming records |
@@ -378,7 +379,7 @@ Served by the same FastAPI app as the chat, at `/` (`ai_platform/dashboard/index
 
 **Before first use**, apply the views once: `psql "$SUPABASE_DB_URL" -f infra/sql/dashboard_gold_views.sql` (or paste into the Supabase SQL editor). Idempotent, like `gold_layer_test_setup.sql`, and not applied automatically by anything in this repo. (Applied and verified live as of this writing.)
 
-**Data source is `tonnage_test`/`order_test`, not the plain `tonnage`/`order`.** This dashboard originally read `public.tonnage`/`public."order"`, but neither has a loader anywhere in this repository, and they turned out to be a stale, smaller snapshot with a real defect: `tonnage.order_id` (`numeric`) is precision-corrupted for effectively every row, confirmed live (e.g. stored as `1.52324E+17` instead of its full 18-digit value — a lossy float round-trip somewhere upstream). `tonnage_test`/`order_test` — the vector-embedded tables the deployed gold-loader Lambda (`scripts/gold_loader`) actually keeps current, per its `EventBridge -> GoldLoaderLambda` trigger on every Glue success — don't have that defect (`order_id` is clean `bigint` on both, confirmed live), are a strict superset of the old source (1,122 vessels vs. 1,037; 1,949 orders vs. 1,864), and their vessel↔order join actually resolves: 100% of `tonnage_test` rows join to `order_test` on `order_id`, tested directly, versus effectively 0% on the old source (consistent with `filterable_fields.md`'s note that the old `tonnage.order_id` "matches zero rows in orders" — it couldn't, the values no longer round-tripped).
+**Data source is `tonnage_test`/`order_test`, not the plain `tonnage`/`order`.** This dashboard originally read `public.tonnage`/`public."order"`, but neither has a loader anywhere in this repository, and they turned out to be a stale, smaller snapshot with a real defect: `tonnage.order_id` (`numeric`) is precision-corrupted for effectively every row, confirmed live (e.g. stored as `1.52324E+17` instead of its full 18-digit value — a lossy float round-trip somewhere upstream). `tonnage_test`/`order_test` — the vector-embedded tables the deployed gold-loader Lambda (`scripts/gold_loader`) actually keeps current, per its `EventBridge -> GoldLoaderLambda` trigger on every Glue success — don't have that defect (`order_test.order_id` is clean `bigint`, confirmed live), are a strict superset of the old source (1,122 vessels vs. 1,037; 1,949 orders vs. 1,864). (`tonnage_test` no longer has an `order_id` at all — see Data caveats.)
 
 Endpoints, all under `/api/dashboard/`:
 
@@ -390,6 +391,33 @@ Endpoints, all under `/api/dashboard/`:
 | `GET changes?window=dod\|wow` | New vessels, vessel status transitions, field-level changes (open area/DWT/destination/ETA/region/ballast-laden, per vessel report vs. its immediately preceding one), vessels that stopped reporting recently (labelled "Removed" in the UI, struck through), new orders, amended orders — each category grouped by calendar day in the UI |
 | `GET ecsa?sort=` | Vessels currently ballasting (empty, repositioning — `ballast_laden = 'BALLAST'`) toward East Coast South America, strict single-region match on `parent_zone`. Gated behind a "Show all vessels" toggle in the UI rather than rendering on load, and searchable by vessel ID (typing a match reveals the table automatically). |
 | `GET ecsa/{vessel_id}/history` | That vessel's status trail (e.g. On Subs → Open → Fixed), derived from `tonnage_test`'s own row history — no separate events table |
+
+**Daily Trends: the "Supply moves" chart (formerly "Status changes").** A plus/minus view of supply, one pair of bars per day over the last 14 days. This is the definition, so it can be answered from here later; the same text sits above `_STATUS_MOVES_CTE` in `ai_platform/backend/dashboard_queries.py`, which is the authority if the two ever differ.
+
+- **Green, above the line (+1):** a vessel goes FIXED or ON SUBS to OPEN. **Red, below it (-1):** a vessel goes OPEN to FIXED or ON SUBS. FIXED to ON SUBS (either way) counts for nothing, because both take the vessel off the market. ON SUBS is treated exactly like FIXED.
+- **A move is dated by the day the new status takes effect**, not the day it was reported. A vessel whose status becomes FIXED on 5 October is in the 5 October bar however early that was reported. Nothing dated after "now" is counted, so the chart never shows a forecast. A late report that back-dates a change moves a bar for a past day: that is information arriving, not the clock advancing.
+- **Whole calendar days.** Weekend bars can be non-zero, because a window can start on a Saturday even though nobody reports at weekends (same as the New Vessels chart).
+- **A vessel's first-ever segment is a baseline, not a move.** A reporting gap that returns to the same status is not a change.
+- **Known limit, by decision:** a vessel that goes quiet for 5 days becomes LIKELY FIXED on the tiles, but the status history has no such status, so that is not an event here. The red side counts reported fixtures only and understates how much supply leaves. The 5-day freshness rule is also not applied to these events (the New Vessels chart does apply it).
+- **Click a bar** to list its vessels in the vessel tracker (`GET vessels/by-day?metric=status_changes&direction=up|down`). A vessel with two moves in one day counts twice in the bar but appears once in the list.
+- **The Change Feed's "Supply moves" list is the same events** (it was "Vessel status changes"; see the change log below). Its row count equals the chart's bars for the same days. Day-on-day on a Tuesday lists Tuesday's moves, on a Monday it lists Saturday, Sunday and Monday; week-on-week lists the seven whole days. The API key is still `vessel_status_changes`.
+
+**Definition change log** (newest first; the code comment above `_STATUS_MOVES_CTE` and the docstring of `vessel_status_changes_sql` in `ai_platform/backend/dashboard_queries.py` carry the same record).
+
+- **19 Oct 2026: an order is `(order_id, order_seq)`, and order counts include every `order_seq`.**
+  - *Why:* since #33, `order_id` is no longer unique. It is a hash of ten content fields, so orders identical in all ten share one, numbered apart by `order_seq` (1, 2, ...). Whether such twins are one order recorded twice or separate orders is the trader's call.
+  - *Counts (unchanged formula, new consequence):* the Daily Trends "New orders" bars, the Change Feed's "New orders" list and regional demand all count `order_test` rows, so each `order_seq` counts as an order. Nothing is merged on the trader's behalf.
+  - *What the trader sees:* the order tracker and the Change Feed show `order_seq N of M` beside any order whose `order_id` is shared (M counts orders received up to "now"). The Order Status Override picker lists each `order_seq` separately, the Current Record panel says when the selected order has twins, and an update changes only the `order_seq` selected. The order audit trail records `order_seq`.
+  - *Not changed:* "Send to chat" and the chat agent look orders up by `order_id`, so they return every `order_seq` sharing it.
+
+- **6 Oct 2026: Change Feed "Vessel status changes" became "Supply moves" and now uses the chart's definition.**
+  - *Before:* every status transition in `vessel_status_history` (any status to any status, FIXED to ON SUBS included), listed in the window in which its report *arrived* (`update_date`).
+  - *After:* only vessels returning to OPEN (+) or leaving OPEN for FIXED / ON SUBS (-), listed on the day the new status *takes effect* (`open_date_start`), the same as the chart.
+  - *Why:* the feed and the chart disagreed. Over one week the old list had 52 rows and the chart 50, but only 23 events were in both: 20 were reported in the week yet took effect after "now", 8 took effect before the week began, and 1 was FIXED to ON SUBS.
+  - *What changes for a trader:* a change reported today for a later date no longer shows until that date arrives; a late report for an earlier day shows on that earlier day; FIXED to ON SUBS no longer appears anywhere in the Change Feed (it is still in the vessel's status history trail); week-on-week groups its entries by effective day.
+  - *Unchanged:* the "New vessels" group still overlaps it by design (a vessel returning to OPEN can appear in both), and "Field changes" still excludes status.
+- **6 Oct 2026 (earlier the same day): the Daily Trends "Status changes" chart became "Supply moves"** (up/down, dated by effective day rather than report day). See the section above.
+- Region hover text and the map's region filter count a move once per zone on its segment, so a day's region figures can sum to more than the bar.
 
 The whole dashboard auto-refreshes hourly (matching the product spec's stated real-world preference over a daily cadence — brokers send updates throughout the day), plus a manual "Refresh now" button, both restoring the last-refreshed timestamp shown at the top of the page. A failed background refresh never wipes what's already on screen — every load function takes an `isRefresh` flag that, when true, throws on failure instead of overwriting good content, and `refreshAll()` in `ai_platform/dashboard/index.html` turns any failures into a visible "data may be stale" banner naming which section(s) failed and how old the data being shown is, rather than either failing silently or blanking the page. Fixed one related pre-existing bug while building this: `loadRegions()` used to cache its first successful fetch and never re-fetch on any subsequent call — auto-refresh would have silently kept showing the initial snapshot for the regional map/table forever.
 

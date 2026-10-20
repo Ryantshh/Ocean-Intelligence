@@ -185,12 +185,5 @@ default_avatar_file_url = ""
 #     url = "https://github.com/Chainlit/chainlit/issues"
 #     target = "_blank" (default)  # Optional: "_self", "_parent", "_top".
 
-[[UI.header_links]]
-name = "Dashboard"
-display_name = "Dashboard"
-icon_url = "/chat/public/favicon.svg"
-url = "/"
-target = "_self"
-
 [meta]
 generated_by = "2.11.1"
