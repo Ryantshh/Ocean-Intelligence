@@ -3,8 +3,8 @@
 Lets a trader manually record a vessel's commercial status heard privately
 (via broker/messaging) before it reaches Shipfix/the pipeline. The
 override goes straight into ``public.tonnage_test`` -- not a separate
-overrides table -- by replacing the trader's chosen baseline row with a
-copy carrying their edits (see
+overrides table -- by updating the trader's chosen baseline row in
+place (see
 :func:`trader_override_queries.override_tonnage_row_sql`), so the
 Dashboard tab's own ``vessel_current_status`` view (which always takes the
 newest ``tonnage_test`` row per vessel) picks the change up automatically,
@@ -95,7 +95,7 @@ class OverrideRequest(BaseModel):
 
     vessel_id: str = Field(min_length=1, max_length=64)
     # tonnage_row_key of the existing tonnage_test row this submission
-    # replaces -- from a row GET /vessels/{vessel_id} returned; the vessel's
+    # updates in place -- from a row GET /vessels/{vessel_id} returned; the vessel's
     # newest row by default, or an older one if the trader clicked a
     # different row in Current Record. See override_tonnage_row_sql.
     base_tonnage_row_key: str = Field(min_length=1, max_length=128)
@@ -118,6 +118,13 @@ async def list_vessels() -> list[dict[str, Any]]:
     """
     sql, params = toq.vessels_sql()
     return await _run(sql, params)
+
+
+@router.get("/open-areas")
+async def list_open_areas() -> list[str]:
+    """Predefined open areas: the distinct ``open_area`` values in ``tonnage_test``."""
+    rows = await _run(*toq.open_areas_sql())
+    return [r["open_area"] for r in rows]
 
 
 @router.get("/vessels/{vessel_id}")
@@ -154,25 +161,25 @@ async def vessel_detail(vessel_id: str) -> list[dict[str, Any]]:
 
 @router.post("", status_code=201)
 async def submit_override(body: OverrideRequest) -> dict[str, Any]:
-    """Record one trader-entered status update by replacing its baseline row.
+    """Record one trader-entered status update by updating its baseline row in place.
 
     Also logs the submission to ``trader_override_audit`` once the
-    ``tonnage_test`` swap succeeds -- the audit entry is a record of what
+    ``tonnage_test`` update succeeds -- the audit entry is a record of what
     happened, not a second attempt at the real write, so a failure logging
-    it does not roll back or fail the swap, which has already committed by
+    it does not roll back or fail the update, which has already committed by
     that point.
 
     Parameters
     ----------
     body : OverrideRequest
-        Vessel, the baseline row being replaced, status, who's entering it,
+        Vessel, the baseline row being updated, status, who's entering it,
         and whatever else the trader has fresh word on.
 
     Returns
     -------
     dict
-        The ``tonnage_test`` row that was inserted in the baseline row's
-        place.
+        The ``tonnage_test`` baseline row as updated in place (same
+        ``tonnage_row_key``).
 
     Raises
     ------
@@ -188,10 +195,18 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             status_code=404, detail=f"Unknown vessel_id: {body.vessel_id!r}"
         )
 
-    # Read the baseline row's own values before it's swapped out, purely so
+    if body.open_area is not None:
+        allowed = {r["open_area"] for r in await _run(*toq.open_areas_sql())}
+        if body.open_area not in allowed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"open_area {body.open_area!r} is not one of the predefined open areas",
+            )
+
+    # Read the baseline row's own values before it's updated, purely so
     # the audit log below can record what each field changed *from* -- also
     # doubles as the existence check for base_tonnage_row_key, ahead of the
-    # swap itself.
+    # update itself.
     snapshot_rows = await _run(*toq.tonnage_row_snapshot_sql(body.base_tonnage_row_key, body.vessel_id))
     if not snapshot_rows:
         raise HTTPException(
@@ -227,7 +242,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
         await _run(
             *toq.insert_audit_sql(
                 body.vessel_id,
-                # The audit log's "new" side is the swap's own effective
+                # The audit log's "new" side is the update's own effective
                 # values, not the raw request body -- a field the trader
                 # left blank resolved to the base row's old value via
                 # COALESCE, so logging the (blank) body field here would

@@ -25,6 +25,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -188,7 +189,7 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
     new_row = rows[0]
 
     try:
-        await _run(
+        await fetch_rows(
             *ooq.insert_audit_sql(
                 body.order_id,
                 body.order_seq,
@@ -209,15 +210,21 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
                 old_cargo_weight_max=snapshot["cargo_weight_max"],
             )
         )
-    except HTTPException as exc:
+    except asyncpg.UndefinedTableError:
         # order_override_audit is a log, not the source of truth -- the
-        # order_test update above already committed, so a missing/broken
-        # audit table (its setup SQL never applied) must not fail the
-        # submission itself, only the Audit Trail table's own read.
+        # order_test update above already committed, so a missing audit
+        # table (its setup SQL never applied) must not fail the submission.
         logger.warning(
-            "order_override_audit insert failed for order_id=%r, order_seq=%d (%s); "
+            "order_override_audit table is missing; run order_override_audit_setup.sql. "
+            "order_test update already committed, continuing"
+        )
+    except Exception:
+        # Any other failure is a real bug (bad cast, wrong column, ...): keep
+        # the committed update, but log the full traceback so it isn't hidden.
+        logger.exception(
+            "order_override_audit insert failed for order_id=%r, order_seq=%d; "
             "order_test update already committed, continuing",
-            body.order_id, body.order_seq, exc.detail,
+            body.order_id, body.order_seq,
         )
 
     return new_row
@@ -247,7 +254,11 @@ async def audit(order_id: str | None = None, limit: int = 200) -> list[dict[str,
     """
     sql, params = ooq.audit_sql(order_id, limit)
     try:
-        return await _run(sql, params)
-    except HTTPException:
-        logger.warning("order_override_audit read failed; reporting empty audit trail")
+        return await fetch_rows(sql, params)
+    except asyncpg.UndefinedTableError:
+        logger.warning("order_override_audit table is missing; reporting empty audit trail")
         return []
+    except Exception as exc:
+        # A real failure must show up, not masquerade as "no updates yet".
+        logger.exception("order_override_audit read failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -812,7 +812,14 @@
                 </select>
               </label>
               <label>Open area
-                <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
+                <div class="combobox" id="ovOpenAreaCombobox">
+                  <input
+                    type="text" id="ovOpenArea" placeholder="Type to search an open area (blank keeps current)&hellip;"
+                    autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                    aria-controls="ovOpenAreaList"
+                  />
+                  <ul class="combobox-list hidden" id="ovOpenAreaList" role="listbox"></ul>
+                </div>
               </label>
               <div class="field-row">
                 <label>Open date start
@@ -868,21 +875,6 @@
         <div class="drilldown-head" style="margin-top:2.5rem;">
           <h2>Audit Trail</h2>
         </div>
-        <div class="info-bulletin">
-          <p>
-            Every status update submitted through this form, newest first --
-            scoped to trader submissions only, not every position report.
-            Each row's <strong>When</strong> column is that submission's
-            <code>created_at</code> timestamp.
-          </p>
-          <p>
-            5 days after a vessel's most recent update with no further
-            submission, the Dashboard tab reclassifies it
-            <strong>LIKELY FIXED</strong> on its own -- checked live on
-            every dashboard load, not a once-daily schedule, so it's never
-            more than one page load stale.
-          </p>
-        </div>
         <div class="table-wrap"><table id="auditTable">
           <thead><tr>
             <th>Vessel</th><th>Commercial Status</th><th>Open area</th><th>Open window</th>
@@ -906,7 +898,7 @@
               <label class="field-required">Order
                 <div class="combobox" id="ooOrderCombobox">
                   <input
-                    type="text" id="ooOrderInput" placeholder="Type to search an order&hellip;"
+                    type="text" id="ooOrderInput" placeholder="Type to search an order ID&hellip;"
                     autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
                     aria-controls="ooOrderList" required
                   />
@@ -985,19 +977,6 @@
 
         <div class="drilldown-head" style="margin-top:2.5rem;">
           <h2>Audit Trail</h2>
-        </div>
-        <div class="info-bulletin">
-          <p>
-            Every update submitted through this form, newest first -- scoped
-            to trader submissions only, not every order on file. Each row's
-            <strong>When</strong> column is that submission's
-            <code>created_at</code> timestamp.
-          </p>
-          <p>
-            <strong>Customer name</strong> is logged here even though it
-            isn't written to the order's own record yet -- see the note
-            above the form.
-          </p>
         </div>
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
@@ -2886,7 +2865,7 @@
           formValue: () => document.getElementById("ovStatus").value || null,
           diffColor: "var(--diff-commercial-status)" },
         { key: "open_area", label: "open area", overridable: true, inputId: "ovOpenArea",
-          formValue: () => document.getElementById("ovOpenArea").value.trim() || null,
+          formValue: () => canonicalOpenArea(document.getElementById("ovOpenArea").value),
           diffColor: "var(--diff-open-area)" },
         { key: "open_date_start", label: "open date start", overridable: true, fmt: formatDate, inputId: "ovOpenDateStart",
           formValue: () => toSimulatedDate(document.getElementById("ovOpenDateStart").value) || null,
@@ -3174,6 +3153,95 @@
         document.getElementById(id).addEventListener("change", renderRecordTables);
       });
 
+      // ---- open area combobox: type-to-filter over the predefined list ----
+      // Only values already in tonnage_test.open_area can be submitted (the
+      // server enforces the same list); free text that matches none is
+      // rejected on submit and ignored by the live diff.
+      const OPEN_AREA_SUGGESTION_LIMIT = 50;
+      let openAreasCache = [];
+      let openAreaActiveIndex = -1;
+      const openAreaInput = () => document.getElementById("ovOpenArea");
+      const openAreaList = () => document.getElementById("ovOpenAreaList");
+
+      function canonicalOpenArea(text) {
+        const t = text.trim().toLowerCase();
+        if (!t) return null;
+        return openAreasCache.find((a) => a.toLowerCase() === t) || null;
+      }
+
+      function closeOpenAreaList() {
+        openAreaList().classList.add("hidden");
+        openAreaInput().setAttribute("aria-expanded", "false");
+        openAreaActiveIndex = -1;
+      }
+
+      function selectOpenArea(area) {
+        openAreaInput().value = area;
+        closeOpenAreaList();
+        openAreaInput().dispatchEvent(new Event("change"));
+      }
+
+      function renderOpenAreaSuggestions(query) {
+        const list = openAreaList();
+        const q = query.trim().toLowerCase();
+        const matches = (q ? openAreasCache.filter((a) => a.toLowerCase().includes(q)) : openAreasCache)
+          .slice(0, OPEN_AREA_SUGGESTION_LIMIT);
+        openAreaActiveIndex = -1;
+        if (!matches.length) {
+          list.innerHTML = `<li class="combobox-empty">No open areas match "${escapeHtml(query)}"</li>`;
+        } else {
+          list.innerHTML = matches.map((a, i) =>
+            `<li class="combobox-option" role="option" data-index="${i}"><span>${escapeHtml(a)}</span></li>`
+          ).join("");
+          list.querySelectorAll(".combobox-option").forEach((el, i) => {
+            el.addEventListener("mousedown", (event) => {
+              event.preventDefault();
+              selectOpenArea(matches[i]);
+            });
+          });
+        }
+        list.classList.remove("hidden");
+        openAreaInput().setAttribute("aria-expanded", "true");
+        list._matches = matches;
+      }
+
+      function moveOpenAreaActive(delta) {
+        const options = openAreaList().querySelectorAll(".combobox-option");
+        if (!options.length) return;
+        openAreaActiveIndex = (openAreaActiveIndex + delta + options.length) % options.length;
+        options.forEach((el, i) => el.classList.toggle("active", i === openAreaActiveIndex));
+        options[openAreaActiveIndex].scrollIntoView({ block: "nearest" });
+      }
+
+      openAreaInput().addEventListener("input", () => renderOpenAreaSuggestions(openAreaInput().value));
+      openAreaInput().addEventListener("focus", () => renderOpenAreaSuggestions(openAreaInput().value));
+      openAreaInput().addEventListener("blur", closeOpenAreaList);
+      openAreaInput().addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (openAreaList().classList.contains("hidden")) renderOpenAreaSuggestions(openAreaInput().value);
+          moveOpenAreaActive(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveOpenAreaActive(-1);
+        } else if (event.key === "Enter") {
+          if (openAreaActiveIndex >= 0 && openAreaList()._matches) {
+            event.preventDefault();
+            selectOpenArea(openAreaList()._matches[openAreaActiveIndex]);
+          }
+        } else if (event.key === "Escape") {
+          closeOpenAreaList();
+        }
+      });
+
+      async function loadOpenAreaOptions() {
+        try {
+          openAreasCache = await getJson("/api/trader-override/open-areas");
+        } catch (error) {
+          openAreaInput().placeholder = "Could not load open areas";
+        }
+      }
+
       async function loadVesselOptions() {
         try {
           vesselsCache = await getJson("/api/trader-override/vessels");
@@ -3233,10 +3301,10 @@
       // formatNumber) can share one range-diff renderer instead of two
       // near-identical copies.
       function auditRangeDiff(row, oldStartKey, oldEndKey, startKey, endKey, fmt = formatDate) {
-        const oldRange = row[oldStartKey] || row[oldEndKey]
+        const oldRange = row[oldStartKey] != null || row[oldEndKey] != null
           ? `${fmt(row[oldStartKey])} – ${fmt(row[oldEndKey])}`
           : null;
-        const newRange = row[startKey] || row[endKey]
+        const newRange = row[startKey] != null || row[endKey] != null
           ? `${fmt(row[startKey])} – ${fmt(row[endKey])}`
           : null;
         const newSide = auditNew(newRange ?? "Null");
@@ -3286,7 +3354,12 @@
         const vesselId = document.getElementById("ovVessel").value;
         const overrideStatus = document.getElementById("ovStatus").value;
         const enteredBy = document.getElementById("ovEnteredBy").value.trim();
-        const openArea = document.getElementById("ovOpenArea").value.trim();
+        const openAreaText = document.getElementById("ovOpenArea").value.trim();
+        const openArea = canonicalOpenArea(openAreaText);
+        if (openAreaText && !openArea) {
+          showFormMessage("error", `"${openAreaText}" is not a predefined open area -- pick one from the list.`);
+          return;
+        }
         const openDateStart = document.getElementById("ovOpenDateStart").value;
         const openDateEnd = document.getElementById("ovOpenDateEnd").value;
 
@@ -3362,6 +3435,7 @@
       renderTableHeaders();
       renderRecordTables();
       loadVesselOptions();
+      loadOpenAreaOptions();
       loadAudit();
 
       // ---- order status override --------------------------------------------
@@ -3383,9 +3457,8 @@
       const orderList = () => document.getElementById("ooOrderList");
 
       function orderLabel(o) {
-        const route = [o.load_port, o.discharge_port].filter(Boolean).join(" → ");
         const seq = Number(o.order_seq_count) > 1 ? ` (order_seq ${o.order_seq} of ${o.order_seq_count})` : "";
-        return (route ? `${o.order_id} — ${route}` : o.order_id) + seq;
+        return o.order_id + seq;
       }
 
       function closeOrderList() {
@@ -3509,10 +3582,7 @@
         const q = query.trim().toLowerCase();
         const matches = (
           q
-            ? ordersCache.filter((o) =>
-                [o.order_id, o.cargo_type, o.load_port, o.discharge_port]
-                  .some((v) => v && String(v).toLowerCase().includes(q))
-              )
+            ? ordersCache.filter((o) => String(o.order_id).toLowerCase().includes(q))
             : ordersCache
         ).slice(0, ORDER_SUGGESTION_LIMIT);
 
@@ -3583,7 +3653,7 @@
         try {
           ordersCache = await getJson("/api/order-override/orders");
           orderInput().placeholder = ordersCache.length
-            ? "Type to search an order…"
+            ? "Type to search an order ID…"
             : "No orders available";
         } catch (error) {
           orderInput().placeholder = "Could not load orders";

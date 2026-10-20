@@ -3,10 +3,10 @@
 Reads and writes ``public.tonnage_test`` directly -- the same gold table
 the Dashboard tab's own views (``infra/sql/dashboard_gold_views.sql``) are
 built from, but queried/written here directly rather than through
-``vessel_current_status``. A trader's submission replaces one existing
+``vessel_current_status``. A trader's submission updates one existing
 ``tonnage_test`` row rather than landing in a separate overrides table:
-see :func:`override_tonnage_row_sql` for the copy-edit-swap this actually
-does. Either way the row lands directly in ``tonnage_test``, so the
+see :func:`override_tonnage_row_sql` for the in-place UPDATE this actually
+does. Either way the change lands directly in ``tonnage_test``, so the
 Dashboard tab's ``vessel_current_status`` view -- which always takes the
 newest ``tonnage_test`` row per vessel -- picks the change up automatically
 with no dashboard-side code change.
@@ -29,7 +29,6 @@ a caller -- only values are, and always as bound parameters.
 
 from __future__ import annotations
 
-import secrets
 from datetime import date
 from typing import Literal
 
@@ -89,6 +88,27 @@ def vessels_sql() -> tuple[str, list]:
     )
 
 
+def open_areas_sql() -> tuple[str, list]:
+    """Predefined open-area choices: every distinct non-blank ``open_area``.
+
+    Read from ``public.tonnage_test`` itself -- the table the override
+    update writes to -- so the form can only offer values already in use there.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``; one row per distinct ``open_area``, alphabetical.
+    """
+    return (
+        (
+            "SELECT DISTINCT open_area FROM public.tonnage_test "
+            "WHERE open_area IS NOT NULL AND btrim(open_area) <> '' "
+            "ORDER BY open_area"
+        ),
+        [],
+    )
+
+
 def vessel_exists_sql(vessel_id: str) -> tuple[str, list]:
     """Check whether a vessel_id is a real vessel in the gold tonnage source.
 
@@ -116,12 +136,12 @@ def vessel_exists_sql(vessel_id: str) -> tuple[str, list]:
 def tonnage_row_snapshot_sql(base_tonnage_row_key: str, vessel_id: str) -> tuple[str, list]:
     """The trader-editable fields of one existing row, before it's overridden.
 
-    Read right before :func:`override_tonnage_row_sql` swaps that row out,
+    Read right before :func:`override_tonnage_row_sql` updates that row,
     so :func:`insert_audit_sql` can log what each field actually changed
     *from* -- ``trader_override_audit`` otherwise only knows what was
-    submitted, not what was replaced. Also doubles as the "does this row
+    submitted, not what was overwritten. Also doubles as the "does this row
     still exist for this vessel" check the API layer 404s on, ahead of
-    attempting the swap itself.
+    attempting the update itself.
 
     Parameters
     ----------
@@ -158,8 +178,8 @@ def vessel_history_sql(vessel_id: str) -> tuple[str, list]:
     reporting history before deciding what to override -- the first row is
     the current/latest one. A trader's own past submissions appear in this
     same history like any other row, since :func:`override_tonnage_row_sql`
-    writes into this same table (as a replacement for whichever row was
-    chosen as the baseline, not a plain append).
+    updates this same table in place (the row chosen as the baseline,
+    not a plain append).
 
     Every non-embedding, non-pipeline-internal column ``tonnage_test`` has --
     including fields this feature doesn't let a trader edit (``vessel_status``,
@@ -198,59 +218,41 @@ def override_tonnage_row_sql(
     open_date_start: str | None = None,
     open_date_end: str | None = None,
 ) -> tuple[str, list]:
-    """Replace one ``tonnage_test`` row with a copy carrying the trader's edits.
+    """Update one ``tonnage_test`` row in place with the trader's edits.
 
-    Not append-only: ``base_tonnage_row_key`` (from a row
-    :func:`vessel_history_sql` returned -- the trader's override baseline,
-    the vessel's newest row by default, or an older one if they clicked a
-    different row in Current Record) identifies exactly one existing row.
-    This copies every column of that row, overwrites only the columns the
-    trader actually submitted a value for, and atomically inserts the
-    result as a new row and deletes the base row -- one CTE-chained
-    statement so a partial failure can't leave both or neither on file.
-    Every field this feature doesn't let a trader touch at all
-    (``parent_zone``, ``vessel_status``, ``dwt``, ``ship_type``,
-    ``ship_size``, ``ballast_laden``, ``destination``, ``eta``, the four
-    ``*_embedding`` columns, ``embedding_source_hash``, ``gold_loaded_at``)
-    is copied from the base row unchanged. A field the trader *can* touch
-    but left blank this submission (``open_area``, the open dates) is also copied from the base row rather than
-    cleared -- only ``commercial_status`` is always the trader's value,
-    since the form requires it.
+    ``base_tonnage_row_key`` (from a row :func:`vessel_history_sql` returned
+    -- the trader's override baseline, the vessel's newest row by default,
+    or an older one if they clicked a different row in Current Record)
+    identifies exactly one existing row. A single ``UPDATE`` changes it in
+    place: same ``tonnage_row_key``, no insert, no delete, row count
+    unchanged. Only columns the trader submitted are set:
+    ``commercial_status`` always (the form requires it), and ``open_area`` /
+    ``open_date_start`` / ``open_date_end`` only when not ``None``
+    (``COALESCE`` keeps the current value otherwise). Every other column
+    (``first_date_received``, embeddings, ``embedding_source_hash``, ...) is
+    left untouched.
 
-    Carrying the embeddings/hash forward verbatim means they can go stale
-    against a changed ``open_area``/``destination`` until the real Shipfix
-    pipeline next overwrites this vessel -- accepted here on the trader's
-    own instruction to preserve every untouched field's data rather than
-    null it out (the previous append-only design's tradeoff was the
-    opposite: always ``NULL``, never stale).
-
-    ``update_date`` is stamped with ``now() - interval '1 year'`` --
-    duplicating, not calling, ``dashboard_gold_views.sql``'s
-    ``tonnage_reference_now()`` so this module has no runtime dependency on
-    dashboard-side SQL. The real clock is simulated-*future* under that
-    convention (see the gold views' header) and ``vessel_current_status``
-    excludes any row dated on or after it outright -- a row stamped with
-    the real ``now()`` would never appear on the Dashboard tab at all. Keep
-    this expression in sync with ``tonnage_reference_now()`` by hand if
-    that convention ever changes. When ``OI_WORKING_DATE`` is pinned (the
-    ``oi.working_date`` setting ``fetch_rows`` sets), the stamp is the pinned
-    date at the current time of day instead, which stays before the pinned "now"
-    (that day's last instant); a year-old stamp would read as stale. ``first_date_received`` is carried over
-    from the base row unchanged -- it's still the same position, first
-    reported whenever it originally was; only ``update_date`` reflects this
-    edit.
-
-    A new ``tonnage_row_key`` (``tonnage_test``'s primary key) is generated
-    here rather than left to a default, since the column has none.
+    The one non-submitted column still written is ``update_date``, stamped
+    with ``now() - interval '1 year'`` -- duplicating, not calling,
+    ``dashboard_gold_views.sql``'s ``tonnage_reference_now()`` so this module
+    has no runtime dependency on dashboard-side SQL. The real clock is
+    simulated-*future* under that convention (see the gold views' header) and
+    ``vessel_current_status`` excludes any row dated on or after it outright,
+    so dashboard visibility depends on this stamp. Keep this expression in
+    sync with ``tonnage_reference_now()`` by hand if that convention ever
+    changes. When ``OI_WORKING_DATE`` is pinned (the ``oi.working_date``
+    setting ``fetch_rows`` sets), the stamp is the pinned date at the current
+    time of day instead, which stays before the pinned "now" (that day's last
+    instant); a year-old stamp would read as stale.
 
     Parameters
     ----------
     base_tonnage_row_key : str
-        ``tonnage_row_key`` of the existing row being replaced.
+        ``tonnage_row_key`` of the existing row being updated.
     vessel_id : str
         Vessel identifier, already confirmed to exist via
-        :func:`vessel_exists_sql`. Also checked against the base row itself
-        so a stale/mismatched key can never edit a different vessel.
+        :func:`vessel_exists_sql`. Also matched against the row itself so a
+        stale/mismatched key can never edit a different vessel.
     commercial_status : OverrideStatus
         One of the three values in :data:`OVERRIDE_STATUSES`, already
         validated by the API layer's Pydantic model before this is called.
@@ -259,63 +261,37 @@ def override_tonnage_row_sql(
         value is still written here, but reads as OPEN on the Dashboard
         tab.
     open_area, open_date_start, open_date_end : optional
-        The rest of what a trader might have fresh word on -- all
-        optional, since a trader may only have new word on the status, not
-        a full re-report; whatever's left blank falls back to the base
-        row's own value for that column.
+        Left unchanged on the row when ``None``.
 
     Returns
     -------
     tuple
-        ``(sql, params)``; returns the newly-inserted row, or no rows if
+        ``(sql, params)``; returns the updated row, or no rows if
         ``base_tonnage_row_key`` doesn't match an existing row for
-        ``vessel_id`` (the base row was deleted/edited concurrently, or the
-        key is stale) -- the API layer treats that as a 404.
+        ``vessel_id`` (deleted concurrently, or the key is stale) -- the API
+        layer treats that as a 404.
     """
-    new_tonnage_row_key = secrets.token_hex(32)
     # open_date_start/open_date_end arrive as plain "YYYY-MM-DD" strings from
     # an HTML <input type="date">; parsed to date objects via _parse_date so
-    # asyncpg's own type inference on the $6/$7::timestamp casts (which
+    # asyncpg's own type inference on the $5/$6::timestamp casts (which
     # requires a real date/datetime, not a str) accepts them.
     return (
         (
-            "WITH base AS ("
-            "  SELECT * FROM public.tonnage_test"
-            "  WHERE tonnage_row_key = $1 AND vessel_id = $2"
-            "), removed AS ("
-            "  DELETE FROM public.tonnage_test"
-            "  WHERE tonnage_row_key = $1 AND vessel_id = $2"
-            "  RETURNING tonnage_row_key"
-            ") "
-            "INSERT INTO public.tonnage_test ("
-            "  tonnage_row_key, vessel_id, update_date, commercial_status, open_area,"
-            "  open_date_start, open_date_end, first_date_received,"
-            "  parent_zone, vessel_status, dwt, ship_type, ship_size, ballast_laden,"
-            "  destination, eta, vessel_status_embedding, destination_embedding,"
-            "  parent_zone_embedding, open_area_embedding, embedding_source_hash, gold_loaded_at"
-            ") "
-            "SELECT"
-            "  $3, base.vessel_id,"
-            "  COALESCE("
+            "UPDATE public.tonnage_test SET"
+            "  update_date = COALESCE("
             "    NULLIF(current_setting('oi.working_date', true), '')::date + localtime,"
             "    (now() - interval '1 year')::timestamp"
             "  ),"
-            "  $4,"
-            "  COALESCE($5, base.open_area),"
-            "  COALESCE($6::timestamp, base.open_date_start),"
-            "  COALESCE($7::timestamp, base.open_date_end),"
-            "  base.first_date_received,"
-            "  base.parent_zone, base.vessel_status, base.dwt, base.ship_type, base.ship_size,"
-            "  base.ballast_laden, base.destination, base.eta,"
-            "  base.vessel_status_embedding, base.destination_embedding,"
-            "  base.parent_zone_embedding, base.open_area_embedding,"
-            "  base.embedding_source_hash, base.gold_loaded_at "
-            "FROM base CROSS JOIN removed "
+            "  commercial_status = $3,"
+            "  open_area = COALESCE($4, open_area),"
+            "  open_date_start = COALESCE($5::timestamp, open_date_start),"
+            "  open_date_end = COALESCE($6::timestamp, open_date_end) "
+            "WHERE tonnage_row_key = $1 AND vessel_id = $2 "
             "RETURNING vessel_id, update_date, commercial_status, open_area, "
             "open_date_start, open_date_end"
         ),
         [
-            base_tonnage_row_key, vessel_id, new_tonnage_row_key, commercial_status,
+            base_tonnage_row_key, vessel_id, commercial_status,
             open_area, _parse_date(open_date_start), _parse_date(open_date_end),
         ],
     )
@@ -357,13 +333,13 @@ def insert_audit_sql(
     ``RETURNING`` row (the *effective* values actually written -- a field
     the trader left blank resolves to the base row's own value there via
     ``COALESCE``, not to blank), and the ``old_*`` parameters are the same
-    row's values just *before* the swap, from
+    row's values just *before* the update, from
     :func:`tonnage_row_snapshot_sql`. Logging the request body's raw
     (possibly blank) fields as "new" here would make an untouched field
-    look like it was cleared, when the swap actually carried its old value
+    look like it was cleared, when the update actually carried its old value
     forward. This table itself is still append-only (a full trail of every
     submission ever made), unlike ``tonnage_test`` where each submission
-    now replaces its baseline row.
+    now updates its baseline row in place.
 
     Parameters
     ----------
