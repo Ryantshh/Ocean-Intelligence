@@ -599,3 +599,16 @@ Account `FYP_oceanAI` (334298574595), region `us-east-1`, stack `smu-daily-pipel
 | Supabase tables | `order_test`, `tonnage_test` |
 
 The principal scaling constraint is that each silver table is a single JSON object, requiring read-modify-write on every update, which is what necessitates one concurrent Glue run. Migrating silver to RDS PostgreSQL, already in the project proposal, removes this constraint.
+
+### Override pages (existing schema)
+
+No schema update is required. Saves update the selected tonnage row or
+`(order_id, order_seq)` in place. Blank optional fields retain stored values.
+Date and weight ranges are checked against the effective values, including
+unchanged endpoints. Update timestamps follow the dashboard working date (or
+its existing one-year simulation).
+
+Entered-by attribution uses the existing audit tables. Order customer name is
+an optional audit note only, not a field on the order record. The form warns if
+that audit write fails. Reasons are not collected or saved because the current
+schema has no reason field. Duplicate-order keep/drop remains separate.

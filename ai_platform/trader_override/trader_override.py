@@ -27,10 +27,11 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.logging_utils import get_logger
+from ai_platform.override_validation import OverrideBody, validate_range
 from ai_platform.trader_override import trader_override_queries as toq
 
 
@@ -86,7 +87,7 @@ async def _run(sql: str, params: list[Any]) -> list[dict[str, Any]]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-class OverrideRequest(BaseModel):
+class OverrideRequest(OverrideBody):
     """Body for submitting one trader status update.
 
     Pydantic rejects an unrecognised ``override_status`` or a blank
@@ -217,6 +218,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             ),
         )
     snapshot = snapshot_rows[0]
+    validate_range(body, snapshot, "open_date_start", "open_date_end", dates=True)
 
     rows = await _run(
         *toq.override_tonnage_row_sql(
@@ -237,6 +239,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             ),
         )
     new_row = rows[0]
+    audit_saved = False
 
     try:
         await _run(
@@ -258,6 +261,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
                 old_open_date_end=_to_timestamp(snapshot["open_date_end"]),
             )
         )
+        audit_saved = True
     except HTTPException as exc:
         # trader_override_audit is a log, not the source of truth -- the
         # tonnage_test insert above already committed, so a missing/broken
@@ -273,7 +277,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             body.vessel_id, exc.detail,
         )
 
-    return rows[0]
+    return {**new_row, "audit_saved": audit_saved}
 
 
 @router.get("/audit")

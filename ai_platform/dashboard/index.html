@@ -791,7 +791,7 @@
           <div class="form-panel">
             <h3>Enter a Status Update</h3>
             <p class="sub" style="margin-bottom:1rem;">
-              Only Vessel, Status, and Entered by are required -- fill in
+              Vessel, Status and Entered by are required -- fill in
               whatever else you actually have fresh word on.
             </p>
             <form class="override-form" id="overrideForm">
@@ -836,6 +836,7 @@
               <label class="field-required">Entered by
                 <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
+              <p class="form-hint">Reasons cannot be saved with the current database schema.</p>
               <button type="submit" id="ovSubmit">Submit Update</button>
               <div class="form-message" id="ovMessage"></div>
             </form>
@@ -846,7 +847,7 @@
             <p class="sub" style="margin-bottom:0.5rem;">
               Every reported position on file for the selected vessel, newest first.
               Click a row to compare your update against that trip instead of the newest one --
-              submitting always adds a new report rather than editing the row you clicked.
+              saving updates the selected row directly and refreshes its update time.
             </p>
             <input
               type="text" id="currentRecordSearch" class="record-search"
@@ -891,7 +892,7 @@
           <div class="form-panel">
             <h3>Enter a Laycan Update</h3>
             <p class="sub" style="margin-bottom:1rem;">
-              Only Order and Entered by are required -- fill in whatever else
+              Order and Entered by are required -- fill in whatever else
               you actually have fresh word on.
             </p>
             <form class="override-form" id="orderOverrideForm">
@@ -928,19 +929,17 @@
                 column, only these two.
               </p>
 
-              <label>Customer name
-                <input id="ooCustomerName" type="text" maxlength="200" placeholder="e.g. Account 142" disabled />
+              <label>Customer name (audit trail only)
+                <input id="ooCustomerName" type="text" maxlength="200" placeholder="Optional customer note" />
               </label>
-              <p class="field-disabled-hint">
-                order_test has no customer_name column yet -- disabled until
-                that schema decision is made, so nothing typed here is silently
-                lost.
-              </p>
 
+
+              <p class="form-hint">Customer name is recorded in the audit trail only; it does not change the order record.</p>
               <p class="form-section-label">Attribution</p>
               <label class="field-required">Entered by
                 <input id="ooEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
+              <p class="form-hint">Reasons cannot be saved with the current database schema.</p>
               <button type="submit" id="ooSubmit">Submit Update</button>
               <div class="form-message" id="ooMessage"></div>
             </form>
@@ -3401,7 +3400,7 @@
 
         submitBtn.disabled = true;
         try {
-          await postJson("/api/trader-override", {
+          const saved = await postJson("/api/trader-override", {
             vessel_id: vesselId,
             base_tonnage_row_key: baseTonnageRowKey,
             override_status: overrideStatus,
@@ -3410,7 +3409,9 @@
             open_date_start: toSimulatedDate(openDateStart),
             open_date_end: toSimulatedDate(openDateEnd),
           });
-          showFormMessage("success", `Replaced the selected record for ${vesselId}.`);
+          showFormMessage(saved.audit_saved ? "success" : "error", saved.audit_saved
+            ? `Updated the selected record for ${vesselId}.`
+            : "Record updated, but the audit entry and trader attribution could not be saved.");
           document.getElementById("overrideForm").reset();
           populateStatusOptions();
           await Promise.all([loadRecordPanel(vesselId), loadVesselOptions(), loadAudit()]);
@@ -3441,11 +3442,7 @@
       // ---- order status override --------------------------------------------
       // An order is (order_id, order_seq), order_test's primary key: orders
       // identical in the ten fields order_id is hashed from share one, numbered
-      // apart by order_seq. Each is one row, unlike tonnage_test's vessel_id, so
-      // there's no reporting history to page through here. Only laycan_start/
-      // laycan_end are actually written by this form -- customer_name/quantity
-      // have no matching order_test column yet (see order_override_queries.py),
-      // so they're rendered disabled above rather than silently discarded.
+      // apart by order_seq. Customer name is recorded only in the audit trail.
       const ORDER_SUGGESTION_LIMIT = 30;
       let ordersCache = [];
       let orderActiveIndex = -1;
@@ -3492,6 +3489,7 @@
           formValue: () => { const v = document.getElementById("ooCargoWeightMax").value; return v === "" ? null : v; },
           normalize: (v) => (v === null || v === undefined || v === "" ? "" : Number(v)),
           diffColor: "var(--diff-cargo-weight-max)" },
+
         { key: "date_received", label: "date received", fmt: formatDate },
         { key: "update_date", label: "update date", fmt: formatDate },
         { key: "assigned", label: "assigned" },
@@ -3699,7 +3697,7 @@
 
         submitBtn.disabled = true;
         try {
-          await postJson("/api/order-override", {
+          const saved = await postJson("/api/order-override", {
             order_id: orderId,
             order_seq: orderSeq,
             entered_by: enteredBy,
@@ -3709,7 +3707,9 @@
             cargo_weight_max: cargoWeightMax,
             customer_name: document.getElementById("ooCustomerName").value.trim() || null,
           });
-          showOrderFormMessage("success", `Updated the record for order ${orderId} (order_seq ${orderSeq}).`);
+          showOrderFormMessage(saved.audit_saved ? "success" : "error", saved.audit_saved
+            ? `Updated the record for order ${orderId} (order_seq ${orderSeq}).`
+            : "Order updated, but the audit entry could not be saved. Customer name and trader attribution were not recorded.");
           document.getElementById("orderOverrideForm").reset();
           await Promise.all([loadOrderRecordPanel(orderId, orderSeq), loadOrderOptions(), loadOrderAudit()]);
           const submitted = ordersCache.find((o) => o.order_id === orderId && Number(o.order_seq) === orderSeq);

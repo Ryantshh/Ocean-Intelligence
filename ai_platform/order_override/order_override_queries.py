@@ -125,7 +125,8 @@ def update_order_sql(
     ``cargo_weight_min``/``cargo_weight_max`` stand in for "quantity" --
     ``order_test`` has no single quantity column, only these two (see the
     module docstring). ``update_date`` is stamped with
-    ``now() - interval '1 year'``, duplicating (not calling)
+    the pinned working date plus current time, or
+    ``now() - interval '1 year'`` otherwise, duplicating (not calling)
     ``dashboard_gold_views.sql``'s ``orders_reference_now()`` so this
     module has no runtime dependency on dashboard-side SQL -- keep this
     expression in sync by hand if that convention ever changes.
@@ -160,7 +161,9 @@ def update_order_sql(
             "laycan_end = COALESCE($3::timestamp, laycan_end), "
             "cargo_weight_min = COALESCE($4::numeric, cargo_weight_min), "
             "cargo_weight_max = COALESCE($5::numeric, cargo_weight_max), "
-            "update_date = now() - interval '1 year' "
+            "update_date = COALESCE("
+            "NULLIF(current_setting('oi.working_date', true), '')::date + localtime, "
+            "(now() - interval '1 year')::timestamp) "
             "WHERE order_id = $1::text::bigint AND order_seq = $6 "
             "RETURNING order_id::text AS order_id, order_seq, cargo_type, load_port, discharge_port, "
             "laycan_start, laycan_end, cargo_weight_min, cargo_weight_max, update_date"
