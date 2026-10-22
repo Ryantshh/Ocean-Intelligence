@@ -166,6 +166,23 @@ def tonnage_row_snapshot_sql(base_tonnage_row_key: str, vessel_id: str) -> tuple
     )
 
 
+def delete_tonnage_row_sql(base_tonnage_row_key: str, vessel_id: str) -> tuple[str, list]:
+    """Delete one ``tonnage_test`` row, returning its trader-editable fields.
+
+    ``RETURNING`` hands back the deleted row's values so the API layer can
+    log them to ``trader_override_audit`` (as the ``old_*`` side) without a
+    separate read that could race the delete. Empty result means the row no
+    longer exists for that vessel.
+    """
+    return (
+        (
+            "DELETE FROM public.tonnage_test WHERE tonnage_row_key = $1 AND vessel_id = $2 "
+            "RETURNING commercial_status, open_area, open_date_start, open_date_end"
+        ),
+        [base_tonnage_row_key, vessel_id],
+    )
+
+
 def vessel_history_sql(vessel_id: str) -> tuple[str, list]:
     """Every reported record for one vessel, newest first.
 

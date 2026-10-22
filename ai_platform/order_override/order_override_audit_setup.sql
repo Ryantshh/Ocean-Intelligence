@@ -48,12 +48,16 @@ CREATE TABLE IF NOT EXISTS public.order_override_audit (
     cargo_weight_max NUMERIC,
     customer_name TEXT,
     entered_by TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    action TEXT NOT NULL DEFAULT 'UPDATE'
 );
 
 -- Brings a table created before order_seq existed up to the shape above.
 ALTER TABLE public.order_override_audit
-    ADD COLUMN IF NOT EXISTS order_seq SMALLINT;
+    ADD COLUMN IF NOT EXISTS order_seq SMALLINT,
+    -- UPDATE or DELETE; a DELETE row has the removed values in old_* and
+    -- nulls on the new side.
+    ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'UPDATE';
 
 -- Backs the audit trail's newest-first read and its optional per-order filter.
 CREATE INDEX IF NOT EXISTS order_override_audit_order_id_idx

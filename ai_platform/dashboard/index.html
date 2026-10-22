@@ -373,6 +373,19 @@
       .tab-btn:hover { color: var(--fg); }
       .tab-btn.active { color: var(--fg); background: var(--card); border-color: var(--border); }
       .tab-panel.hidden, main.hidden { display: none; }
+      .mode-switch { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
+      .mode-btn {
+        font: inherit; font-size: 0.875rem; font-weight: 600; padding: 0.4rem 0.9rem;
+        border: 1px solid var(--border); border-radius: 0.6rem; background: transparent;
+        color: var(--muted); cursor: pointer;
+      }
+      .mode-btn:hover { color: var(--fg); }
+      .mode-btn.active { color: var(--fg); background: var(--card); }
+      .mode-btn[data-mode="delete"].active { color: var(--status-critical); border-color: var(--status-critical); }
+      .ov-wrap { display: contents; }
+      .mode-delete .ov-hide { display: none !important; }
+      .del-only { display: none; }
+      .mode-delete .del-only { display: block; }
       main { padding-top: 5rem; }
       /* Chat is Chainlit's own /chat page in a full-screen frame. Hiding it
          keeps it loaded, so neither side reloads when switching tabs. */
@@ -516,10 +529,12 @@
          neutral card/border look for statuses that are neither good nor
          bad news for the vessel's tonnage. */
       #auditTable thead th, #orderAuditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
-      #auditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
-      #auditTable .badge-good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); border-color: transparent; }
-      #auditTable .badge-bad { background: color-mix(in srgb, var(--status-critical) 18%, transparent); color: var(--status-critical); border-color: transparent; }
-      #auditTable .badge-caution { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: color-mix(in srgb, var(--status-warning) 70%, var(--fg) 30%); border-color: transparent; }
+      #auditTable .badge, #orderAuditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+      #auditTable .badge-good, #orderAuditTable .badge-good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); border-color: transparent; }
+      #auditTable .badge-bad, #orderAuditTable .badge-bad { background: color-mix(in srgb, var(--status-critical) 18%, transparent); color: var(--status-critical); border-color: transparent; }
+      .btn-delete { margin-top: 0.5rem; width: fit-content; background: transparent; color: var(--status-critical); border: 1px solid var(--status-critical); border-radius: 6px; padding: 0.4rem 0.8rem; cursor: pointer; font: inherit; }
+      .btn-delete:disabled { opacity: 0.4; cursor: not-allowed; }
+      #auditTable .badge-caution, #orderAuditTable .badge-caution { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: color-mix(in srgb, var(--status-warning) 70%, var(--fg) 30%); border-color: transparent; }
       #auditTable .audit-diff-muted, #orderAuditTable .audit-diff-muted { color: var(--muted); }
       #auditTable .audit-diff-arrow, #orderAuditTable .audit-diff-arrow { color: var(--muted); margin: 0 0.35em; }
       #auditTable .audit-diff-new, #orderAuditTable .audit-diff-new { color: #16a34a; font-weight: 600; }
@@ -786,13 +801,23 @@
       </div>
 
       <div id="tab-tonnage-overrides" class="tab-panel hidden">
-      <section id="overrides-section">
+      <section id="overrides-section" class="mode-override">
+        <div class="mode-switch">
+          <button type="button" class="mode-btn active" data-mode="override">Override a record</button>
+          <button type="button" class="mode-btn" data-mode="delete">Delete a record</button>
+        </div>
         <div class="override-layout">
           <div class="form-panel">
-            <h3>Enter a Status Update</h3>
-            <p class="sub" style="margin-bottom:1rem;">
+            <h3 class="ov-hide">Enter a Status Update</h3>
+            <p class="sub ov-hide" style="margin-bottom:1rem;">
               Only Vessel, Status, and Entered by are required -- fill in
               whatever else you actually have fresh word on.
+            </p>
+            <h3 class="del-only">Delete a Vessel Record</h3>
+            <p class="sub del-only" style="margin-bottom:1rem;">
+              Pick a vessel, click the record to remove in the Current Record
+              table, then delete it. Only Vessel and Entered by are needed.
+              The deletion is logged in the Audit Trail.
             </p>
             <form class="override-form" id="overrideForm">
               <label class="field-required">Vessel
@@ -806,6 +831,7 @@
                   <ul class="combobox-list hidden" id="ovVesselList" role="listbox"></ul>
                 </div>
               </label>
+              <div class="ov-wrap ov-hide">
               <label class="field-required">Status
                 <select id="ovStatus" required>
                   <option value="" disabled selected>Select a status</option>
@@ -831,12 +857,14 @@
                   <span class="field-hint" id="ovOpenDateEndHint"></span>
                 </label>
               </div>
+              </div>
 
               <p class="form-section-label">Attribution</p>
               <label class="field-required">Entered by
                 <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
-              <button type="submit" id="ovSubmit">Submit Update</button>
+              <button type="submit" id="ovSubmit" class="ov-hide">Submit Update</button>
+              <button type="button" id="ovDelete" class="btn-delete del-only" disabled>Delete selected record</button>
               <div class="form-message" id="ovMessage"></div>
             </form>
           </div>
@@ -858,7 +886,7 @@
             </table></div>
             <p class="sub" style="margin:0.4rem 0 0; font-size:0.78rem;" id="currentRecordCount"></p>
 
-            <div class="record-section-gap">
+            <div class="record-section-gap ov-hide">
               <h3>New Record</h3>
               <p class="sub" style="margin-bottom:0.75rem;">
                 What the latest row will look like once this update is saved &mdash;
@@ -886,13 +914,23 @@
       </div>
 
       <div id="tab-order-overrides" class="tab-panel hidden">
-      <section id="order-overrides-section">
+      <section id="order-overrides-section" class="mode-override">
+        <div class="mode-switch">
+          <button type="button" class="mode-btn active" data-mode="override">Override an order</button>
+          <button type="button" class="mode-btn" data-mode="delete">Delete an order</button>
+        </div>
         <div class="override-layout">
           <div class="form-panel">
-            <h3>Enter a Laycan Update</h3>
-            <p class="sub" style="margin-bottom:1rem;">
+            <h3 class="ov-hide">Enter a Laycan Update</h3>
+            <p class="sub ov-hide" style="margin-bottom:1rem;">
               Only Order and Entered by are required -- fill in whatever else
               you actually have fresh word on.
+            </p>
+            <h3 class="del-only">Delete an Order</h3>
+            <p class="sub del-only" style="margin-bottom:1rem;">
+              Pick the order (order_id and order_seq) to remove. Only that
+              order_seq is deleted -- any twins sharing the order_id stay. Only
+              Order and Entered by are needed. The deletion is logged in the Audit Trail.
             </p>
             <form class="override-form" id="orderOverrideForm">
               <label class="field-required">Order
@@ -907,6 +945,7 @@
                   <ul class="combobox-list hidden" id="ooOrderList" role="listbox"></ul>
                 </div>
               </label>
+              <div class="ov-wrap ov-hide">
               <div class="field-row">
                 <label>Laycan start
                   <input id="ooLaycanStart" type="date" />
@@ -936,12 +975,14 @@
                 that schema decision is made, so nothing typed here is silently
                 lost.
               </p>
+              </div>
 
               <p class="form-section-label">Attribution</p>
               <label class="field-required">Entered by
                 <input id="ooEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
-              <button type="submit" id="ooSubmit">Submit Update</button>
+              <button type="submit" id="ooSubmit" class="ov-hide">Submit Update</button>
+              <button type="button" id="ooDelete" class="btn-delete del-only" disabled>Delete this order</button>
               <div class="form-message" id="ooMessage"></div>
             </form>
           </div>
@@ -961,7 +1002,7 @@
               <tbody><tr><td class="record-empty">Select an order to see its current record.</td></tr></tbody>
             </table></div>
 
-            <div class="record-section-gap">
+            <div class="record-section-gap ov-hide">
               <h3>New Record</h3>
               <p class="sub" style="margin-bottom:0.75rem;">
                 What this order will look like once this update is saved &mdash;
@@ -1075,6 +1116,19 @@
         });
       });
 
+      // Override / Delete switch inside each override tab: one CSS class on
+      // the section swaps which form fields and buttons are shown.
+      document.querySelectorAll(".mode-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const section = btn.closest("section");
+          section.querySelectorAll(".mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
+          section.classList.toggle("mode-delete", btn.dataset.mode === "delete");
+          section.classList.toggle("mode-override", btn.dataset.mode !== "delete");
+          // Override and delete pick orders differently; start each mode clean.
+          if (section.id === "order-overrides-section") resetOrderPicker();
+        });
+      });
+
       function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>"']/g, (ch) => (
           { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
@@ -1106,6 +1160,13 @@
           throw new Error(body.detail || `HTTP ${response.status}`);
         }
         return response.json();
+      }
+
+      async function deleteJson(path) {
+        const response = await fetch(path, { method: "DELETE" });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+        return body;
       }
 
       async function postJson(path, payload) {
@@ -2950,6 +3011,7 @@
         const currentBody = document.querySelector("#currentRecordTable tbody");
         const newBody = document.querySelector("#newRecordTable tbody");
         const colCount = RECORD_COLUMNS.length;
+        document.getElementById("ovDelete").disabled = !(currentRecords && currentRecords.length);
 
         const countLabel = document.getElementById("currentRecordCount");
         if (!currentRecords || !currentRecords.length) {
@@ -3261,6 +3323,7 @@
       const AUDIT_STATUS_CLASS = {
         FIXED: "badge-good",
         "ON SUBS": "badge-good",
+        DELETED: "badge-bad",
       };
 
       function auditStatusBadge(status) {
@@ -3281,15 +3344,22 @@
       const AUDIT_ARROW = `<span class="audit-diff-arrow">&rarr;</span>`;
       const auditNew = (html) => `<span class="audit-diff-new">${html}</span>`;
 
-      function auditDiffText(oldVal, newVal) {
+      const AUDIT_DELETED = '<span class="badge badge-bad">DELETED</span>';
+
+      function auditDiffText(oldVal, newVal, deleted = false) {
         const oldText = oldVal === null || oldVal === undefined || oldVal === "" ? null : escapeHtml(String(oldVal));
         const newText = newVal === null || newVal === undefined || newVal === "" ? null : escapeHtml(String(newVal));
+        if (deleted) return `${oldText ?? AUDIT_DASH}${AUDIT_ARROW}${AUDIT_DELETED}`;
         const newSide = auditNew(newText ?? "Null");
         if (oldText === newText) return newSide;
         return `${oldText ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
       }
 
       function auditStatusDiff(row) {
+        if (row.override_status === "DELETED") {
+          const oldBadge = row.old_override_status ? auditStatusBadge(row.old_override_status) : AUDIT_DASH;
+          return `${oldBadge}${AUDIT_ARROW}${auditStatusBadge("DELETED")}`;
+        }
         const newBadge = auditStatusBadge(row.override_status);
         if (row.old_override_status === row.override_status) return newBadge;
         const oldBadge = row.old_override_status ? auditStatusBadge(row.old_override_status) : AUDIT_DASH;
@@ -3300,20 +3370,21 @@
       // Order tab's laycan_start/end (and its cargo_weight_min/max, via
       // formatNumber) can share one range-diff renderer instead of two
       // near-identical copies.
-      function auditRangeDiff(row, oldStartKey, oldEndKey, startKey, endKey, fmt = formatDate) {
+      function auditRangeDiff(row, oldStartKey, oldEndKey, startKey, endKey, fmt = formatDate, deleted = false) {
         const oldRange = row[oldStartKey] != null || row[oldEndKey] != null
           ? `${fmt(row[oldStartKey])} – ${fmt(row[oldEndKey])}`
           : null;
         const newRange = row[startKey] != null || row[endKey] != null
           ? `${fmt(row[startKey])} – ${fmt(row[endKey])}`
           : null;
+        if (deleted) return `${oldRange ?? AUDIT_DASH}${AUDIT_ARROW}${AUDIT_DELETED}`;
         const newSide = auditNew(newRange ?? "Null");
         if (oldRange === newRange) return newSide;
         return `${oldRange ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
       }
 
       function auditWindowDiff(row) {
-        return auditRangeDiff(row, "old_open_date_start", "old_open_date_end", "open_date_start", "open_date_end");
+        return auditRangeDiff(row, "old_open_date_start", "old_open_date_end", "open_date_start", "open_date_end", formatDate, row.override_status === "DELETED");
       }
 
       function auditRow(row) {
@@ -3321,7 +3392,7 @@
           <tr>
             <td>${escapeHtml(row.vessel_id)}</td>
             <td>${auditStatusDiff(row)}</td>
-            <td>${auditDiffText(row.old_open_area, row.open_area)}</td>
+            <td>${auditDiffText(row.old_open_area, row.open_area, row.override_status === "DELETED")}</td>
             <td>${auditWindowDiff(row)}</td>
             <td>${escapeHtml(row.entered_by)}</td>
             <td>${formatDate(row.created_at)}</td>
@@ -3430,6 +3501,30 @@
         }
       });
 
+      // Delete the Current Record row the trader has selected (tonnage).
+      document.getElementById("ovDelete").addEventListener("click", async () => {
+        const record = currentRecords && currentRecords[selectedRecordIndex];
+        const vesselId = vesselHidden().value;
+        const enteredBy = document.getElementById("ovEnteredBy").value.trim();
+        if (!record || !vesselId) return;
+        if (!enteredBy) {
+          showFormMessage("error", "Fill in 'Entered by' before deleting a record.");
+          return;
+        }
+        if (!confirm(`Permanently delete the selected record for ${vesselId}? This is logged in the Audit Trail.`)) return;
+        try {
+          await deleteJson(
+            `/api/trader-override?vessel_id=${encodeURIComponent(vesselId)}`
+            + `&tonnage_row_key=${encodeURIComponent(record.tonnage_row_key)}`
+            + `&entered_by=${encodeURIComponent(enteredBy)}`
+          );
+          showFormMessage("success", `Deleted the selected record for ${vesselId}.`);
+          await Promise.all([loadRecordPanel(vesselId), loadVesselOptions(), loadAudit()]);
+        } catch (error) {
+          showFormMessage("error", `Could not delete record: ${error.message}`);
+        }
+      });
+
       populateStatusOptions();
       applyOpenDateBounds();
       renderTableHeaders();
@@ -3460,6 +3555,63 @@
         const seq = Number(o.order_seq_count) > 1 ? ` (order_seq ${o.order_seq} of ${o.order_seq_count})` : "";
         return o.order_id + seq;
       }
+
+      // Delete mode works on one order_id at a time: the picker lists each
+      // order_id once, and the Current Record table lists every order_seq
+      // sharing it so the row to delete can be clicked.
+      const orderDeleteMode = () =>
+        document.getElementById("order-overrides-section").classList.contains("mode-delete");
+      let deleteOrders = null; // every order_seq row for the picked order_id
+      let deleteSeqIndex = 0;
+
+      function resetOrderPicker() {
+        orderHidden().value = "";
+        orderSeqHidden().value = "";
+        orderInput().value = "";
+        currentOrder = null;
+        deleteOrders = null;
+        deleteSeqIndex = 0;
+        renderOrderRecordTables();
+      }
+
+      function renderOrderDeleteTable() {
+        const body = document.querySelector("#orderCurrentRecordTable tbody");
+        const colCount = ORDER_RECORD_COLUMNS.length;
+        const seqNote = document.getElementById("ooSeqNote");
+        document.getElementById("ooDelete").disabled = !(deleteOrders && deleteOrders.length);
+        if (!deleteOrders || !deleteOrders.length) {
+          seqNote.hidden = true;
+          body.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order to see its records.</td></tr>`;
+          return;
+        }
+        seqNote.hidden = false;
+        seqNote.textContent = `order_id ${deleteOrders[0].order_id} has ${deleteOrders.length} record(s). `
+          + "Click the record (order_seq) to delete -- only that one is removed.";
+        body.innerHTML = deleteOrders.map((row, i) => {
+          const cells = ORDER_RECORD_COLUMNS.map((c) => displayValue(row[c.key], c.fmt, false, undefined)).join("");
+          return `<tr data-seq-index="${i}" class="${i === deleteSeqIndex ? "selected-row" : ""}">${cells}</tr>`;
+        }).join("");
+      }
+
+      async function loadDeleteRecords(orderId) {
+        const body = document.querySelector("#orderCurrentRecordTable tbody");
+        body.innerHTML = `<tr><td class="record-empty" colspan="${ORDER_RECORD_COLUMNS.length}"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr>`;
+        try {
+          deleteOrders = await getJson(`/api/order-override/orders/${encodeURIComponent(orderId)}`);
+          deleteSeqIndex = 0;
+          renderOrderDeleteTable();
+        } catch (error) {
+          deleteOrders = null;
+          body.innerHTML = `<tr><td class="error" colspan="${ORDER_RECORD_COLUMNS.length}">Could not load records: ${escapeHtml(error.message)}</td></tr>`;
+        }
+      }
+
+      document.querySelector("#orderCurrentRecordTable tbody").addEventListener("click", (event) => {
+        const row = event.target.closest("tr[data-seq-index]");
+        if (!row || !deleteOrders || !orderDeleteMode()) return;
+        deleteSeqIndex = Number(row.dataset.seqIndex);
+        renderOrderDeleteTable();
+      });
 
       function closeOrderList() {
         orderList().classList.add("hidden");
@@ -3504,9 +3656,11 @@
       }
 
       function renderOrderRecordTables() {
+        if (orderDeleteMode()) { renderOrderDeleteTable(); return; }
         const currentBody = document.querySelector("#orderCurrentRecordTable tbody");
         const newBody = document.querySelector("#orderNewRecordTable tbody");
         const colCount = ORDER_RECORD_COLUMNS.length;
+        document.getElementById("ooDelete").disabled = !currentOrder;
 
         const seqNote = document.getElementById("ooSeqNote");
         const twins = currentOrder ? Number(currentOrder.order_seq_count) : 0;
@@ -3570,6 +3724,14 @@
       }
 
       function selectOrder(o) {
+        if (orderDeleteMode()) {
+          orderHidden().value = o.order_id;
+          orderSeqHidden().value = "";
+          orderInput().value = o.order_id;
+          closeOrderList();
+          loadDeleteRecords(o.order_id);
+          return;
+        }
         orderHidden().value = o.order_id;
         orderSeqHidden().value = o.order_seq;
         orderInput().value = orderLabel(o);
@@ -3580,10 +3742,16 @@
       function renderOrderSuggestions(query) {
         const list = orderList();
         const q = query.trim().toLowerCase();
+        let pool = ordersCache;
+        if (orderDeleteMode()) {
+          // One entry per order_id; its records are listed in the table.
+          const seen = new Set();
+          pool = ordersCache.filter((o) => !seen.has(o.order_id) && seen.add(o.order_id));
+        }
         const matches = (
           q
-            ? ordersCache.filter((o) => String(o.order_id).toLowerCase().includes(q))
-            : ordersCache
+            ? pool.filter((o) => String(o.order_id).toLowerCase().includes(q))
+            : pool
         ).slice(0, ORDER_SUGGESTION_LIMIT);
 
         orderActiveIndex = -1;
@@ -3592,7 +3760,9 @@
         } else {
           list.innerHTML = matches.map((o, i) => `
             <li class="combobox-option" role="option" data-index="${i}">
-              <span>${escapeHtml(orderLabel(o))}</span>
+              <span>${escapeHtml(orderDeleteMode()
+                ? o.order_id + (Number(o.order_seq_count) > 1 ? ` (${o.order_seq_count} records)` : "")
+                : orderLabel(o))}</span>
             </li>
           `).join("");
           list.querySelectorAll(".combobox-option").forEach((el, i) => {
@@ -3726,11 +3896,11 @@
       function orderAuditRow(row) {
         return `
           <tr>
-            <td>${escapeHtml(row.order_id)}</td>
+            <td>${escapeHtml(row.order_id)}${row.action === "DELETE" ? ' <span class="badge badge-bad">DELETED</span>' : ""}</td>
             <td>${row.order_seq == null ? AUDIT_DASH : escapeHtml(row.order_seq)}</td>
-            <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end")}</td>
-            <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber)}</td>
-            <td>${row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
+            <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end", formatDate, row.action === "DELETE")}</td>
+            <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber, row.action === "DELETE")}</td>
+            <td>${row.action === "DELETE" ? AUDIT_DELETED : row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
             <td>${escapeHtml(row.entered_by)}</td>
             <td>${formatDate(row.created_at)}</td>
           </tr>
@@ -3749,6 +3919,31 @@
           tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
+
+      document.getElementById("ooDelete").addEventListener("click", async () => {
+        const target = deleteOrders && deleteOrders[deleteSeqIndex];
+        if (!target) return;
+        const orderId = target.order_id;
+        const orderSeq = Number(target.order_seq);
+        const enteredBy = document.getElementById("ooEnteredBy").value.trim();
+        if (!enteredBy) {
+          showOrderFormMessage("error", "Fill in 'Entered by' before deleting an order.");
+          return;
+        }
+        if (!confirm(`Permanently delete order ${orderId} (order_seq ${orderSeq})? This is logged in the Audit Trail.`)) return;
+        try {
+          await deleteJson(
+            `/api/order-override?order_id=${encodeURIComponent(orderId)}`
+            + `&order_seq=${orderSeq}&entered_by=${encodeURIComponent(enteredBy)}`
+          );
+          showOrderFormMessage("success", `Deleted order ${orderId} (order_seq ${orderSeq}).`);
+          await Promise.all([loadOrderOptions(), loadOrderAudit()]);
+          await loadDeleteRecords(orderId);
+          if (!deleteOrders || !deleteOrders.length) resetOrderPicker();
+        } catch (error) {
+          showOrderFormMessage("error", `Could not delete order: ${error.message}`);
+        }
+      });
 
       renderOrderTableHeaders();
       renderOrderRecordTables();
