@@ -11,8 +11,13 @@ so every endpoint here names both. Each pair is one row (unlike
 ``tonnage_test``'s ``vessel_id``), so there is no copy/delete/insert swap to
 do, and no separate overrides table.
 
-Laycan dates and cargo weights are persisted on the selected row. Customer
-name and entered_by are recorded only in the existing order audit table.
+``laycan_start``/``laycan_end``/``cargo_weight_min``/``cargo_weight_max``
+are persisted -- the weight pair standing in for "quantity", since
+``order_test`` has no single quantity column. ``customer_name`` isn't a
+column ``order_test`` has -- adding one is an open schema question -- so
+this module never attempts to store it; a submission that includes it is
+logged (not persisted) purely so there's some trace of what a trader
+entered until that's decided.
 """
 
 from __future__ import annotations
@@ -22,12 +27,11 @@ from typing import Any
 
 import asyncpg
 from fastapi import APIRouter, HTTPException
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.order_override import order_override_queries as ooq
-from ai_platform.override_validation import OverrideBody, validate_range
 
 router = APIRouter(prefix="/api/order-override", tags=["order-override"])
 logger = get_logger("order_override")
@@ -58,11 +62,13 @@ def _to_timestamp(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
 
-class OrderOverrideRequest(OverrideBody):
+class OrderOverrideRequest(BaseModel):
     """Body for submitting one order update.
 
-    Dates, finite nonnegative weights and attribution are validated
-    before the update reaches the database.
+    ``customer_name`` is accepted and logged for a paper trail, but never
+    written to ``order_test`` -- see the module docstring. Pydantic rejects
+    a non-numeric ``cargo_weight_min``/``cargo_weight_max`` with a 422
+    before this ever reaches the database.
     """
 
     order_id: str = Field(min_length=1, max_length=64)
@@ -160,8 +166,6 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
             detail=f"Unknown order: order_id={body.order_id!r}, order_seq={body.order_seq}",
         )
     snapshot = snapshot_rows[0]
-    validate_range(body, snapshot, "laycan_start", "laycan_end", dates=True)
-    validate_range(body, snapshot, "cargo_weight_min", "cargo_weight_max")
 
     rows = await _run(
         *ooq.update_order_sql(
@@ -183,7 +187,6 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
             ),
         )
     new_row = rows[0]
-    audit_saved = False
 
     try:
         await fetch_rows(
@@ -207,7 +210,6 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
                 old_cargo_weight_max=snapshot["cargo_weight_max"],
             )
         )
-        audit_saved = True
     except asyncpg.UndefinedTableError:
         # order_override_audit is a log, not the source of truth -- the
         # order_test update above already committed, so a missing audit
@@ -225,7 +227,7 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
             body.order_id, body.order_seq,
         )
 
-    return {**new_row, "audit_saved": audit_saved}
+    return new_row
 
 
 @router.get("/audit")

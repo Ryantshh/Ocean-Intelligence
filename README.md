@@ -600,15 +600,15 @@ Account `FYP_oceanAI` (334298574595), region `us-east-1`, stack `smu-daily-pipel
 
 The principal scaling constraint is that each silver table is a single JSON object, requiring read-modify-write on every update, which is what necessitates one concurrent Glue run. Migrating silver to RDS PostgreSQL, already in the project proposal, removes this constraint.
 
-### Override pages (existing schema)
+### Dashboard and chatbot workspace
 
-No schema update is required. Saves update the selected tonnage row or
-`(order_id, order_seq)` in place. Blank optional fields retain stored values.
-Date and weight ranges are checked against the effective values, including
-unchanged endpoints. Update timestamps follow the dashboard working date (or
-its existing one-year simulation).
+The dashboard is the homepage. **Ask Ocean Intelligence** opens a collapsible
+chat sidebar; closing it preserves the conversation and draft. Drag the sidebar’s left edge to resize it, or focus the edge and use the arrow keys. On small screens it fills the available width.
+The navy and green palette includes contrasting status colours in both themes.
 
-Entered-by attribution uses the existing audit tables. Order customer name is
-an optional audit note only, not a field on the order record. The form warns if
-that audit write fails. Reasons are not collected or saved because the current
-schema has no reason field. Duplicate-order keep/drop remains separate.
+Selected dashboard orders can be sent into the chat composer for review before
+submission. Results offer Table and Chart views, grouping and count/sum measures,
+and switching between recent outputs (up to 12 in the active session). Charts
+summarise returned, filtered rows and display the 12 largest groups, not the
+entire database. Original result links remain attached to their messages.
+These interface changes require no database migration.

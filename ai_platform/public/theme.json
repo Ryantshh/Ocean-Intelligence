@@ -2,18 +2,26 @@
   "custom_fonts": [],
   "variables": {
     "light": {
-      "--background": "0 0% 100%",
-      "--foreground": "0 0% 5%",
-      "--primary": "175 77% 26%",
+      "--background": "150 15% 97%",
+      "--foreground": "199 43% 17%",
+      "--primary": "145 48% 31%",
       "--primary-foreground": "0 0% 100%",
-      "--ring": "175 77% 26%"
+      "--ring": "145 48% 31%",
+      "--muted": "150 14% 93%",
+      "--muted-foreground": "195 16% 40%",
+      "--border": "155 18% 86%",
+      "--card": "0 0% 100%"
     },
     "dark": {
-      "--background": "0 0% 13%",
-      "--foreground": "0 0% 93%",
-      "--primary": "172 66% 50%",
+      "--background": "201 56% 11%",
+      "--foreground": "150 22% 93%",
+      "--primary": "140 39% 65%",
       "--primary-foreground": "0 0% 10%",
-      "--ring": "172 66% 50%"
+      "--ring": "140 39% 65%",
+      "--muted": "198 43% 16%",
+      "--muted-foreground": "193 18% 69%",
+      "--border": "198 32% 25%",
+      "--card": "198 43% 16%"
     }
   }
 }

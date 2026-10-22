@@ -33,6 +33,9 @@ load_dotenv()
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 
+MAX_COMPLETION_TOKENS = 8192
+"""Bound response size explicitly so provider defaults cannot exhaust the window."""
+
 MAX_INPUT_TOKENS = 131_072
 """Context window of the default model.
 
@@ -103,6 +106,7 @@ def get_chat_model() -> ChatOpenAI:
         api_key=SecretStr(api_key),
         base_url=os.environ.get("GROQ_BASE_URL", "").strip() or DEFAULT_BASE_URL,
         temperature=0,
+        max_completion_tokens=MAX_COMPLETION_TOKENS,
         profile={"max_input_tokens": MAX_INPUT_TOKENS},
     )
 
@@ -153,6 +157,7 @@ async def stream_chat(
     stream = await client.chat.completions.create(
         model=get_model_name(),
         messages=payload,
+        max_completion_tokens=MAX_COMPLETION_TOKENS,
         stream=True,
         stream_options={"include_usage": True},
     )

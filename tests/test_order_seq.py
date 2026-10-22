@@ -75,16 +75,14 @@ class OrderOverrideApiTests(unittest.TestCase):
             "order_id": "5", "order_seq": 2, "laycan_start": None, "laycan_end": None,
             "cargo_weight_min": None, "cargo_weight_max": None,
         }
-        run = AsyncMock(side_effect=[[snapshot], [snapshot]])
-        with patch.object(order_override, "_run", run), \
-             patch.object(order_override, "fetch_rows", AsyncMock(return_value=[{}])) as audit:
+        run = AsyncMock(side_effect=[[snapshot], [snapshot], [{}]])
+        with patch.object(order_override, "_run", run):
             response = self.client.post(
                 "/api/order-override",
                 json={"order_id": "5", "order_seq": 2, "entered_by": "trader", "cargo_weight_max": 9},
             )
         self.assertEqual(response.status_code, 201)
-        detail_call, update_call = run.call_args_list
-        audit_call = audit.call_args
+        detail_call, update_call, audit_call = run.call_args_list
         self.assertEqual(detail_call.args[1], ["5", 2])
         self.assertIn("AND order_seq = $6", update_call.args[0])
         self.assertEqual(update_call.args[1][5], 2)

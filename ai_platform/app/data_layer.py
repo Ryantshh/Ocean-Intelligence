@@ -271,6 +271,8 @@ def get_data_layer() -> BaseDataLayer:
     data_layer.engine = create_async_engine(
         conninfo,
         connect_args={"server_settings": {"search_path": get_schema_name()}},
+        # Replace idle connections closed by the database before serving a request.
+        pool_pre_ping=True,
         pool_size=3,
         max_overflow=2,
     )

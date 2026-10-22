@@ -88,8 +88,60 @@ function writeToComposer(text) {
   return true;
 }
 
+// Aggregate only returned rows; never imply that a limited result is the whole market.
+function chartGroups(columns, rows, group, metric) {
+  const groupAt = columns.indexOf(group);
+  const metricAt = columns.indexOf(metric);
+  const totals = new Map();
+  for (const row of rows) {
+    const name = isBlank(row[groupAt]) ? "Not specified" : String(row[groupAt]);
+    const value = metric === "__count" ? 1 : row[metricAt];
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    totals.set(name, (totals.get(name) ?? 0) + value);
+  }
+  return [...totals].map(([name, value]) => ({ name, value }))
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value) || a.name.localeCompare(b.name));
+}
+
+function ResultChart({ columns, rows }) {
+  const metrics = columns.filter((name, at) => !/(^|_)(id|seq)$/.test(name) &&
+    rows.some((row) => typeof row[at] === "number" && Number.isFinite(row[at])) &&
+    rows.every((row) => isBlank(row[at]) || (typeof row[at] === "number" && Number.isFinite(row[at]))));
+  const [group, setGroup] = useState(() => columns.find((name) => /region|zone|status|cargo_type/.test(name)) ?? columns[0]);
+  const [metric, setMetric] = useState("__count");
+  const groups = chartGroups(columns, rows, group, metric);
+  const bars = groups.slice(0, 12);
+  const low = Math.min(0, ...bars.map((bar) => bar.value));
+  const high = Math.max(0, ...bars.map((bar) => bar.value));
+  const x = (value) => ((value - low) / (high - low || 1)) * 100;
+  const pretty = (name) => name.replaceAll("_", " ");
+  return <div className="oi-chart">
+    <div className="oi-chart-controls">
+      <label>Group by<select value={group} onChange={(event) => setGroup(event.target.value)}>
+        {columns.map((name) => <option key={name} value={name}>{pretty(name)}</option>)}
+      </select></label>
+      <label>Measure<select value={metric} onChange={(event) => setMetric(event.target.value)}>
+        <option value="__count">Row count</option>
+        {metrics.map((name) => <option key={name} value={name}>Sum of {pretty(name)}</option>)}
+      </select></label>
+    </div>
+    <p>{rows.length.toLocaleString()} filtered rows in this result · {metric === "__count" ? "Row count" : `Sum of ${pretty(metric)}`} by {pretty(group ?? "category")}</p>
+    {bars.length ? <div className="oi-chart-plot" aria-label={`${metric === "__count" ? "Row count" : metric} by ${group}`}>
+      {bars.map((bar) => <div className="oi-chart-row" key={bar.name}>
+        <div className="oi-chart-row-label"><span>{bar.name}</span><strong>{bar.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
+        <div className="oi-chart-track" aria-hidden="true">
+          <span className="oi-chart-zero" style={{ left: `${x(0)}%` }} />
+          <span className="oi-chart-bar" style={{ left: `${Math.min(x(0), x(bar.value))}%`, width: `${Math.abs(x(bar.value) - x(0))}%`, background: bar.value < 0 ? "#d58370" : "hsl(var(--primary))" }} />
+        </div>
+      </div>)}
+    </div> : <p>No numeric values in the current selection.</p>}
+    <p>{groups.length > 12 ? `Showing the 12 largest of ${groups.length} groups by absolute value. ` : ""}Chart reflects returned rows only, not total market coverage. Blank measures are excluded; repeated rows are counted separately.</p>
+  </div>;
+}
+
 function Table({ columns, rows, noun }) {
 
+  const [view, setView] = useState("table");
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
@@ -578,7 +630,12 @@ ${toMarkdown(columns, chosen)}`);
         }
       `}</style>
 
-      <div className="oi-t-scroll">
+      <div className="oi-result-views" aria-label="Result view">
+        <button aria-pressed={view === "table"} onClick={() => setView("table")}>Table</button>
+        <button aria-pressed={view === "chart"} onClick={() => setView("chart")}>Chart</button>
+      </div>
+      {view === "chart" && <ResultChart columns={columns} rows={ordered.map((index) => rows[index])} />}
+      <div className="oi-t-scroll" style={{ display: view === "table" ? undefined : "none" }}>
         <table>
           <thead>
             <tr>
@@ -806,13 +863,14 @@ export default function Results() {
   const seq = Number(props.seq) || 0;
   const [tab, setTab] = useState(0);
   const [panelId, setPanelId] = useState(null);
+  const [chosenPanel, setChosenPanel] = useState(null);
   const [, setChanges] = useState(0);
 
   useEffect(() => {
     const store = mountedPanels();
     store.mounts += 1;
     const id = store.mounts;
-    store.panels.set(id, { seq, order: id });
+    store.panels.set(id, { seq, order: id, sets: props.sets ?? [] });
     const onChange = () => setChanges((count) => count + 1);
     window.addEventListener(CHANGE_EVENT, onChange);
     setPanelId(id);
@@ -828,14 +886,25 @@ export default function Results() {
   // as when its message link is clicked, it is the newest and shows
   if (!sets.length || !isNewestPanel(panelId)) return null;
 
-  const active = sets[Math.min(tab, sets.length - 1)];
+  const available = [...mountedPanels().panels.entries()].sort((a, b) => b[1].seq - a[1].seq || b[1].order - a[1].order);
+  const chosen = available.find(([id]) => id === chosenPanel) ?? available[0];
+  const shownSets = (chosen?.[1].sets ?? sets).filter((set) => (set.rows ?? []).length);
+  const active = shownSets[Math.min(tab, shownSets.length - 1)];
+  if (!active) return null;
   return (
     <div className="oi-t-tabwrap">
-      {sets.length > 1 && (
+      <div className="oi-results-heading"><small>Ocean Intelligence · Analysis</small><strong>Explore your results</strong>
+        <label>Result output<select value={chosen?.[0] ?? ""} onChange={(event) => { setChosenPanel(Number(event.target.value)); setTab(0); }}>
+          {available.map(([id, panel], at) => <option key={id} value={id}>
+            {at === 0 ? "Latest" : `Earlier ${at}`} · {panel.sets.map((set) => set.label ?? set.noun).join(", ")} · {new Date(panel.seq).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}
+          </option>)}
+        </select></label>
+      </div>
+      {shownSets.length > 1 && (
         <div className="oi-t-tabs">
-          {sets.map((set, at) => (
+          {shownSets.map((set, at) => (
             <button
-              key={set.label ?? set.noun}
+              key={`${at}-${set.label ?? set.noun}`}
               className={at === tab ? "oi-t-tab oi-t-tab-on" : "oi-t-tab"}
               onClick={() => setTab(at)}
             >
@@ -844,7 +913,7 @@ export default function Results() {
           ))}
         </div>
       )}
-      <Table key={active.label ?? active.noun} {...active} />
+      <Table key={`${chosen?.[0]}-${tab}-${seq}`} {...active} />
     </div>
   );
 }
