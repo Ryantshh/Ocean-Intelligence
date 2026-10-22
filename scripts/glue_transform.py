@@ -295,6 +295,7 @@ def transform_tonnage(df: DataFrame) -> DataFrame:
         select_or_null(df, "vessel_id", ["Vessel ID", "Vessel Name", "VesselID", "vessel_id", "vessel_name"]),
         select_or_null(df, "vessel_status", ["Vessel Status", "Status", "vessel_status"]),
         select_or_null(df, "DWT", ["DWT", "DWT Summer", "dwt_summer"]),
+        select_or_null(df, "grain_capacity", ["Grain Capacity", "grain_capacity"]),
         select_or_null(df, "commercial_status", ["Commercial Status", "commercial_status"]),
         select_or_null(df, "ship_type", ["Ship Type", "Ship Types", "ship_type"]),
         select_or_null(df, "ship_size", ["Ship Size", "Ship Sizes", "ship_size"]),
