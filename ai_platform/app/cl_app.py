@@ -374,7 +374,7 @@ async def _render_node_message(
 
     Chainlit reopens the sidebar with every side element of the thread whenever
     the element list changes. The ``seq`` prop is what lets ``Results.jsx`` render
-    only the newest of them.
+    one results host, with an output selector for earlier mounted panels.
 
     Parameters
     ----------
@@ -439,9 +439,13 @@ async def _show_panel(sets: list[dict[str, Any]], reply: cl.Message, key: str) -
     panel = cl.CustomElement(
         name=RESULTS_ELEMENT, props={"sets": sets, "seq": shown_at_ms}, display="side"
     )
-    reply.elements = cast("list[Any]", [panel])
+    reply.elements = cast("list[Any]", [*reply.elements, panel])
+    # Keep recent outputs available to the result selector without copying rows
+    # into each new artifact. Every panel still belongs to its original reply.
+    recent = [*cl.user_session.get("result_panels", []), panel][-12:]
+    cl.user_session.set("result_panels", recent)
     await cl.ElementSidebar.set_title(RESULTS_ELEMENT)
-    await cl.ElementSidebar.set_elements([panel], key=key or panel.id)
+    await cl.ElementSidebar.set_elements(recent, key=key or panel.id)
     return RESULTS_ELEMENT
 
 

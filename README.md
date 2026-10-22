@@ -599,3 +599,16 @@ Account `FYP_oceanAI` (334298574595), region `us-east-1`, stack `smu-daily-pipel
 | Supabase tables | `order_test`, `tonnage_test` |
 
 The principal scaling constraint is that each silver table is a single JSON object, requiring read-modify-write on every update, which is what necessitates one concurrent Glue run. Migrating silver to RDS PostgreSQL, already in the project proposal, removes this constraint.
+
+### Dashboard and chatbot workspace
+
+The dashboard is the homepage. **Ask Ocean Intelligence** opens a collapsible
+chat sidebar; closing it preserves the conversation and draft. Drag the sidebar’s left edge to resize it, or focus the edge and use the arrow keys. On small screens it fills the available width.
+The navy and green palette includes contrasting status colours in both themes.
+
+Selected dashboard orders can be sent into the chat composer for review before
+submission. Results offer Table and Chart views, grouping and count/sum measures,
+and switching between recent outputs (up to 12 in the active session). Charts
+summarise returned, filtered rows and display the 12 largest groups, not the
+entire database. Original result links remain attached to their messages.
+These interface changes require no database migration.

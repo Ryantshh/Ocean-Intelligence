@@ -40,3 +40,33 @@ a[href*="chainlit.io"] + * {
 #side-view-content > .side-custom:empty {
   display: none;
 }
+
+/* Shared maritime palette comes from theme.json. */
+#message-composer { border-radius: 14px; box-shadow: 0 5px 24px #001d2910; }
+#chat-input { line-height: 1.6; }
+#side-view-content { background: hsl(var(--background)); padding: 1rem; }
+.oi-t-tabwrap { gap: 1rem; }
+.oi-results-heading { padding: .3rem 0 .8rem; border-bottom: 1px solid hsl(var(--border)); }
+.oi-results-heading small { display: block; color: hsl(var(--primary)); letter-spacing: .12em; font-size: .65rem; text-transform: uppercase; }
+.oi-results-heading strong { display: block; margin: .3rem 0; font-size: 1.1rem; }
+.oi-results-heading label, .oi-chart-controls label { display: flex; flex-direction: column; gap: .35rem; color: hsl(var(--muted-foreground)); font-size: .75rem; }
+.oi-results-heading select, .oi-chart-controls select { width: 100%; padding: .5rem; border: 1px solid hsl(var(--border)); border-radius: .4rem; color: hsl(var(--foreground)); background: hsl(var(--background)); }
+.oi-chart-controls { display: flex; flex-wrap: wrap; gap: .7rem; margin: .8rem 0; }
+.oi-chart-controls label { flex: 1; min-width: 8rem; }
+.oi-result-views { display: flex; gap: .35rem; margin-bottom: .5rem; }
+.oi-result-views button { padding: .4rem .8rem; border: 1px solid hsl(var(--border)); border-radius: .4rem; }
+.oi-result-views button[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.oi-chart { border: 1px solid hsl(var(--border)); border-radius: .5rem; padding: .9rem; }
+.oi-chart svg { width: 100%; height: auto; }
+.oi-chart p { font-size: .75rem; color: hsl(var(--muted-foreground)); }
+:focus-visible { outline-offset: 3px; }
+
+/* Keep graph labels readable even inside the compact assistant drawer. */
+.oi-chart-row { margin: .85rem 0; }
+.oi-chart-row-label { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; font-size: .8rem; line-height: 1.4; }
+.oi-chart-row-label span { overflow-wrap: anywhere; }
+.oi-chart-row-label strong { font-variant-numeric: tabular-nums; white-space: nowrap; color: hsl(var(--foreground)); }
+.oi-chart-track { height: 18px; position: relative; margin-top: .3rem; background: hsl(var(--muted)); border-radius: 3px; }
+.oi-chart-bar { position: absolute; top: 0; height: 100%; border-radius: 3px; }
+.oi-chart-zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: hsl(var(--foreground) / .5); }
+.oi-t td { font-size: .8rem; }
