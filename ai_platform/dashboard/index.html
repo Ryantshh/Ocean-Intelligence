@@ -863,6 +863,9 @@
               <label class="field-required">Entered by
                 <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
+              <label class="field-required">Reason
+                <textarea id="ovReason" rows="2" placeholder="Why are you overriding or deleting this record?" required maxlength="500"></textarea>
+              </label>
               <button type="submit" id="ovSubmit" class="ov-hide">Submit Update</button>
               <button type="button" id="ovDelete" class="btn-delete del-only" disabled>Delete selected record</button>
               <div class="form-message" id="ovMessage"></div>
@@ -906,9 +909,9 @@
         <div class="table-wrap"><table id="auditTable">
           <thead><tr>
             <th>Vessel</th><th>Commercial Status</th><th>Open area</th><th>Open window</th>
-            <th>Entered by</th><th>When</th>
+            <th>Entered by</th><th>Reason</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="6"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -981,6 +984,9 @@
               <label class="field-required">Entered by
                 <input id="ooEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
+              <label class="field-required">Reason
+                <textarea id="ooReason" rows="2" placeholder="Why are you overriding or deleting this order?" required maxlength="500"></textarea>
+              </label>
               <button type="submit" id="ooSubmit" class="ov-hide">Submit Update</button>
               <button type="button" id="ooDelete" class="btn-delete del-only" disabled>Delete this order</button>
               <div class="form-message" id="ooMessage"></div>
@@ -1022,9 +1028,9 @@
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
             <th>Order</th><th>Order seq</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
-            <th>Customer name</th><th>Entered by</th><th>When</th>
+            <th>Customer name</th><th>Entered by</th><th>Reason</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="8"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -3395,6 +3401,7 @@
             <td>${auditDiffText(row.old_open_area, row.open_area, row.override_status === "DELETED")}</td>
             <td>${auditWindowDiff(row)}</td>
             <td>${escapeHtml(row.entered_by)}</td>
+            <td>${row.reason ? escapeHtml(row.reason) : AUDIT_DASH}</td>
             <td>${formatDate(row.created_at)}</td>
           </tr>
         `;
@@ -3406,10 +3413,10 @@
           const rows = await getJson("/api/trader-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(auditRow).join("")
-            : '<tr><td colspan="6" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="6" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 
@@ -3425,6 +3432,7 @@
         const vesselId = document.getElementById("ovVessel").value;
         const overrideStatus = document.getElementById("ovStatus").value;
         const enteredBy = document.getElementById("ovEnteredBy").value.trim();
+        const reason = document.getElementById("ovReason").value.trim();
         const openAreaText = document.getElementById("ovOpenArea").value.trim();
         const openArea = canonicalOpenArea(openAreaText);
         if (openAreaText && !openArea) {
@@ -3441,6 +3449,10 @@
         }
         if (!overrideStatus || !enteredBy) {
           showFormMessage("error", "Status and Entered by are required.");
+          return;
+        }
+        if (!reason) {
+          showFormMessage("error", "Reason is required.");
           return;
         }
         if (openDateStart && openDateEnd && openDateEnd < openDateStart) {
@@ -3477,6 +3489,7 @@
             base_tonnage_row_key: baseTonnageRowKey,
             override_status: overrideStatus,
             entered_by: enteredBy,
+            reason,
             open_area: openArea || null,
             open_date_start: toSimulatedDate(openDateStart),
             open_date_end: toSimulatedDate(openDateEnd),
@@ -3511,13 +3524,20 @@
           showFormMessage("error", "Fill in 'Entered by' before deleting a record.");
           return;
         }
+        const reason = document.getElementById("ovReason").value.trim();
+        if (!reason) {
+          showFormMessage("error", "Fill in 'Reason' before deleting a record.");
+          return;
+        }
         if (!confirm(`Permanently delete the selected record for ${vesselId}? This is logged in the Audit Trail.`)) return;
         try {
           await deleteJson(
             `/api/trader-override?vessel_id=${encodeURIComponent(vesselId)}`
             + `&tonnage_row_key=${encodeURIComponent(record.tonnage_row_key)}`
             + `&entered_by=${encodeURIComponent(enteredBy)}`
+            + `&reason=${encodeURIComponent(reason)}`
           );
+          document.getElementById("ovReason").value = "";
           showFormMessage("success", `Deleted the selected record for ${vesselId}.`);
           await Promise.all([loadRecordPanel(vesselId), loadVesselOptions(), loadAudit()]);
         } catch (error) {
@@ -3842,6 +3862,7 @@
         const orderId = document.getElementById("ooOrder").value;
         const orderSeq = Number(orderSeqHidden().value);
         const enteredBy = document.getElementById("ooEnteredBy").value.trim();
+        const reason = document.getElementById("ooReason").value.trim();
         const laycanStart = document.getElementById("ooLaycanStart").value;
         const laycanEnd = document.getElementById("ooLaycanEnd").value;
         const cargoWeightMinRaw = document.getElementById("ooCargoWeightMin").value;
@@ -3856,6 +3877,10 @@
         }
         if (!enteredBy) {
           showOrderFormMessage("error", "Entered by is required.");
+          return;
+        }
+        if (!reason) {
+          showOrderFormMessage("error", "Reason is required.");
           return;
         }
         if (laycanStart && laycanEnd && laycanEnd < laycanStart) {
@@ -3873,6 +3898,7 @@
             order_id: orderId,
             order_seq: orderSeq,
             entered_by: enteredBy,
+            reason,
             laycan_start: toSimulatedDate(laycanStart),
             laycan_end: toSimulatedDate(laycanEnd),
             cargo_weight_min: cargoWeightMin,
@@ -3902,6 +3928,7 @@
             <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber, row.action === "DELETE")}</td>
             <td>${row.action === "DELETE" ? AUDIT_DELETED : row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
             <td>${escapeHtml(row.entered_by)}</td>
+            <td>${row.reason ? escapeHtml(row.reason) : AUDIT_DASH}</td>
             <td>${formatDate(row.created_at)}</td>
           </tr>
         `;
@@ -3913,10 +3940,10 @@
           const rows = await getJson("/api/order-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(orderAuditRow).join("")
-            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="8" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 
@@ -3930,12 +3957,19 @@
           showOrderFormMessage("error", "Fill in 'Entered by' before deleting an order.");
           return;
         }
+        const reason = document.getElementById("ooReason").value.trim();
+        if (!reason) {
+          showOrderFormMessage("error", "Fill in 'Reason' before deleting an order.");
+          return;
+        }
         if (!confirm(`Permanently delete order ${orderId} (order_seq ${orderSeq})? This is logged in the Audit Trail.`)) return;
         try {
           await deleteJson(
             `/api/order-override?order_id=${encodeURIComponent(orderId)}`
             + `&order_seq=${orderSeq}&entered_by=${encodeURIComponent(enteredBy)}`
+            + `&reason=${encodeURIComponent(reason)}`
           );
+          document.getElementById("ooReason").value = "";
           showOrderFormMessage("success", `Deleted order ${orderId} (order_seq ${orderSeq}).`);
           await Promise.all([loadOrderOptions(), loadOrderAudit()]);
           await loadDeleteRecords(orderId);

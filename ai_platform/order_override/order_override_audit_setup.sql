@@ -57,7 +57,10 @@ ALTER TABLE public.order_override_audit
     ADD COLUMN IF NOT EXISTS order_seq SMALLINT,
     -- UPDATE or DELETE; a DELETE row has the removed values in old_* and
     -- nulls on the new side.
-    ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'UPDATE';
+    ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'UPDATE',
+    -- Why the trader overrode or deleted the order (required by the form);
+    -- null on rows logged before this column existed.
+    ADD COLUMN IF NOT EXISTS reason TEXT;
 
 -- Backs the audit trail's newest-first read and its optional per-order filter.
 CREATE INDEX IF NOT EXISTS order_override_audit_order_id_idx

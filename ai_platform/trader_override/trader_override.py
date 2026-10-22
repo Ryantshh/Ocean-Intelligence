@@ -101,6 +101,8 @@ class OverrideRequest(BaseModel):
     base_tonnage_row_key: str = Field(min_length=1, max_length=128)
     override_status: toq.OverrideStatus
     entered_by: str = Field(min_length=1, max_length=120)
+    # Why the trader is making this change; logged to the audit trail.
+    reason: str = Field(min_length=1, max_length=500)
     open_area: str | None = Field(default=None, max_length=120)
     open_date_start: str | None = None
     open_date_end: str | None = None
@@ -249,6 +251,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
                 # make an untouched field look cleared. See insert_audit_sql.
                 new_row["commercial_status"],
                 body.entered_by,
+                reason=body.reason,
                 open_area=new_row["open_area"],
                 open_date_start=_to_timestamp(new_row["open_date_start"]),
                 open_date_end=_to_timestamp(new_row["open_date_end"]),
@@ -278,7 +281,10 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
 
 @router.delete("")
 async def delete_record(
-    vessel_id: str, tonnage_row_key: str, entered_by: str = Query(min_length=1, max_length=120)
+    vessel_id: str,
+    tonnage_row_key: str,
+    entered_by: str = Query(min_length=1, max_length=120),
+    reason: str = Query(min_length=1, max_length=500),
 ) -> dict[str, Any]:
     """Delete one ``tonnage_test`` row and log the deletion to the audit trail.
 
@@ -307,6 +313,7 @@ async def delete_record(
                 vessel_id,
                 "DELETED",
                 entered_by,
+                reason=reason,
                 old_override_status=old["commercial_status"],
                 old_open_area=old["open_area"],
                 old_open_date_start=_to_timestamp(old["open_date_start"]),

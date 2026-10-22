@@ -217,7 +217,7 @@ _AUDIT_COLUMNS = (
     "old_laycan_end", "laycan_end",
     "old_cargo_weight_min", "cargo_weight_min",
     "old_cargo_weight_max", "cargo_weight_max",
-    "customer_name", "entered_by", "created_at", "action",
+    "customer_name", "entered_by", "created_at", "action", "reason",
 )
 
 
@@ -236,6 +236,7 @@ def insert_audit_sql(
     old_cargo_weight_min: float | None = None,
     old_cargo_weight_max: float | None = None,
     action: str = "UPDATE",
+    reason: str | None = None,
 ) -> tuple[str, list]:
     """Log one trader submission to ``order_override_audit``, before and after.
 
@@ -274,6 +275,9 @@ def insert_audit_sql(
         ``UPDATE`` (default) or ``DELETE``; a delete logs the removed row's
         values on the ``old_*`` side and leaves the new side null.
 
+    reason : str or None
+        Why the trader made (or deleted) this record, logged as typed.
+
     Returns
     -------
     tuple
@@ -284,14 +288,14 @@ def insert_audit_sql(
         "old_laycan_end, laycan_end, "
         "old_cargo_weight_min, cargo_weight_min, "
         "old_cargo_weight_max, cargo_weight_max, "
-        "customer_name, entered_by, action"
+        "customer_name, entered_by, action, reason"
     )
     returning = ", ".join(_AUDIT_COLUMNS)
     return (
         (
             f"INSERT INTO public.order_override_audit ({columns}) "
             "VALUES ($1, $2, $3::timestamp, $4::timestamp, $5::timestamp, $6::timestamp, "
-            "$7::numeric, $8::numeric, $9::numeric, $10::numeric, $11, $12, $13) "
+            "$7::numeric, $8::numeric, $9::numeric, $10::numeric, $11, $12, $13, $14) "
             f"RETURNING {returning}"
         ),
         [
@@ -299,7 +303,7 @@ def insert_audit_sql(
             old_laycan_end, laycan_end,
             old_cargo_weight_min, cargo_weight_min,
             old_cargo_weight_max, cargo_weight_max,
-            customer_name, entered_by, action,
+            customer_name, entered_by, action, reason,
         ],
     )
 

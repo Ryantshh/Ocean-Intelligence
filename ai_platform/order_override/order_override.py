@@ -74,6 +74,8 @@ class OrderOverrideRequest(BaseModel):
     order_id: str = Field(min_length=1, max_length=64)
     order_seq: int = Field(ge=1)
     entered_by: str = Field(min_length=1, max_length=120)
+    # Why the trader is making this change; logged to the audit trail.
+    reason: str = Field(min_length=1, max_length=500)
     laycan_start: str | None = None
     laycan_end: str | None = None
     cargo_weight_min: float | None = Field(default=None, ge=0)
@@ -200,6 +202,7 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
                 body.order_id,
                 body.order_seq,
                 body.entered_by,
+                reason=body.reason,
                 # The audit log's "new" side is the update's own effective
                 # values, not the raw request body -- a field the trader
                 # left blank resolved to the order's old value via
@@ -238,7 +241,10 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
 
 @router.delete("")
 async def delete_order(
-    order_id: str, order_seq: int, entered_by: str = Query(min_length=1, max_length=120)
+    order_id: str,
+    order_seq: int,
+    entered_by: str = Query(min_length=1, max_length=120),
+    reason: str = Query(min_length=1, max_length=500),
 ) -> dict[str, Any]:
     """Delete one order from ``order_test`` and log the deletion to the audit trail.
 
@@ -265,6 +271,7 @@ async def delete_order(
                 order_id,
                 order_seq,
                 entered_by,
+                reason=reason,
                 old_laycan_start=_to_timestamp(old["laycan_start"]),
                 old_laycan_end=_to_timestamp(old["laycan_end"]),
                 old_cargo_weight_min=old["cargo_weight_min"],
