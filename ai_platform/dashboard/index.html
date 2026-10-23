@@ -681,6 +681,25 @@
         .chat-toggle span { max-width: 8rem; font-size: .7rem; }
         #chatResize { display: none; }
       }
+      .report-filters { display:flex; flex-wrap:wrap; align-items:end; gap:1rem; margin:1.5rem 0; }
+      .report-filters label { display:grid; gap:.4rem; font-size:.8rem; }
+      .report-filters input,.report-filters button { padding:.65rem; background:var(--card); color:var(--fg); border:1px solid var(--border); border-radius:.4rem; }
+      .report-section { padding:1.4rem; margin:1rem 0; background:var(--card); border:1px solid var(--border); border-radius:.7rem; }
+      .report-section li { margin:.65rem 0; line-height:1.5; }
+      .report-bar { height:10px; background:var(--accent); border-radius:4px; margin:.4rem 0 1rem; }
+      @media print {
+        body { background:white !important; color:black !important; }
+        .app-header,.chat-sidebar,.refresh-bar,.page-heading,.sub-tabs,.report-filters,#reportStatus { display:none !important; }
+        body main { margin:0 !important; padding:0 !important; max-width:none !important; }
+        main > .tab-panel { display:none !important; }
+        main > #tab-reports { display:block !important; }
+        .report-section { background:white; color:black; border-color:#ccc; break-inside:avoid; }
+        .report-section .muted { color:#444; }
+        .report-section table { font-size:9pt; }
+        .report-section th,.report-section td,.report-section button { color:black !important; background:white !important; }
+        .report-section button { border:0; padding:0; text-align:left; }
+        .report-section .table-wrap { overflow:visible; }
+      }
     </style>
     <link rel="stylesheet" href="/static/workspace.css">
   </head>
@@ -722,6 +741,7 @@
         <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
         <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage overrides</button>
         <button type="button" class="tab-btn" data-tab="order-overrides">Order overrides</button>
+        <button type="button" class="tab-btn" data-tab="reports">Manager report</button>
       </nav>
 
       <div id="tab-dashboard" class="tab-panel">
@@ -1251,6 +1271,7 @@
           main.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
           document.getElementById(`tab-${tab}`).classList.remove("hidden");
           main.classList.toggle("wide", tab !== "dashboard");
+          main.classList.toggle("report-view", tab === "reports");
         });
       });
 
