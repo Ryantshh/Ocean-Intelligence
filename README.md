@@ -612,3 +612,31 @@ and switching between recent outputs (up to 12 in the active session). Charts
 summarise returned, filtered rows and display the 12 largest groups, not the
 entire database. Original result links remain attached to their messages.
 These interface changes require no database migration.
+
+### Manager report
+
+The Manager report tab generates a read-only commercial brief for 1–90
+completed days (default: the last seven days on the order simulation clock).
+It compares received-order counts with the preceding equal-length period and
+shows current fleet availability separately. Region search matches load-region
+labels for orders and open regions for vessels. Regional charts retain combined
+labels and show up to 12 groups; the review queue contains up to 20 orders.
+
+Missing weight/laycan fields and repeated IDs become review actions; repeated
+IDs are not automatically classified as mistakes. Order buttons prepare a chat
+follow-up. Download PDF exports the current summary and original order sample directly.
+Reports are generated on demand, not stored, scheduled or emailed.
+Profit estimates and historical fleet reconstruction are not included. No
+database migration is required.
+
+The dashboard theme control also governs the assistant. The shared palette uses
+mist, sea-glass and muted ocean blue, with slate text and restrained sand accents.
+Manager report is the fourth tab.
+
+Reports include 7/30-day presets, validated custom periods, weight coverage,
+daily intake, regional comparisons and deadline/data-quality review actions.
+Each action opens paginated live evidence (25 records per page). Download PDF
+creates a paginated document from the on-screen summary and original 20-order
+sample without re-querying the database. PDF is the only report export format.
+Manager notes (up to 4,000 characters) appear in the PDF; notes live only in the
+current page and clear on regeneration/reload. PDF generation uses ReportLab.

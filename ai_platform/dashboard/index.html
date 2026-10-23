@@ -681,7 +681,27 @@
         .chat-toggle span { max-width: 8rem; font-size: .7rem; }
         #chatResize { display: none; }
       }
+      .report-filters { display:flex; flex-wrap:wrap; align-items:end; gap:1rem; margin:1.5rem 0; }
+      .report-filters label { display:grid; gap:.4rem; font-size:.8rem; }
+      .report-filters input,.report-filters button { padding:.65rem; background:var(--card); color:var(--fg); border:1px solid var(--border); border-radius:.4rem; }
+      .report-section { padding:1.4rem; margin:1rem 0; background:var(--card); border:1px solid var(--border); border-radius:.7rem; }
+      .report-section li { margin:.65rem 0; line-height:1.5; }
+      .report-bar { height:10px; background:var(--accent); border-radius:4px; margin:.4rem 0 1rem; }
+      @media print {
+        body { background:white !important; color:black !important; }
+        .app-header,.chat-sidebar,.refresh-bar,.page-heading,.sub-tabs,.report-filters,#reportStatus { display:none !important; }
+        body main { margin:0 !important; padding:0 !important; max-width:none !important; }
+        main > .tab-panel { display:none !important; }
+        main > #tab-reports { display:block !important; }
+        .report-section { background:white; color:black; border-color:#ccc; break-inside:avoid; }
+        .report-section .muted { color:#444; }
+        .report-section table { font-size:9pt; }
+        .report-section th,.report-section td,.report-section button { color:black !important; background:white !important; }
+        .report-section button { border:0; padding:0; text-align:left; }
+        .report-section .table-wrap { overflow:visible; }
+      }
     </style>
+    <link rel="stylesheet" href="/static/workspace.css">
   </head>
   <body>
     <header class="app-header">
@@ -721,8 +741,23 @@
         <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
         <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage overrides</button>
         <button type="button" class="tab-btn" data-tab="order-overrides">Order overrides</button>
+        <button type="button" class="tab-btn" data-tab="reports">Manager report</button>
       </nav>
 
+      <section id="tab-reports" class="tab-panel hidden">
+        <h2>Manager report</h2>
+        <p class="sub">A commercial brief for completed reporting periods. Dates use the dashboard’s simulated calendar.</p>
+        <form id="reportForm" class="report-filters">
+          <label>Period<select id="reportPeriod"><option value="7">Last 7 completed days</option><option value="30">Last 30 completed days</option><option value="custom">Custom dates</option></select></label>
+          <label>From<input type="date" id="reportStart" aria-label="Report start date"></label>
+          <label>Through<input type="date" id="reportEnd" aria-label="Report end date"></label>
+          <label>Load region<input id="reportRegion" placeholder="All regions" maxlength="100"></label>
+          <button id="reportGenerate" type="submit">Generate report</button>
+          <button id="reportPrint" type="button" disabled>Download PDF</button>
+        </form>
+        <p id="reportStatus" role="status">Leave dates blank for the latest completed seven days.</p>
+        <article id="reportContent"></article>
+      </section>
       <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
         <div class="section-head"><h2>Market Summary</h2></div>
@@ -1177,7 +1212,10 @@
       document.getElementById("themeToggleBtn").addEventListener("click", () => {
         applyTheme(currentTheme() === "dark" ? "light" : "dark");
       });
-      updateThemeButton();
+      applyTheme(currentTheme());
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (!localStorage.getItem("theme")) applyTheme(currentTheme());
+      });
 
       // Dashboard is the landing page. Chat stays mounted in a collapsible drawer.
       function setChatOpen(open) {
@@ -1247,6 +1285,7 @@
           main.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
           document.getElementById(`tab-${tab}`).classList.remove("hidden");
           main.classList.toggle("wide", tab !== "dashboard");
+          main.classList.toggle("report-view", tab === "reports");
         });
       });
 
@@ -4035,5 +4074,6 @@
 
       refreshTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     </script>
+    <script src="/static/manager-report.js"></script>
   </body>
 </html>
