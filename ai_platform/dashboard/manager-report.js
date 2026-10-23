@@ -32,6 +32,7 @@
   const delta = (current, previous) => `${current - previous > 0 ? '+' : ''}${current - previous}`;
   function build(snapshot, days, region) {
     const d = snapshot.daily;
+    if ((snapshot.region || '') !== region) throw new Error('Fleet counts do not match the selected region. Generate a new report.');
     for (const key of ['OPEN','ON SUBS','FIXED','LIKELY FIXED']) count(snapshot.counts[key]);
     if (!Array.isArray(snapshot.regions)) throw new Error('Regional data unavailable.');
     snapshot.regions.forEach(r => { count(r.supply); count(r.demand); });
@@ -39,7 +40,10 @@
       vessels:compare(d.new_vessels, d.range, days, region),
       moves:compare(d.status_changes, d.range, days, region),
       orders:compare(d.new_orders, d.orders_range, days, region),
-      regions:snapshot.regions.filter(r => !region || r.region === region),
+      regions:snapshot.regions.filter(r => !region || r.region === region).map(r => {
+        const orders = compare(d.new_orders, d.orders_range, days, r.region);
+        return {...r, periodOrders:total(orders.current), previousOrders:total(orders.previous)};
+      }),
     };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = {compare, total, build, shiftDay};
@@ -52,9 +56,9 @@
   let snapshot = null, view = null, evidenceVersion = 0;
   const noteLimit = 4000;
   const definitions = [
-    'Fleet position is a current, fleet-wide snapshot, independent of the activity period and regional detail selection. Historical fleet snapshots are unavailable; no fleet deltas are inferred.',
+    'Fleet position is a current snapshot for the selected region (or all regions), independent of the activity period. Historical fleet snapshots are unavailable; no fleet deltas are inferred.',
     'Activity uses completed UTC calendar days, excluding the current simulated day and the partially covered first API day. The previous period has the same number of completed days. Vessel and order clocks are reported separately.',
-    'Regional pressure uses current open vessels and orders received in the existing recent 14-day window. The existing thresholds are unchanged: supply/demand below 0.7 is Tight; 0.7–1.5 is Balanced; above 1.5 is Oversupplied. Zero recent demand is neutral. Counts are not matched cargo capacity or a literal vessel shortfall.',
+    'Regional order totals and their comparisons follow the selected activity period. The separately labelled 14-day pressure reference uses current open vessels and orders received in the existing recent 14-day window. The existing thresholds are unchanged: supply/demand below 0.7 is Tight; 0.7–1.5 is Balanced; above 1.5 is Oversupplied. Zero recent demand is neutral. Counts are not matched cargo capacity or a literal vessel shortfall.',
     'Returning supply means Fixed or On Subs to Open; committed supply means Open to Fixed or On Subs. Net movement is not the change in the Open fleet. Daily totals describe daily activity; summing days does not imply unique vessels over the entire period.',
     'Likely Fixed is inferred from the existing stale-report rule, not a confirmed fixture. Regional coverage can overlap: do not sum regions to obtain fleet totals or market shares. Regional movement attribution follows the existing API.',
     'Fetched-at timestamps are retrieval times, not source refresh times. Source freshness, missing source-record counts, historical fleet changes, freight economics and company performance are not available in these endpoints.',
@@ -76,14 +80,14 @@
     return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${move?'Daily returning and committed supply':'Daily new orders'}. Exact values and evidence are in the daily table below."><line x1="${pad}" x2="${width-pad}" y1="${move?mid:height-pad}" y2="${move?mid:height-pad}" stroke="var(--muted)"/>${bars}</svg><div class="mr-axis"><span>${e(dayText(rows[0].day))}</span><span>${e(dayText(rows.at(-1).day))}</span></div>`;
   }
   function render() {
-    const days=Number($('mrPeriod').value), region=$('mrRegion').value;
+    const {days,region}=snapshot.scope;
     const model=build(snapshot,days,region);
     view={days,region};
     const {vessels,moves,orders}=model;
     const up=total(moves.current,'up'), down=total(moves.current,'down'), newOrders=total(orders.current), previousOrders=total(orders.previous);
     const ranked=[...model.regions].sort((a,b) => {
       const rank={'tight':0,'balanced':1,'oversupplied':2,'no-data':3};
-      return rank[regionStatus(a.supply,a.demand).key]-rank[regionStatus(b.supply,b.demand).key] || b.demand-a.demand || a.region.localeCompare(b.region);
+      return rank[regionStatus(a.supply,a.demand).key]-rank[regionStatus(b.supply,b.demand).key] || b.periodOrders-a.periodOrders || a.region.localeCompare(b.region);
     });
     const tight=ranked.filter(r => regionStatus(r.supply,r.demand).key==='tight');
     const neutral=ranked.filter(r => !r.demand);
@@ -91,26 +95,26 @@
     const findings=[
       {title:'Supply movements',fact:`${n(up)} returning / ${n(down)} committed; net movement ${delta(up,down)}.`, implication:down>up?'Commitments exceeded returning supply in this period. This does not by itself prove a decline in open fleet size.':'Returning supply met or exceeded commitments in this period. Other stock changes are not reconciled here.',action:'Review the daily movement records before drawing conclusions about availability.',href:'#mrDaily'},
       {title:'Demand activity',fact:`${n(newOrders)} new orders; ${delta(newOrders,previousOrders)} versus ${n(previousOrders)} in the previous period.`,implication:newOrders>previousOrders?'More orders were recorded than in the comparison period; cargo size and vessel suitability still need review.':newOrders<previousOrders?'Fewer orders were recorded than in the comparison period; this alone does not establish weaker freight rates.':'Recorded order activity was unchanged between the two periods.',action:'Inspect order loading windows and cargo requirements.',href:'#mrOrdersDaily'},
-      {title:'Regional attention',fact:`${tight.length} of ${ranked.length} displayed regions are Tight under the existing pressure definition.`,implication:tight.length?'These regions warrant availability checks; the indicator compares different units and time bases.':'No displayed region meets the existing Tight threshold. This does not establish vessel-cargo compatibility.',action:tight.length?`Review ${tight.slice(0,3).map(r=>r.region).join(', ')} and confirm vessel opening dates.`:'Review balanced regions and upcoming cargo requirements.',href:'#mrRegions'},
+      {title:'Regional attention',fact:`${tight.length} of ${ranked.length} displayed regions are Tight under the 14-day reference pressure definition.`,implication:tight.length?'These regions warrant availability checks; the indicator compares different units and time bases.':'No displayed region meets the existing Tight threshold. This does not establish vessel-cargo compatibility.',action:tight.length?`Review ${tight.slice(0,3).map(r=>r.region).join(', ')} and confirm vessel opening dates.`:'Review balanced regions and upcoming cargo requirements.',href:'#mrRegions'},
     ];
     const metric=(label,value,previous,unit='events') => `<div><span>${label}</span><strong>${n(value)}</strong><small>${delta(value,previous)} vs ${n(previous)} previous ${unit}</small></div>`;
     const regionRows=ranked.map(r => {
       const status=regionStatus(r.supply,r.demand);
       const persistence=r.days_with_supply == null || r.persistence_window_days == null ? 'Unavailable' : `${n(r.days_with_supply)} / ${n(r.persistence_window_days)} days`;
-      return `<tr><th scope="row">${e(r.region)}</th><td>${n(r.supply)}</td><td>${n(r.demand)}</td><td><span class="mr-status" style="--signal:${status.color}">${e(status.label)}</span></td><td>${persistence}</td></tr>`;
+      return `<tr><th scope="row">${e(r.region)}</th><td>${n(r.supply)}</td><td>${n(r.periodOrders)}</td><td>${delta(r.periodOrders,r.previousOrders)} <span class="muted">vs ${n(r.previousOrders)}</span></td><td>${n(r.demand)}</td><td><span class="mr-status" style="--signal:${status.color}">${e(status.label)}</span></td><td>${persistence}</td></tr>`;
     }).join('');
     $('mrReport').innerHTML=`
-      <header class="mr-context"><div><span class="mr-eyebrow">GENERATED BRIEF · ${e(snapshot.id)}</span><h3>${days}-day commercial briefing</h3><p>Regional detail: <strong>${e(region||'All regions')}</strong> · Fleet KPIs: <strong>all regions</strong></p></div>
+      <header class="mr-context"><div><span class="mr-eyebrow">GENERATED BRIEF · ${e(snapshot.id)}</span><h3>${days}-day commercial briefing</h3><p>Regional detail: <strong>${e(region||'All regions')}</strong> · Fleet KPIs: <strong>${e(region||'All regions')}</strong></p></div>
       <dl><dt>Vessel activity / comparison</dt><dd>${periodText(vessels)} / ${previousText(vessels)}</dd><dt>Order activity / comparison</dt><dd>${periodText(orders)} / ${previousText(orders)}</dd><dt>Simulation cutoffs (UTC)</dt><dd>Vessels: ${e(snapshot.daily.range.until)} · Orders: ${e(snapshot.daily.orders_range.until)}</dd><dt>Retrieval interval (UTC)</dt><dd>${e(snapshot.started)} – ${e(snapshot.generated)}</dd></dl></header>
       <section class="report-section"><div class="mr-section-head"><h3>Executive brief</h3><span class="muted">Rule-based observations · no forecasts</span></div><div class="mr-findings">${findings.map(f=>`<article><h4>${f.title}</h4><p><b>Observed:</b> ${e(f.fact)}</p><p><b>Interpretation:</b> ${e(f.implication)}</p><a href="${f.href}">View evidence ↓</a></article>`).join('')}</div></section>
-      <section class="report-section"><h3>Fleet position <span class="muted">Current · fleet-wide</span></h3><div class="mr-kpis">${[['OPEN','Open','open'],['ON SUBS','On Subs','watchlist'],['FIXED','Fixed','fixed'],['LIKELY FIXED','Likely Fixed · inferred','likely-fixed']].map(([key,label,color])=>`<div style="--signal:var(--${color})"><span>${label}</span><strong>${n(snapshot.counts[key])}</strong></div>`).join('')}</div><p class="mr-note">Snapshot fetched ${e(snapshot.fetched.counts)}. Historical fleet deltas and source-refresh times are unavailable.</p></section>
-      <section id="mrRegions" class="report-section"><h3>Regional pressure</h3><p class="mr-note">Current open vessels versus recent 14-day orders; independent of the activity selector. Ranked by existing status, then order count. Overlapping regions must not be added together.</p><div class="table-wrap"><table><thead><tr><th>Region</th><th>Open now</th><th>Recent orders</th><th>Pressure</th><th>Days with open supply</th></tr></thead><tbody>${regionRows||'<tr><td colspan="5">No regional observations available.</td></tr>'}</tbody></table></div><p class="mr-note">Fetched ${e(snapshot.fetched.regions)}. No historical regional snapshot is available for pressure deltas.</p></section>
+      <section class="report-section"><h3>Fleet position <span class="muted">Current · ${e(region||'All regions')}</span></h3><div class="mr-kpis">${[['OPEN','Open','open'],['ON SUBS','On Subs','watchlist'],['FIXED','Fixed','fixed'],['LIKELY FIXED','Likely Fixed · inferred','likely-fixed']].map(([key,label,color])=>`<div style="--signal:var(--${color})"><span>${label}</span><strong>${n(snapshot.counts[key])}</strong></div>`).join('')}</div><p class="mr-note">Snapshot fetched ${e(snapshot.fetched.counts)}. Historical fleet deltas and source-refresh times are unavailable.</p></section>
+      <section id="mrRegions" class="report-section"><h3>Regional pressure</h3><p class="mr-note">Orders and comparisons follow the selected ${days} completed days (${periodText(orders)}). Open supply is current. Pressure is a separate 14-day reference, ranked by status then selected-period orders. Overlapping regions must not be added together.</p><div class="table-wrap"><table><thead><tr><th>Region</th><th>Open now</th><th>Orders · ${days} days</th><th>Vs previous ${days} days</th><th>Orders · 14d reference</th><th>Pressure · 14d reference</th><th>Days with open supply</th></tr></thead><tbody>${regionRows||'<tr><td colspan="7">No regional observations available.</td></tr>'}</tbody></table></div><p class="mr-note">Fetched ${e(snapshot.fetched.regions)}. No historical regional snapshot is available for pressure deltas.</p></section>
       <section class="report-section"><h3>Activity comparison <span class="muted">${e(region||'All regions')}</span></h3><div class="mr-metrics">${metric('New vessels / newly open',total(vessels.current),total(vessels.previous))}${metric('Returning to Open',up,total(moves.previous,'up'))}${metric('Committed',down,total(moves.previous,'down'))}${metric('New orders',newOrders,previousOrders,'orders')}</div><div class="mr-charts"><article><h4>Supply movement</h4><p class="mr-note">Mint: returning (+) · Coral: committed (−)</p>${chart(moves.current,true)}</article><article><h4>New orders</h4><p class="mr-note">Orders received per completed day</p>${chart(orders.current,false)}</article></div><p class="mr-note">New-vessel and returning-supply events can overlap. These are not additive categories or a fleet reconciliation.</p>
       <details class="mr-daily" id="mrDaily"><summary>Daily vessel figures and supporting records</summary>${dailyTable(vessels.current,moves.current)}</details>
       <details class="mr-daily" id="mrOrdersDaily"><summary>Daily order figures and supporting records</summary>${orderTable(orders.current)}</details></section>
       <section class="report-section"><h3>Priority follow-ups</h3><ol class="mr-actions">${findings.map(f=>`<li><strong>${f.title}</strong><p>${e(f.action)} <a href="${f.href}">Evidence ↓</a></p><span class="muted">Suggested follow-up · no assignment or execution implied</span></li>`).join('')}</ol></section>
       <section class="report-section"><h3>Manager commentary</h3><p class="mr-note">Editable commentary is separate from generated facts. Included in exports; retained in this tab until reload.</p><textarea id="mrNotes" rows="3" maxlength="${noteLimit}" aria-label="Manager commentary" placeholder="Add decisions, named owners, and next review dates…"></textarea><p id="mrPrintedNotes"></p></section>
-      <section class="report-section"><h3>Data quality &amp; definitions</h3><div class="mr-quality"><span><b>${neutral.length}</b> displayed regions without recent demand</span><span><b>${unmapped.length}</b> displayed regions without known coordinates</span><span><b>${n(snapshot.counts['LIKELY FIXED'])}</b> fleet-wide Likely Fixed, inferred</span></div><p class="mr-note">${unmapped.length?`Unmapped regions: ${e(unmapped.map(r=>r.region).join(', '))}. `:''}Zero-filled daily activity does not prove complete source coverage. Source freshness and missing source-record counts: unavailable.</p><details class="mr-methodology"><summary>Definitions, time windows &amp; limitations</summary><ol>${definitions.map(d=>`<li>${e(d)}</li>`).join('')}</ol></details></section>`;
+      <section class="report-section"><h3>Data quality &amp; definitions</h3><div class="mr-quality"><span><b>${neutral.length}</b> displayed regions without 14-day reference demand</span><span><b>${unmapped.length}</b> displayed regions without known coordinates</span><span><b>${n(snapshot.counts['LIKELY FIXED'])}</b> Likely Fixed in selected scope, inferred</span></div><p class="mr-note">${unmapped.length?`Unmapped regions: ${e(unmapped.map(r=>r.region).join(', '))}. `:''}Zero-filled daily activity does not prove complete source coverage. Source freshness and missing source-record counts: unavailable.</p><details class="mr-methodology"><summary>Definitions, time windows &amp; limitations</summary><ol>${definitions.map(d=>`<li>${e(d)}</li>`).join('')}</ol></details></section>`;
     $('mrNotes').value=snapshot.notes||'';
     syncNotes();
     $('mrEvidence').hidden=true;
@@ -124,7 +128,7 @@
     return `<div class="table-wrap"><table><thead><tr><th>UTC day</th><th>New orders</th></tr></thead><tbody>${rows.map(r=>`<tr><th>${e(r.day)}</th><td>${evidenceButton(r.day,'new_orders','',r.count)}</td></tr>`).join('')}</tbody></table></div>`;
   }
   function evidenceButton(day,metric,direction,value) {
-    return `<button type="button" class="mr-evidence-link" data-day="${e(day)}" data-metric="${metric}" data-direction="${direction}" aria-label="${e(day)}: ${n(value)} ${metric.replaceAll('_',' ')} ${direction}; view fleet-wide records">${n(value)} ↗</button>`;
+    return `<button type="button" class="mr-evidence-link" data-day="${e(day)}" data-metric="${metric}" data-direction="${direction}" data-count="${value}" aria-label="${e(day)}: ${n(value)} ${metric.replaceAll('_',' ')} ${direction}; view records for the selected region">${n(value)} ↗</button>`;
   }
   function syncNotes() {
     if (!snapshot || !$('mrNotes')) return;
@@ -133,7 +137,9 @@
   }
   async function generate(event) {
     event.preventDefault(); syncNotes();
+    const selected=$('mrRegion').value, days=Number($('mrPeriod').value);
     const button=$('mrGenerate'); button.disabled=true;
+    $('mrReport').hidden=true; $('mrEvidence').hidden=true;
     $('mrPrint').disabled=true; $('mrDownload').disabled=true;
     $('mrPeriod').disabled=true; $('mrRegion').disabled=true;
     $('reportStatus').textContent='Capturing current position and completed-period activity…';
@@ -142,31 +148,32 @@
     const read=async (key,path) => {const data=await getJson(path); fetched[key]=new Date().toISOString(); return data;};
     try {
       const [counts,regions,daily]=await Promise.all([
-        read('counts','/api/dashboard/vessels/status-counts'),read('regions','/api/dashboard/regions'),read('daily','/api/dashboard/daily-counts?days=30')
+        read('counts','/api/dashboard/vessels/status-counts'+(selected?'?'+new URLSearchParams({region:selected}):'')),read('regions','/api/dashboard/regions'),read('daily','/api/dashboard/daily-counts?days=30')
       ]);
-      const next={version:1,id:`MR-${Array.from(crypto.getRandomValues(new Uint8Array(6)), b=>b.toString(16).padStart(2,'0')).join('')}`,started,generated:new Date().toISOString(),fetched,counts,regions,daily,notes:snapshot?.notes||'',evidence:[]};
-      const selected=$('mrRegion').value;
-      build(next,Number($('mrPeriod').value),selected);
+      const next={version:1,id:`MR-${Array.from(crypto.getRandomValues(new Uint8Array(6)), b=>b.toString(16).padStart(2,'0')).join('')}`,started,generated:new Date().toISOString(),fetched,counts,regions,daily,region:selected,scope:{days,region:selected},notes:snapshot?.notes||'',evidence:[]};
+      build(next,days,selected);
       snapshot=next;
-      const regionNames=[...new Set([...regions.map(r=>r.region),...daily.new_orders.flatMap(r=>(r.regions||[]).map(z=>z.region)),...daily.new_vessels.flatMap(r=>(r.regions||[]).map(z=>z.region)),...daily.status_changes.flatMap(r=>(r.regions||[]).map(z=>z.region))])].filter(Boolean).sort();
+      const regionNames=[...new Set([selected,...regions.map(r=>r.region),...daily.new_orders.flatMap(r=>(r.regions||[]).map(z=>z.region)),...daily.new_vessels.flatMap(r=>(r.regions||[]).map(z=>z.region)),...daily.status_changes.flatMap(r=>(r.regions||[]).map(z=>z.region))])].filter(Boolean).sort();
       $('mrRegion').innerHTML='<option value="">All regions</option>'+regionNames.map(r=>`<option value="${e(r)}">${e(r)}</option>`).join('');
-      $('mrRegion').value=regionNames.includes(selected)?selected:'';
-      render();
-      $('reportStatus').textContent='Report captured. Regional detail and period changes reuse this snapshot. Generate again to refresh.';
+      $('mrRegion').value=selected;
+      render(); $('mrReport').hidden=false;
+      $('reportStatus').textContent=`Report captured for ${selected||'all regions'} · ${days} completed days. Input changes regenerate the report.`;
     } catch(error) {
-      $('reportStatus').textContent=`Generation failed: ${error.message}. ${snapshot?'The previous report remains below; exports are disabled until a successful generation.':'No report has been published.'}`;
+      $('reportStatus').textContent=`Generation failed: ${error.message}. Results and exports are hidden until generation succeeds for the selected inputs.`;
     } finally {button.disabled=false; $('mrPeriod').disabled=false; $('mrRegion').disabled=false;}
   }
   async function evidence(button) {
     const version=++evidenceVersion, captured=snapshot;
     const {day,metric,direction}=button.dataset;
+    const region=captured.scope.region;
     const orders=metric==='new_orders';
     const range=orders?captured.daily.orders_range:captured.daily.range;
     const params=new URLSearchParams({day,range_since:range.since,range_until:range.until});
+    if (region) params.set('region',region);
     if (!orders) {params.set('metric',metric); if(direction) params.set('direction',direction);}
     const url=`/api/dashboard/${orders?'orders':'vessels'}/by-day?${params}`;
     $('mrEvidence').hidden=false;
-    $('mrEvidenceTitle').textContent=`${day} · ${metric.replaceAll('_',' ')} ${direction} · all regions`;
+    $('mrEvidenceTitle').textContent=`${day} · ${metric.replaceAll('_',' ')} ${direction} · ${region||'All regions'}`;
     $('mrEvidenceBody').textContent='Loading supporting records…'; $('mrEvidence').focus();
     try {
       const rows=await getJson(url);
@@ -174,15 +181,14 @@
       if(!Array.isArray(rows)) throw new Error('Unexpected evidence response.');
       const retrieved=new Date().toISOString();
       captured.evidence=captured.evidence.filter(item=>item.url!==url);
-      captured.evidence.push({url,retrieved,rows});
+      captured.evidence.push({url,retrieved,region,expectedCount:Number(button.dataset.count),rows});
       const columns=orders?[['order_id','Order'],['order_seq','Sequence'],['load_zone','Load region'],['laycan_start','Laycan start'],['laycan_end','Laycan end'],['cargo_weight_min','Min cargo weight'],['cargo_weight_max','Max cargo weight']]:[['vessel_id','Vessel'],['dashboard_status','Current status'],['parent_zones','Current regions'],['open_date_start','Open from'],['open_date_end','Open until'],['update_date','Last reported']];
-      $('mrEvidenceBody').innerHTML=`<p class="mr-note">${rows.length} fleet-wide records retrieved ${e(retrieved)}. Records are fetched on demand and may have changed since report generation. Regional selections do not filter this list; movement attribution can differ from current vessel regions. Full records are included in the downloaded snapshot.</p><div class="table-wrap"><table><thead><tr>${columns.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead><tbody>${rows.slice(0,200).map(r=>`<tr>${columns.map(([key])=>`<td>${e(Array.isArray(r[key])?r[key].join(', '):r[key]??'—')}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${columns.length}">No records returned.</td></tr>`}</tbody></table></div>${rows.length>200?'<p>First 200 rows shown; all returned rows are in the snapshot download.</p>':''}`;
+      $('mrEvidenceBody').innerHTML=`<p class="mr-note">${rows.length} records for ${e(region||'all regions')} retrieved ${e(retrieved)}. Records are fetched on demand and may have changed since report generation. Region matching follows the chart: transition-time zones for supply moves, current zones for newly open vessels, and load zones for orders. ${rows.length!==Number(button.dataset.count)?`The captured figure is ${e(button.dataset.count)}; this request returned ${rows.length} records. Values can differ after source updates or when several events refer to one vessel.`:''} Full records are included in the downloaded snapshot.</p><div class="table-wrap"><table><thead><tr>${columns.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead><tbody>${rows.slice(0,200).map(r=>`<tr>${columns.map(([key])=>`<td>${e(Array.isArray(r[key])?r[key].join(', '):r[key]??'—')}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${columns.length}">No records returned.</td></tr>`}</tbody></table></div>${rows.length>200?'<p>First 200 rows shown; all returned rows are in the snapshot download.</p>':''}`;
     } catch(error) {if(version===evidenceVersion) $('mrEvidenceBody').textContent=`Could not load evidence: ${error.message}. Select the count again to retry.`;}
   }
   $('managerReportForm').addEventListener('submit',generate);
-  for (const id of ['mrPeriod','mrRegion']) $(id).addEventListener('change',()=>{
-    if(!snapshot) return; syncNotes();
-    try {render(); $('reportStatus').textContent='Scope updated using the captured snapshot; no data refetched.';} catch(error){$('reportStatus').textContent=error.message; $('mrPrint').disabled=true; $('mrDownload').disabled=true;}
+  for (const id of ['mrPeriod','mrRegion']) $(id).addEventListener('change',event=>{
+    if(snapshot) generate(event);
   });
   $('mrReport').addEventListener('input',event=>{if(event.target.id==='mrNotes') syncNotes();});
   $('mrReport').addEventListener('click',event=>{

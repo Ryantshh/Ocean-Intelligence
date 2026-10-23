@@ -192,6 +192,7 @@ async def vessels_by_day(
     range_since: datetime | None = None,
     range_until: datetime | None = None,
     direction: Literal["up", "down"] | None = None,
+    region: str | None = None,
 ) -> list[dict[str, Any]]:
     """Vessel tracker rows for the vessels counted in one Daily Trends bar.
 
@@ -208,6 +209,8 @@ async def vessels_by_day(
         Which Daily Trends bar was clicked.
     day : date
         The calendar day the clicked bar represents, e.g. ``2025-08-29``.
+    region : str or None
+        Exact region match, following the daily series attribution.
     range_since, range_until : datetime or None
         The same ``range.since``/``range.until`` :func:`daily_counts`
         returned alongside the chart data -- the caller should echo them
@@ -226,7 +229,7 @@ async def vessels_by_day(
         Same shape as :func:`list_vessels`, one row per matched vessel.
     """
     sql, params = dq.vessels_on_day_sql(
-        metric, day, range_since=range_since, range_until=range_until, direction=direction
+        metric, day, range_since=range_since, range_until=range_until, direction=direction, region=region
     )
     return await _run(sql, params)
 
@@ -272,6 +275,7 @@ async def orders_by_day(
     day: date,
     range_since: datetime | None = None,
     range_until: datetime | None = None,
+    region: str | None = None,
 ) -> list[dict[str, Any]]:
     """Order tracker rows for the orders counted in one Daily Trends bar.
 
@@ -283,6 +287,8 @@ async def orders_by_day(
     ----------
     day : date
         The calendar day the clicked bar represents.
+    region : str or None
+        Exact region match, following the daily series attribution.
     range_since, range_until : datetime or None
         The same ``orders_range.since``/``orders_range.until``
         :func:`daily_counts` returned alongside the chart data -- echo
@@ -295,13 +301,13 @@ async def orders_by_day(
     list of dict
         Same shape as :func:`list_orders`, one row per matched order.
     """
-    sql, params = dq.orders_on_day_sql(day, range_since=range_since, range_until=range_until)
+    sql, params = dq.orders_on_day_sql(day, range_since=range_since, range_until=range_until, region=region)
     return await _run(sql, params)
 
 
 @router.get("/dashboard/vessels/status-counts")
-async def vessel_status_counts() -> dict[str, int]:
-    """Fleet-wide FIXED/OPEN/ON SUBS/LIKELY FIXED counts, for the tracker's summary tiles.
+async def vessel_status_counts(region: str | None = None) -> dict[str, int]:
+    """Status counts, optionally scoped to an exact current region.
 
     A trader should see the shape of the market without opening the vessel
     table -- this backs that, independent of whatever status/region filter
@@ -314,7 +320,7 @@ async def vessel_status_counts() -> dict[str, int]:
         always all four keys, 0 for a status with no vessels right now
         rather than an absent key.
     """
-    rows = await _run(*dq.status_counts_sql())
+    rows = await _run(*dq.status_counts_sql(region))
     counts = {"FIXED": 0, "OPEN": 0, "ON SUBS": 0, "LIKELY FIXED": 0}
     counts.update({row["dashboard_status"]: row["vessel_count"] for row in rows})
     return counts

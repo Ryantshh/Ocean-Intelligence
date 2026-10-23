@@ -471,8 +471,8 @@ def regions_sql() -> tuple[str, list]:
     return "SELECT * FROM regional_supply_demand", []
 
 
-def status_counts_sql() -> tuple[str, list]:
-    """Fleet-wide FIXED/OPEN/ON SUBS breakdown -- the vessel tracker's summary tiles.
+def status_counts_sql(region: str | None = None) -> tuple[str, list]:
+    """Status breakdown, optionally restricted to an exact current region.
 
     Backed by ``vessel_status_counts`` (a thin GROUP BY over
     ``vessel_current_status``), so a trader sees the shape of the market
@@ -485,6 +485,12 @@ def status_counts_sql() -> tuple[str, list]:
         vessel -- a status with zero vessels right now (e.g. ON SUBS,
         currently) simply doesn't appear, callers should default it to 0.
     """
+    if region is not None:
+        return (
+            "SELECT dashboard_status, COUNT(*) AS vessel_count FROM vessel_current_status v "
+            "WHERE EXISTS (SELECT 1 FROM unnest(v.parent_zones) AS zone WHERE trim(zone) = $1) "
+            "GROUP BY dashboard_status", [region]
+        )
     return "SELECT * FROM vessel_status_counts", []
 
 
@@ -779,6 +785,7 @@ def vessels_on_day_sql(
     *,
     range_since: datetime | None = None,
     range_until: datetime | None = None,
+    region: str | None = None,
     direction: str | None = None,
 ) -> tuple[str, list]:
     """Current-status rows for the vessels counted in one Daily Trends bar.
@@ -823,6 +830,8 @@ def vessels_on_day_sql(
         valid value here; callers should simply not offer it.
     day : date
         The calendar day the clicked bar represents.
+    region : str or None
+        Exact zone match using the same attribution as the daily breakdown.
     range_since, range_until : datetime or None
         The same window bounds the chart's own query used (see
         :func:`daily_range_start` / ``dashboard.py``'s ``daily_counts``),
@@ -848,6 +857,11 @@ def vessels_on_day_sql(
         start = max(start, range_since.replace(tzinfo=None))
     if range_until is not None:
         end = min(end, range_until.replace(tzinfo=None))
+    # Exact region semantics match the daily breakdown: current zones for
+    # new vessels; the transition's historical zone for supply moves.
+    params = [start, end]
+    if region is not None:
+        params.append(region)
     if metric == "new_vessels":
         matched = (
             f"WITH events AS ({_NEW_VESSEL_EVENTS_CTE}) "
@@ -862,13 +876,23 @@ def vessels_on_day_sql(
             "SELECT DISTINCT vessel_id FROM moves "
             f"WHERE day::timestamp >= $1 AND day::timestamp < $2{direction_clause}"
         )
+    if region is not None and metric == "status_changes":
+        matched += (
+            " AND EXISTS (SELECT 1 FROM regexp_split_to_table(trim(COALESCE(parent_zone, '')), "
+            "'\\s*,\\s*') AS zone WHERE trim(zone) = $3)"
+        )
+    region_filter = (
+        "WHERE EXISTS (SELECT 1 FROM unnest(v.parent_zones) AS zone WHERE trim(zone) = $3) "
+        if region is not None and metric == "new_vessels" else ""
+    )
     sql = (
         f"WITH matched AS ({matched}) "
         "SELECT v.* FROM vessel_current_status v "
         "JOIN matched m ON m.vessel_id = v.vessel_id "
+        f"{region_filter}"
         "ORDER BY v.update_date DESC NULLS LAST"
     )
-    return sql, [start, end]
+    return sql, params
 
 
 def orders_on_day_sql(
@@ -876,6 +900,7 @@ def orders_on_day_sql(
     *,
     range_since: datetime | None = None,
     range_until: datetime | None = None,
+    region: str | None = None,
 ) -> tuple[str, list]:
     """Orders counted in one Daily Trends "New Orders" bar.
 
@@ -891,6 +916,8 @@ def orders_on_day_sql(
     ----------
     day : date
         The calendar day the clicked bar represents.
+    region : str or None
+        Exact zone match using the same attribution as the daily breakdown.
     range_since, range_until : datetime or None
         The chart's own ``orders_range.since``/``orders_range.until``
         (see ``dashboard.py``'s ``daily_counts``), so this day's bounds
@@ -906,13 +933,22 @@ def orders_on_day_sql(
         start = max(start, range_since.replace(tzinfo=None))
     if range_until is not None:
         end = min(end, range_until.replace(tzinfo=None))
+    params = [start, end]
+    region_filter = ""
+    if region is not None:
+        params.append(region)
+        region_filter = (
+            "AND EXISTS (SELECT 1 FROM regexp_split_to_table(trim(COALESCE(load_zone, '')), "
+            "'\\s*,\\s*') AS zone WHERE trim(zone) = $3) "
+        )
     columns = ", ".join(_ORDERS_COLUMNS_SAFE)
     sql = (
         f"SELECT {columns} FROM {_ORDERS_SOURCE} "
         "WHERE date_received >= $1 AND date_received < $2 "
+        f"{region_filter}"
         "ORDER BY date_received DESC, order_id, order_seq"
     )
-    return sql, [start, end]
+    return sql, params
 
 
 def ecsa_ballasters_sql(sort: SortKey) -> tuple[str, list]:

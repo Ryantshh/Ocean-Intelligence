@@ -32,3 +32,10 @@ test('vessel and order comparisons use independent simulation clocks',()=>{
  const m=build(s,7,''); assert.equal(m.vessels.end,'2026-01-15'); assert.equal(m.orders.end,'2026-01-14'); assert.equal(total(m.moves.current,'up'),42);
  delete s.counts.OPEN; assert.throws(()=>build(s,7,''),/invalid count/);
 });
+test('report refuses fleet totals from a different region and computes selected-period regional orders',()=>{
+ const rows=series(); const s={region:'A',counts:{OPEN:4,'ON SUBS':1,FIXED:0,'LIKELY FIXED':2},regions:[{region:'A',supply:4,demand:200},{region:'B',supply:8,demand:100}],daily:{range,orders_range:range,new_vessels:rows,status_changes:rows,new_orders:rows}};
+ assert.throws(()=>build(s,7,'B'),/do not match/);
+ const seven=build(s,7,'A'), fourteen=build(s,14,'A');
+ assert.equal(seven.regions.length,1);assert.equal(seven.regions[0].periodOrders,56);assert.equal(fourteen.regions[0].periodOrders,112);
+ assert.equal(seven.regions[0].demand,200);assert.equal(seven.regions[0].previousOrders,56);
+});
