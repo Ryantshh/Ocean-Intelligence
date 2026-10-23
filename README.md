@@ -630,7 +630,7 @@ Profit estimates and historical fleet reconstruction are not included. No
 database migration is required.
 
 The dashboard theme control also governs the assistant. The shared palette uses
-mist, sea-glass and muted ocean blue, with slate text and restrained sand accents.
+clear sea blues, fresh aqua and sea green, with warm sand accents and dark slate text.
 Manager report is the fourth tab.
 
 Reports include 7/30-day presets, validated custom periods, weight coverage,

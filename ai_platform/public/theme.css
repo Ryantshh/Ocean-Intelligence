@@ -74,11 +74,16 @@ a[href*="chainlit.io"] + * {
 /* One workspace, one theme control: use the dashboard's sun/moon button. */
 #theme-toggle { display:none !important; }
 #message-composer { background:hsl(var(--card)); border:1px solid hsl(var(--border)); }
-.oi-chart-row:nth-child(4n+1) .oi-chart-bar { background:#7399ab !important; }
-.oi-chart-row:nth-child(4n+2) .oi-chart-bar { background:#87aa9d !important; }
-.oi-chart-row:nth-child(4n+3) .oi-chart-bar { background:#b9aa87 !important; }
-.oi-chart-row:nth-child(4n) .oi-chart-bar { background:#98a3b9 !important; }
-.oi-results-heading { border-top:3px solid #7399ab; padding-top:1rem; }
+.oi-chart-row:nth-child(4n+1) .oi-chart-bar { background:#388bb5 !important; }
+.oi-chart-row:nth-child(4n+2) .oi-chart-bar { background:#4c9d80 !important; }
+.oi-chart-row:nth-child(4n+3) .oi-chart-bar { background:#b18a3c !important; }
+.oi-chart-row:nth-child(4n) .oi-chart-bar { background:#8977b5 !important; }
+.oi-results-heading { border-top:3px solid #388bb5; padding-top:1rem; }
 /* Logo selection must follow the shared class even if Chainlit mounted in the other mode. */
 html.light img.logo { content:url('./logo_light.svg'); }
 html.dark img.logo { content:url('./logo_dark.svg'); }
+
+html.dark .oi-chart-row:nth-child(4n+1) .oi-chart-bar { background:#8bcdef !important; }
+html.dark .oi-chart-row:nth-child(4n+2) .oi-chart-bar { background:#93d8b5 !important; }
+html.dark .oi-chart-row:nth-child(4n+3) .oi-chart-bar { background:#f0d18b !important; }
+html.dark .oi-chart-row:nth-child(4n) .oi-chart-bar { background:#bcaeec !important; }

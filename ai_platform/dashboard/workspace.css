@@ -1,26 +1,26 @@
-/* Soft maritime surfaces: mist, sea glass, slate and restrained sand accents. */
+/* Sunlit maritime palette: clear sea blues, aqua, sea green and warm sand. */
 :root {
   color-scheme:light;
-  --bg:#f2f5f4; --fg:#2b414b; --muted:#526873; --card:#fbfcfb; --border:#d4dfdf;
-  --accent:#326e78; --open:#3b7467; --watchlist:#8c692f; --fixed:#526f85; --likely-fixed:#626e88;
-  --map-water:#e6eff1; --map-land:#b8cdca; --map-label:#294751;
-  --surface-blue:#eef3f5; --surface-sand:#f5f3ed; --surface-lilac:#f0f2f5; --surface-green:#edf4f1;
-  --chart-blue:#477b92; --chart-gold:#8c692f; --tone-lilac:#77869c;
-  --status-good:#3b7c65; --status-warning:#956c29; --status-critical:#a3564f;
-  --header-bg:#e4edef; --header-fg:#294550; --header-muted:#4f6972;
+  --bg:#f4faf9; --fg:#244552; --muted:#4b6874; --card:#ffffff; --border:#cce2e5;
+  --accent:#087e8b; --open:#24785c; --watchlist:#8d671e; --fixed:#2476a1; --likely-fixed:#7163a4;
+  --map-water:#e0f3fa; --map-land:#b2d8c9; --map-label:#244552;
+  --surface-blue:#eaf5fc; --surface-sand:#fff7e3; --surface-lilac:#f2effb; --surface-green:#e9f8f0;
+  --chart-blue:#2484b4; --chart-gold:#a57620; --tone-lilac:#8272b6;
+  --status-good:#28805d; --status-warning:#9b701b; --status-critical:#b15d52;
+  --header-bg:#dff3f3; --header-fg:#244552; --header-muted:#426977;
 }
 :root[data-theme=dark] {
   color-scheme:dark;
-  --bg:#233139; --fg:#e1e9eb; --muted:#adbec5; --card:#2b3b43; --border:#4b6069;
-  --accent:#a1c8ce; --open:#abcbbb; --watchlist:#d8c08c; --fixed:#acc3d3; --likely-fixed:#b6bfd3;
-  --map-water:#273c47; --map-land:#59736f; --map-label:#e1ebed;
-  --surface-blue:#2d404a; --surface-sand:#353e40; --surface-lilac:#323f48; --surface-green:#2d413f;
-  --chart-blue:#9dbdcf; --chart-gold:#d8c08c; --tone-lilac:#a8b3ca;
-  --status-good:#a1c9b5; --status-warning:#d8c08c; --status-critical:#d9aaa4;
-  --header-bg:#293c45; --header-fg:#e1e9eb; --header-muted:#adbec5;
+  --bg:#203741; --fg:#e9f5f7; --muted:#b2cbd2; --card:#29454f; --border:#4a707a;
+  --accent:#83d5d5; --open:#93d8b5; --watchlist:#f0d18b; --fixed:#97d2f0; --likely-fixed:#c3b8ef;
+  --map-water:#244653; --map-land:#5b8e85; --map-label:#edf9fb;
+  --surface-blue:#2b4b5c; --surface-sand:#414a42; --surface-lilac:#3c455e; --surface-green:#2b514b;
+  --chart-blue:#8bcdef; --chart-gold:#f0d18b; --tone-lilac:#bcaeec;
+  --status-good:#93d8b5; --status-warning:#f0d18b; --status-critical:#edb0a6;
+  --header-bg:#284b57; --header-fg:#e9f5f7; --header-muted:#b2cbd2;
 }
 body { background:var(--bg); }
-.app-header { background:var(--header-bg); color:var(--header-fg); border-bottom:1px solid var(--border); }
+.app-header { background:linear-gradient(110deg,var(--header-bg),var(--surface-blue)); color:var(--header-fg); border-bottom:1px solid var(--border); }
 .brand strong { color:var(--header-fg); }
 .brand small,.brand-mark { color:var(--header-muted); }
 .chat-toggle { background:var(--card); color:var(--fg); border-color:var(--border); }
