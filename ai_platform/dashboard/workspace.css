@@ -9,16 +9,7 @@
   --status-good:#28805d; --status-warning:#9b701b; --status-critical:#b15d52;
   --header-bg:#dff3f3; --header-fg:#244552; --header-muted:#426977;
 }
-:root[data-theme=dark] {
-  color-scheme:dark;
-  --bg:#203741; --fg:#e9f5f7; --muted:#b2cbd2; --card:#29454f; --border:#4a707a;
-  --accent:#83d5d5; --open:#93d8b5; --watchlist:#f0d18b; --fixed:#97d2f0; --likely-fixed:#c3b8ef;
-  --map-water:#244653; --map-land:#5b8e85; --map-label:#edf9fb;
-  --surface-blue:#2b4b5c; --surface-sand:#414a42; --surface-lilac:#3c455e; --surface-green:#2b514b;
-  --chart-blue:#8bcdef; --chart-gold:#f0d18b; --tone-lilac:#bcaeec;
-  --status-good:#93d8b5; --status-warning:#f0d18b; --status-critical:#edb0a6;
-  --header-bg:#284b57; --header-fg:#e9f5f7; --header-muted:#b2cbd2;
-}
+
 body { background:var(--bg); }
 .app-header { background:linear-gradient(110deg,var(--header-bg),var(--surface-blue)); color:var(--header-fg); border-bottom:1px solid var(--border); }
 .brand strong { color:var(--header-fg); }
@@ -88,3 +79,52 @@ main { padding-top:5.4rem; }
 .chat-sidebar-head .eyebrow { letter-spacing:.12em; }
 .chat-sidebar { background:var(--bg); }
 .chat-toggle:focus-visible,.chat-sidebar-actions button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+
+/* Crisp dark surfaces: colour stays in the data and selected controls.
+   Keep automatic OS preference and the manual toggle visually identical. */
+:root[data-theme=dark] {
+  color-scheme:dark;
+  --bg:#101419; --fg:#e8edf2; --muted:#a5b0be; --card:#191f27; --border:#303a46;
+  --accent:#79c9c4; --open:#8ad0ac; --watchlist:#e3c17c; --fixed:#85bee3; --likely-fixed:#b7a9e2;
+  --map-water:#121e29; --map-land:#344c50; --map-label:#edf3f7;
+  --surface-blue:#202d3a; --surface-sand:#2a2822; --surface-lilac:#282635; --surface-green:#202e29;
+  --chart-blue:#85bee3; --chart-gold:#e3c17c; --tone-lilac:#b7a9e2;
+  --status-good:#8ad0ac; --status-warning:#e3c17c; --status-critical:#eb9c95;
+  --header-bg:#151b22; --header-fg:#e8edf2; --header-muted:#a5b0be;
+}
+:root[data-theme=dark] body { background:var(--bg); }
+:root[data-theme=dark] .app-header { background:var(--header-bg); box-shadow:none; }
+:root[data-theme=dark] .app-header > .tabs { background:var(--bg); border-color:var(--border); }
+:root[data-theme=dark] .app-header .tab-btn { color:var(--muted); }
+:root[data-theme=dark] .app-header .tab-btn.active { background:var(--surface-blue); color:var(--fg); border-color:var(--border); }
+:root[data-theme=dark] .page-heading { background:var(--card); }
+:root[data-theme=dark] .page-heading::after { display:none; }
+:root[data-theme=dark] .status-tile { background:var(--card); transition:background-color .16s ease,border-color .16s ease; }
+:root[data-theme=dark] .status-tile:hover { transform:none; background:#202833; box-shadow:none; }
+:root[data-theme=dark] .summary-panel { box-shadow:none; }
+:root[data-theme=dark] .chat-sidebar { box-shadow:-8px 0 24px #00000026; }
+:root[data-theme=dark] .chat-sidebar-head { background:var(--card); }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme]) {
+  color-scheme:dark;
+  --bg:#101419; --fg:#e8edf2; --muted:#a5b0be; --card:#191f27; --border:#303a46;
+  --accent:#79c9c4; --open:#8ad0ac; --watchlist:#e3c17c; --fixed:#85bee3; --likely-fixed:#b7a9e2;
+  --map-water:#121e29; --map-land:#344c50; --map-label:#edf3f7;
+  --surface-blue:#202d3a; --surface-sand:#2a2822; --surface-lilac:#282635; --surface-green:#202e29;
+  --chart-blue:#85bee3; --chart-gold:#e3c17c; --tone-lilac:#b7a9e2;
+  --status-good:#8ad0ac; --status-warning:#e3c17c; --status-critical:#eb9c95;
+  --header-bg:#151b22; --header-fg:#e8edf2; --header-muted:#a5b0be;
+  }
+  :root:not([data-theme]) body { background:var(--bg); }
+  :root:not([data-theme]) .app-header { background:var(--header-bg); box-shadow:none; }
+  :root:not([data-theme]) .app-header > .tabs { background:var(--bg); border-color:var(--border); }
+  :root:not([data-theme]) .app-header .tab-btn { color:var(--muted); }
+  :root:not([data-theme]) .app-header .tab-btn.active { background:var(--surface-blue); color:var(--fg); border-color:var(--border); }
+  :root:not([data-theme]) .page-heading { background:var(--card); }
+  :root:not([data-theme]) .page-heading::after { display:none; }
+  :root:not([data-theme]) .status-tile { background:var(--card); transition:background-color .16s ease,border-color .16s ease; }
+  :root:not([data-theme]) .status-tile:hover { transform:none; background:#202833; box-shadow:none; }
+  :root:not([data-theme]) .summary-panel { box-shadow:none; }
+  :root:not([data-theme]) .chat-sidebar { box-shadow:-8px 0 24px #00000026; }
+  :root:not([data-theme]) .chat-sidebar-head { background:var(--card); }
+}
