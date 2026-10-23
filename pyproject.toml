@@ -37,7 +37,6 @@ dependencies = [
     "openai>=2.53.0",
     "openpyxl>=3.1.5",
     "python-dotenv>=1.2.2",
-    "reportlab>=4.4,<5",
     "sqlalchemy[asyncio]>=2.0.51",
     "tiktoken>=0.14.0",
     "uvicorn[standard]>=0.52.1",

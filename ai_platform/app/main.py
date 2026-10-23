@@ -22,8 +22,6 @@ from fastapi.staticfiles import StaticFiles
 
 from ai_platform.app.api.dashboard import router as dashboard_router
 from ai_platform.app.api.export import router as export_router
-from ai_platform.app.api.manager_report import router as manager_report_router
-from ai_platform.app.api.report_pdf import router as report_pdf_router
 from ai_platform.backend.db import close_pool
 from ai_platform.order_override.order_override import router as order_override_router
 from ai_platform.trader_override.trader_override import router as trader_override_router
@@ -102,8 +100,6 @@ def read_dashboard() -> FileResponse:
 
 
 app.include_router(dashboard_router)
-app.include_router(manager_report_router)
-app.include_router(report_pdf_router)
 app.include_router(export_router)
 app.include_router(trader_override_router)
 app.include_router(order_override_router)

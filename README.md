@@ -604,7 +604,7 @@ The principal scaling constraint is that each silver table is a single JSON obje
 
 The dashboard is the homepage. **Ask Ocean Intelligence** opens a collapsible
 chat sidebar; closing it preserves the conversation and draft. Drag the sidebar’s left edge to resize it, or focus the edge and use the arrow keys. On small screens it fills the available width.
-The navy and green palette includes contrasting status colours in both themes.
+The shared coastal palette combines sea blue, aqua, warm sand and lavender. The dashboard theme control also governs the assistant, with readable status colours in both modes.
 
 Selected dashboard orders can be sent into the chat composer for review before
 submission. Results offer Table and Chart views, grouping and count/sum measures,
@@ -612,31 +612,3 @@ and switching between recent outputs (up to 12 in the active session). Charts
 summarise returned, filtered rows and display the 12 largest groups, not the
 entire database. Original result links remain attached to their messages.
 These interface changes require no database migration.
-
-### Manager report
-
-The Manager report tab generates a read-only commercial brief for 1–90
-completed days (default: the last seven days on the order simulation clock).
-It compares received-order counts with the preceding equal-length period and
-shows current fleet availability separately. Region search matches load-region
-labels for orders and open regions for vessels. Regional charts retain combined
-labels and show up to 12 groups; the review queue contains up to 20 orders.
-
-Missing weight/laycan fields and repeated IDs become review actions; repeated
-IDs are not automatically classified as mistakes. Order buttons prepare a chat
-follow-up. Download PDF exports the current summary and original order sample directly.
-Reports are generated on demand, not stored, scheduled or emailed.
-Profit estimates and historical fleet reconstruction are not included. No
-database migration is required.
-
-The dashboard theme control also governs the assistant. The shared palette uses
-clear sea blues, fresh aqua and sea green, with warm sand accents and dark slate text.
-Manager report is the fourth tab.
-
-Reports include 7/30-day presets, validated custom periods, weight coverage,
-daily intake, regional comparisons and deadline/data-quality review actions.
-Each action opens paginated live evidence (25 records per page). Download PDF
-creates a paginated document from the on-screen summary and original 20-order
-sample without re-querying the database. PDF is the only report export format.
-Manager notes (up to 4,000 characters) appear in the PDF; notes live only in the
-current page and clear on regeneration/reload. PDF generation uses ReportLab.
