@@ -70,3 +70,48 @@ a[href*="chainlit.io"] + * {
 .oi-chart-bar { position: absolute; top: 0; height: 100%; border-radius: 3px; }
 .oi-chart-zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: hsl(var(--foreground) / .5); }
 .oi-t td { font-size: .8rem; }
+
+/* One workspace, one theme control: use the dashboard's sun/moon button. */
+#theme-toggle { display:none !important; }
+#message-composer { background:hsl(var(--card)); border:1px solid hsl(var(--border)); }
+.oi-chart-row:nth-child(4n+1) .oi-chart-bar { background:#388bb5 !important; }
+.oi-chart-row:nth-child(4n+2) .oi-chart-bar { background:#4c9d80 !important; }
+.oi-chart-row:nth-child(4n+3) .oi-chart-bar { background:#b18a3c !important; }
+.oi-chart-row:nth-child(4n) .oi-chart-bar { background:#8977b5 !important; }
+.oi-results-heading { border-top:3px solid #388bb5; padding-top:1rem; }
+/* Logo selection must follow the shared class even if Chainlit mounted in the other mode. */
+html.light img.logo { content:url('./logo_light.svg'); }
+html.dark img.logo { content:url('./logo_dark.svg'); }
+
+html.dark .oi-chart-row:nth-child(4n+1) .oi-chart-bar { background:#85bee3 !important; }
+html.dark .oi-chart-row:nth-child(4n+2) .oi-chart-bar { background:#8ad0ac !important; }
+html.dark .oi-chart-row:nth-child(4n+3) .oi-chart-bar { background:#e3c17c !important; }
+html.dark .oi-chart-row:nth-child(4n) .oi-chart-bar { background:#b7a9e2 !important; }
+
+/* Compact, calm assistant surfaces that match the surrounding workspace. */
+#message-composer { border-radius:18px; box-shadow:0 6px 24px #153a4910; }
+#message-composer:focus-within { border-color:hsl(var(--primary)); box-shadow:0 0 0 2px hsl(var(--primary) / .12); }
+#starters button { border-radius:12px; background:hsl(var(--card)); border:1px solid hsl(var(--border)); padding:.65rem .85rem; }
+#starters button:hover { background:hsl(var(--muted)); border-color:hsl(var(--primary)); }
+.oi-chart { background:hsl(var(--card)); border-radius:12px; }
+.oi-result-views { padding:.25rem; background:hsl(var(--muted)); border-radius:.65rem; }
+.oi-result-views button { border:0; border-radius:.45rem; }
+.oi-results-heading { border-top:0; }
+
+/* Anchor every assistant surface to the shared palette, including popovers. */
+html[data-ocean-theme] body { background:hsl(var(--background)); color:hsl(var(--foreground)); }
+#header { background:hsl(var(--background)); border-bottom:1px solid hsl(var(--border)); }
+#chat-input { font-size:.95rem; }
+#chat-input::placeholder { color:hsl(var(--muted-foreground)); opacity:1; }
+#message-composer { color:hsl(var(--foreground)); }
+#starters { gap:.6rem; }
+#starters button { color:hsl(var(--foreground)); font-size:.8rem; box-shadow:0 2px 6px #153a4906; }
+#starters button:focus-visible { outline:2px solid hsl(var(--primary)); outline-offset:3px; }
+.oi-t th { color:hsl(var(--muted-foreground)); }
+.oi-t tbody tr:hover { background:hsl(var(--muted)); }
+
+/* Match the dashboard's solid charcoal header and clean dark surfaces. */
+html.dark #header { background:#151b22; }
+html.dark #message-composer,
+html.dark #starters button { box-shadow:none; }
+html.dark #message-composer:focus-within { box-shadow:0 0 0 2px hsl(var(--primary) / .12); }
