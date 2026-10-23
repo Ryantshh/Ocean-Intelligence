@@ -128,3 +128,9 @@ main { padding-top:5.4rem; }
   :root:not([data-theme]) .chat-sidebar { box-shadow:-8px 0 24px #00000026; }
   :root:not([data-theme]) .chat-sidebar-head { background:var(--card); }
 }
+
+/* Keep global appearance controls available alongside the assistant. */
+.navbar-actions { display:flex; align-items:center; gap:.75rem; flex-shrink:0; }
+.navbar-actions .theme-toggle { flex-shrink:0; }
+.navbar-actions .theme-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@media(max-width:640px) { .navbar-actions { gap:.4rem; } }
