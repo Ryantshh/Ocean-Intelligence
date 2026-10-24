@@ -11,7 +11,8 @@
       // entirely (no localStorage entry yet) falls through to the
       // @media (prefers-color-scheme) block in <style> below.
       (function () {
-        var saved = localStorage.getItem("theme");
+        var saved;
+        try { saved = localStorage.getItem("theme"); } catch {}
         if (saved === "light" || saved === "dark") {
           document.documentElement.setAttribute("data-theme", saved);
         }
@@ -590,20 +591,32 @@
       .combobox-option:hover, .combobox-option.active { background: var(--card); }
       .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
+    <link rel="stylesheet" href="/static/workspace.css?v=voyage-3" />
   </head>
   <body>
-    <nav class="tabs">
-      <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
-      <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
-      <button type="button" class="tab-btn" data-tab="voyage-defaults">Voyage defaults</button>
-    </nav>
-
-    <div id="tab-chat" class="tab-panel">
+    <a class="skip-link" href="#workspace">Skip to workspace</a>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="Ocean Intelligence home">
+        <svg class="brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="1.2" opacity=".4"/><path d="M8 23c4-5 8-5 12 0s8 5 12 0M10 29c4-4 7-4 10 0s6 4 10 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="m20 7 5 12-5-3-5 3 5-12Z" fill="currentColor"/></svg>
+        <span>Ocean Intelligence<small>CARGILL OCEAN TRANSPORTATION</small></span>
+      </a>
+      <nav class="tabs primary-tabs" aria-label="Workspace navigation">
+        <button type="button" class="tab-btn active" data-tab="dashboard" aria-current="page">Overview</button>
+        <button type="button" class="tab-btn" data-tab="voyage-defaults">Voyage defaults</button>
+      </nav>
+      <div class="header-actions">
+        <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch theme"></button>
+        <button type="button" id="chatToggle" class="assistant-toggle" aria-expanded="false" aria-controls="tab-chat"><svg class="assistant-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/><path d="M20 2v4M18 4h4"/></svg> <span>Ocean assistant</span></button>
+      </div>
+    </header>
+    <aside id="tab-chat" class="chat-panel hidden" aria-label="Ocean assistant">
+      <div id="chatResize" class="chat-resize" role="separator" tabindex="0" aria-label="Resize assistant panel" aria-orientation="vertical" aria-valuemin="360" aria-valuemax="1600" aria-valuenow="900"></div>
+      <div class="chat-panel-head"><div><strong>Ocean assistant</strong><small>Your maritime intelligence partner</small></div><button type="button" id="chatClose" aria-label="Close assistant">×</button></div>
       <iframe id="chatFrame" src="/chat" title="Ocean Intelligence chat"></iframe>
-    </div>
+    </aside>
 
     <div id="tab-voyage-defaults" class="tab-panel hidden defaults-page">
-      <h2>Voyage defaults</h2>
+      <p class="eyebrow">VOYAGE PLANNING</p><h2 class="defaults-title">Set the course.</h2><p class="defaults-subtitle">Your voyage assumptions, in one place.</p>
       <p class="sub" id="defaultsIntro">
         Your own starting values for the voyage calculator. Every vessel matched
         to an order starts from these; a blank box uses the calculator default
@@ -612,56 +625,59 @@
       <form class="override-form" id="defaultsForm">
         <div id="defaultsFields" class="muted">Loading&hellip;</div>
         <div class="form-message" id="defaultsMessage"></div>
-        <button type="submit" id="defaultsSave">Save defaults</button>
+        <div class="defaults-save-bar"><span>Blank fields use the calculator defaults shown.</span><button type="submit" id="defaultsSave">Save voyage defaults <span aria-hidden="true">↗</span></button></div>
       </form>
     </div>
 
-    <main class="hidden">
+    <main id="workspace" tabindex="-1">
+      <div class="workspace-heading"><div><p class="eyebrow">MARKET INTELLIGENCE</p><h1>Your ocean. <span>In perspective.</span></h1><p class="workspace-description">Fleet availability, cargo demand, and the movements that matter.</p></div><div class="hero-chart" aria-hidden="true"><svg viewBox="0 0 360 150" fill="none"><defs><linearGradient id="chartFade"><stop stop-color="currentColor" stop-opacity="0"/><stop offset="1" stop-color="currentColor" stop-opacity=".4"/></linearGradient></defs><g stroke="currentColor" stroke-opacity=".16"><circle cx="258" cy="75" r="63"/><circle cx="258" cy="75" r="46"/><circle cx="258" cy="75" r="28"/><path d="M180 75h156M258 0v150M204 21l108 108M204 129 312 21"/></g><path d="M0 126C70 126 74 30 145 30s72 83 113 45 67-22 102-22" stroke="url(#chartFade)" stroke-width="1.5" stroke-dasharray="4 5"/><path d="m258 33 12 45-12-7-12 7 12-45Z" fill="currentColor" opacity=".7"/><circle cx="145" cy="30" r="4" fill="currentColor" opacity=".5"/><g fill="currentColor" opacity=".65" font-size="8" letter-spacing="2"><text x="254" y="11">N</text><text x="329" y="78">E</text><text x="254" y="148">S</text><text x="177" y="78">W</text></g></svg><span>INTELLIGENCE / IN EVERY DIRECTION</span></div></div>
       <div class="refresh-bar">
         <span class="muted" id="lastRefreshed">Loading&hellip;</span>
-        <button type="button" id="refreshNowBtn" class="history-btn">Refresh now</button>
-        <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
+        <button type="button" id="refreshNowBtn" class="history-btn"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 13-3l2 3M4 16l2 3a8 8 0 0 0 13-3"/></svg> Refresh data</button>
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
-      <nav class="tabs sub-tabs">
+      <nav class="tabs sub-tabs" aria-label="Market tools">
         <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage Status Override</button>
-        <button type="button" class="tab-btn" data-tab="order-overrides">Order Status Override</button>
+        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage overrides</button>
+        <button type="button" class="tab-btn" data-tab="order-overrides">Order overrides</button>
       </nav>
 
       <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
-        <div class="section-head"><h2>Market Summary</h2></div>
+        <div class="section-head"><h2><span class="section-number">01</span> Market overview</h2><span class="section-note">Select a status to explore the fleet</span></div>
         <div class="status-tiles" id="statusTiles">
           <button type="button" class="status-tile status-tile-open" data-status="OPEN">
             <span class="value" id="statusTileOpen">—</span>
-            <span class="label">Open</span>
+            <span class="label">Open</span><span class="tile-detail">Available tonnage</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15l9 4 9-4-3-7H6l-3 7ZM12 3v12M8 6h8"/></svg>
           </button>
           <button type="button" class="status-tile status-tile-watchlist" data-status="ON SUBS">
             <span class="value" id="statusTileWatchlist">—</span>
-            <span class="label">On Subs</span>
+            <span class="label">On Subs</span><span class="tile-detail">Under negotiation</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>
           </button>
           <button type="button" class="status-tile status-tile-fixed" data-status="FIXED" title="Under a fixture right now: a report whose open window covers today says fixed, and the vessel has been heard from within 5 days. A fixture reported for a future window reads as Open until that window starts, so this count is small by design.">
             <span class="value" id="statusTileFixed">—</span>
-            <span class="label">Fixed</span>
+            <span class="label">Fixed</span><span class="tile-detail">Confirmed fixtures</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
           </button>
           <button type="button" class="status-tile status-tile-likely-fixed" data-status="LIKELY FIXED" title="Nothing heard about this vessel in 5+ days -- treated as probably fixed off-market rather than still open, whatever its last reported window still claims. Not a confirmed fixture.">
             <span class="value" id="statusTileLikelyFixed">—</span>
-            <span class="label">Likely Fixed</span>
+            <span class="label">Likely Fixed</span><span class="tile-detail">Awaiting fresh reports</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10M7 20h10M8 4v4l8 8v4M16 4v4l-8 8v4"/></svg>
           </button>
         </div>
 
         <div class="summary-grid">
           <div class="summary-panel">
             <div class="section-head">
-              <h3>Regional Supply &amp; Demand</h3>
+              <h3><span class="panel-eyebrow">THE GLOBAL PICTURE</span>Regional supply &amp; demand</h3>
               <div class="view-toggle">
                 <button type="button" class="view-btn active" data-view="map">Map</button>
                 <button type="button" class="view-btn" data-view="table">Table</button>
               </div>
             </div>
+            <p class="map-context">Open tonnage and cargo demand by region. <span class="muted">Simulated market data.</span></p>
+            <details class="map-method"><summary>How to read this map</summary>
             <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply), counted right now so it matches the status tiles above. Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Hover a bubble (or read the Consistency column in the table view) for how many of the last 14 days that region carried any open tonnage &mdash; a region with ships every day is a different proposition from one that happens to have them today. Simulated as of today's real date minus one year, not today's actual date.</p>
+            </details>
             <div id="regionMapFilterBanner" class="day-filter-banner hidden">
               <span id="regionMapFilterLabel"></span>
               <button type="button" id="regionMapFilterClear">Clear filter</button>
@@ -678,7 +694,7 @@
           </div>
 
           <div class="summary-panel">
-            <h3>Daily Trends <span class="muted" style="font-weight:400; font-size:0.75rem;">(last 14 days, simulated)</span></h3>
+            <h3><span class="panel-eyebrow">MARKET PULSE</span>Daily trends <span class="muted" style="font-weight:400; font-size:0.75rem;">(last 14 days, simulated)</span></h3>
             <div class="trend-chart">
               <div class="trend-chart-title">New vessels</div>
               <div id="chartNewVessels"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
@@ -701,7 +717,7 @@
 
       <section id="changes-section">
         <div class="section-head">
-          <h2>Change Feed</h2>
+          <h2><span class="section-number">02</span> Change Feed</h2>
           <div class="toolbar">
             <button type="button" class="window-btn active" data-window="dod" title="Since the previous working day; Monday compares to Friday">Day-on-day</button>
             <button type="button" class="window-btn" data-window="wow" title="Seven completed days, ending yesterday">Week-on-week</button>
@@ -712,7 +728,7 @@
 
       <section id="vessels-section">
         <div class="section-head">
-          <h2>Vessel Tracker</h2>
+          <h2><span class="section-number">03</span> Vessel Tracker</h2>
         </div>
         <div id="vesselDayFilterBanner" class="day-filter-banner hidden">
           <span id="vesselDayFilterLabel"></span>
@@ -756,7 +772,7 @@
 
       <section id="orders-section">
         <div class="section-head">
-          <h2>Order Tracker</h2>
+          <h2><span class="section-number">04</span> Order Tracker</h2>
         </div>
         <div id="orderDayFilterBanner" class="day-filter-banner hidden">
           <span id="orderDayFilterLabel"></span>
@@ -796,7 +812,7 @@
       </section>
 
       <section id="ecsa-section">
-        <div class="section-head"><h2>ECSA Ballast Tracker</h2></div>
+        <div class="section-head"><h2><span class="section-number">05</span> ECSA Ballast Tracker</h2></div>
         <p class="sub" style="margin:0 0 0.75rem;">Every vessel currently ballasting (empty, repositioning) toward East Coast South America. Expand a row for its status history trail. Last-carried-cargo data isn't available in this dataset, so "Destination" below is the vessel's next reported AIS destination, not what it last carried.</p>
         <div class="ecsa-summary">
           <span class="muted" id="ecsaCount">Loading&hellip;</span>
@@ -1072,6 +1088,7 @@
       </div>
     </div>
 
+    <script src="/static/world-land.js"></script>
     <script>
       // ---- theme toggle -----------------------------------------------
       // Icon-only, matching chat's own dark/light toggle convention: the
@@ -1108,9 +1125,64 @@
         }
       }
 
+      // The embedded Chainlit theme provider owns inline tokens as well as its
+      // root class. Override both without reloading or interrupting the session.
+      let chatThemeObserver;
+      const chatPalette = fetch("/chat/public/theme.json")
+        .then((response) => { if (!response.ok) throw new Error("Theme unavailable"); return response.json(); })
+        .then((data) => data.variables)
+        .catch(() => null);
+      function syncChatTheme(theme) {
+        const frame = document.getElementById("chatFrame");
+        try {
+          const doc = frame.contentDocument;
+          const root = doc?.documentElement;
+          if (!root) return;
+          if (doc.head && !doc.getElementById("ocean-results-layout")) {
+            const script = doc.createElement("script");
+            script.id = "ocean-results-layout";
+            script.src = "/chat/public/results-layout.js";
+            doc.head.appendChild(script);
+          }
+          root.dataset.oceanTheme = theme;
+          if (!root.classList.contains(theme) || root.classList.contains(theme === "light" ? "dark" : "light")) {
+            root.classList.remove("light", "dark"); root.classList.add(theme);
+          }
+          if (root.style.colorScheme !== theme) root.style.colorScheme = theme;
+          chatPalette.then((palettes) => {
+            if (!palettes || !doc.head || doc.getElementById("ocean-dashboard-theme")) return;
+            const style = doc.createElement("style");
+            style.id = "ocean-dashboard-theme";
+            style.textContent = Object.entries(palettes).map(([mode, tokens]) =>
+              `:root[data-ocean-theme="${mode}"] {${Object.entries(tokens).map(([key, value]) => `${key}:${value} !important;`).join("")}}`
+            ).join("\n") + `
+              :root[data-ocean-theme] #theme-toggle { display:none !important; }
+              :root[data-ocean-theme="light"] img.logo { content:url("/chat/public/logo_light.svg"); }
+              :root[data-ocean-theme="dark"] img.logo { content:url("/chat/public/logo_dark.svg"); }
+            `;
+            doc.head.appendChild(style);
+          });
+        } catch { /* Direct /chat navigation remains independently themed. */ }
+      }
+      function bindChatTheme() {
+        chatThemeObserver?.disconnect();
+        syncChatTheme(currentTheme());
+        try {
+          const root = document.getElementById("chatFrame").contentDocument?.documentElement;
+          if (!root) return;
+          chatThemeObserver = new MutationObserver(() => syncChatTheme(currentTheme()));
+          chatThemeObserver.observe(root, { attributes: true, attributeFilter: ["class", "style"] });
+        } catch {}
+      }
+      document.getElementById("chatFrame").addEventListener("load", bindChatTheme);
+      bindChatTheme();
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        updateThemeButton(); syncChatTheme(currentTheme());
+      });
       function applyTheme(theme) {
         document.documentElement.setAttribute("data-theme", theme);
-        localStorage.setItem("theme", theme);
+        try { localStorage.setItem("theme", theme); localStorage.setItem("vite-ui-theme", theme); } catch {}
+        syncChatTheme(theme);
         updateThemeButton();
       }
 
@@ -1119,11 +1191,7 @@
       });
       updateThemeButton();
 
-      // ---- top-level tabs ---------------------------------------------
-      // Two bars: the pinned Chat / Dashboard bar swaps the chat frame for
-      // <main>; the .sub-tabs bar inside <main> swaps its own pages. Each
-      // bar only touches its own buttons, so switching a sub-tab keeps
-      // "Dashboard" highlighted up top.
+      // Workspace navigation and market tools operate independently of chat.
       document.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const nav = btn.closest("nav");
@@ -1131,12 +1199,12 @@
           const main = document.querySelector("main");
           nav.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
           btn.classList.add("active");
+          nav.querySelectorAll(".tab-btn").forEach((b) => { if (b === btn) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
           if (nav.classList.contains("sub-tabs")) {
             main.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
             document.getElementById(`tab-${tab}`).classList.remove("hidden");
             main.classList.toggle("wide", tab === "tonnage-overrides" || tab === "order-overrides");
           } else {
-            document.getElementById("tab-chat").classList.toggle("hidden", tab !== "chat");
             document.getElementById("tab-voyage-defaults").classList.toggle("hidden", tab !== "voyage-defaults");
             main.classList.toggle("hidden", tab !== "dashboard");
             if (tab === "voyage-defaults") loadVoyageDefaults();
@@ -1191,17 +1259,21 @@
         try {
           const { fields, saved } = await getJson("/api/voyage-defaults");
           voyageDefaultFields = fields;
-          let group = null;
-          holder.className = "";
-          holder.innerHTML = fields.map((field) => {
-            const heading = field.group !== group ? `<div class="form-section-label">${escapeHtml(field.group)}</div>` : "";
-            group = field.group;
-            const value = saved[field.name] ?? "";
-            return `${heading}<label class="defaults-row">${escapeHtml(field.label)}
-              <input type="number" step="any" min="0" name="${escapeHtml(field.name)}"
-                value="${escapeHtml(value)}" placeholder="${escapeHtml(field.default)}" />
-              <span class="unit">${escapeHtml(field.unit)}</span></label>`;
-          }).join("");
+          const groups = new Map();
+          fields.forEach((field) => {
+            if (!groups.has(field.group)) groups.set(field.group, []);
+            groups.get(field.group).push(field);
+          });
+          holder.className = "defaults-grid";
+          holder.innerHTML = [...groups].map(([name, items], index) => `
+            <fieldset class="defaults-card"><legend><span class="section-number">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(name)}</legend>
+            ${items.map((field) => {
+              const value = saved[field.name] ?? "";
+              return `<label class="defaults-row"><span>${escapeHtml(field.label)}</span>
+                <input type="number" step="any" min="0" name="${escapeHtml(field.name)}"
+                  value="${escapeHtml(value)}" placeholder="${escapeHtml(field.default)}" />
+                <span class="unit">${escapeHtml(field.unit)}</span></label>`;
+            }).join("")}</fieldset>`).join("");
         } catch (error) {
           holder.className = "error";
           holder.textContent = `Could not load your defaults: ${error.message}`;
@@ -1270,21 +1342,54 @@
       // must already be viewport-relative coordinates (the tooltip is
       // `position: fixed`), then nudges it back on-screen if the box would
       // otherwise run past any edge of the browser window.
-      function showTooltip(tooltip, html, x, y) {
-        tooltip.innerHTML = html;
-        tooltip.style.left = `${x}px`;
-        tooltip.style.top = `${y}px`;
+      // One viewport-level tooltip avoids transformed/animated ancestors
+      // changing the coordinate system of position:fixed descendants.
+      const floatingTooltip = document.createElement("div");
+      floatingTooltip.id = "oceanTooltip";
+      floatingTooltip.className = "hover-tooltip";
+      floatingTooltip.setAttribute("role", "tooltip");
+      floatingTooltip.setAttribute("aria-hidden", "true");
+      document.body.appendChild(floatingTooltip);
+      let tooltipAnchor = null;
+      function showTooltip(_tooltip, html, x, y, anchor) {
+        const tooltip = floatingTooltip;
+        if (tooltipAnchor && tooltipAnchor !== anchor) tooltipAnchor.removeAttribute("aria-describedby");
+        tooltipAnchor = anchor || null;
+        tooltipAnchor?.setAttribute("aria-describedby", tooltip.id);
+        if (tooltip.innerHTML !== html) tooltip.innerHTML = html;
+        tooltip.setAttribute("aria-hidden", "false");
         tooltip.classList.add("visible");
         const box = tooltip.getBoundingClientRect();
-        const margin = 8;
-        if (box.left < margin) tooltip.style.left = `${x + (margin - box.left)}px`;
-        else if (box.right > window.innerWidth - margin) tooltip.style.left = `${x - (box.right - (window.innerWidth - margin))}px`;
-        if (box.top < margin) tooltip.style.top = `${y + (margin - box.top)}px`;
+        const margin = 12, gap = 14;
+        const headerBottom = document.querySelector(".app-header").getBoundingClientRect().bottom;
+        const minTop = Math.max(margin, headerBottom + 8);
+        let left = x + gap;
+        if (left + box.width > innerWidth - margin) left = x - box.width - gap;
+        left = Math.max(margin, Math.min(left, innerWidth - box.width - margin));
+        let top = y - 24;
+        top = Math.max(minTop, Math.min(top, innerHeight - box.height - margin));
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
       }
-
-      function hideTooltip(tooltip) {
-        tooltip.classList.remove("visible");
+      function hideTooltip() {
+        floatingTooltip.classList.remove("visible");
+        floatingTooltip.setAttribute("aria-hidden", "true");
+        tooltipAnchor?.removeAttribute("aria-describedby");
+        tooltipAnchor = null;
       }
+      function tooltipPoint(event, target) {
+        if (event && event.type.startsWith("pointer")) return [event.clientX, event.clientY];
+        const rect = target.getBoundingClientRect();
+        return [rect.right, rect.top + rect.height / 2];
+      }
+      window.addEventListener("scroll", () => {
+        if (tooltipAnchor && document.activeElement === tooltipAnchor) {
+          const [x, y] = tooltipPoint(null, tooltipAnchor);
+          showTooltip(null, floatingTooltip.innerHTML, x, y, tooltipAnchor);
+        } else hideTooltip();
+      }, true);
+      window.addEventListener("resize", hideTooltip);
+      document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideTooltip(); });
 
       // ---- regional supply & demand: map ----------------------------------
       // Centroids for the Baltic-Exchange-style trade zones this dataset
@@ -1325,39 +1430,9 @@
         "Scandinavia": [12, 60],
       };
 
-      // Simplified continent outlines, in the same [lon, lat] space as
-      // REGION_COORDS -- hand-plotted from general coastline knowledge
-      // (equirectangular-style vertices), not sourced from a GeoJSON/
-      // TopoJSON dataset or any mapping library: this stays a
-      // self-contained static page with no external data files or CDN
-      // dependency, consistent with the rest of this project. Simplified,
-      // not survey-accurate, but each landmass keeps its recognisable
-      // silhouette (Gulf of Mexico, the Central American isthmus, the
-      // Andean coast, the Horn of Africa, the Arabian and Indian
-      // peninsulas, Indochina, Scandinavia) rather than a rough blob.
-      const LAND_BLOBS = [
-        // North America
-        [[-165,68],[-140,70],[-95,72],[-80,68],[-65,60],[-52,48],[-55,40],[-75,35],[-80,25],[-97,26],[-90,18],[-92,14],[-84,9],[-77,8],[-82,22],[-97,20],[-105,20],[-110,23],[-115,30],[-124,40],[-124,48],[-130,55],[-140,60],[-155,60],[-165,55],[-168,65]],
-        // South America
-        [[-77,8],[-72,-4],[-80,-5],[-81,-15],[-75,-20],[-70,-30],[-71,-40],[-73,-52],[-68,-55],[-65,-50],[-62,-40],[-58,-35],[-48,-25],[-35,-8],[-40,0],[-50,2],[-60,8],[-70,10],[-77,8]],
-        // Europe (incl. Scandinavia)
-        [[-9,43],[-9,48],[0,50],[5,51],[8,54],[6,58],[10,63],[20,69],[28,70],[30,60],[28,55],[30,50],[27,42],[20,40],[15,38],[10,38],[3,42],[-9,43]],
-        // British Isles
-        [[-10,51],[-8,55],[-5,58],[-2,58],[0,53],[-3,50],[-6,50],[-10,51]],
-        // Africa
-        [[-17,35],[-6,36],[10,37],[20,33],[32,31],[35,28],[43,12],[51,12],[45,2],[40,-5],[40,-15],[35,-25],[27,-33],[18,-35],[13,-25],[12,-15],[9,5],[-5,5],[-10,10],[-17,15],[-17,35]],
-        // Madagascar
-        [[43,-12],[47,-13],[50,-16],[47,-25],[43,-22],[43,-12]],
-        // Asia (Middle East through the Far East, incl. India/Indochina/Arabia bumps)
-        [[27,42],[40,42],[48,40],[55,38],[60,42],[70,45],[85,50],[100,52],[115,50],[130,48],[142,45],[140,35],[130,32],[122,30],[120,23],[110,18],[105,10],[98,8],[95,15],[88,22],[80,8],[77,8],[73,15],[68,24],[61,25],[57,26],[51,24],[43,12],[35,28],[32,31],[27,42]],
-        // Japan
-        [[130,32],[132,34],[140,36],[142,40],[140,43],[135,40],[130,35],[130,32]],
-        // Australia
-        [[113,-22],[114,-28],[118,-33],[130,-32],[137,-35],[145,-38],[150,-37],[153,-28],[145,-17],[135,-12],[128,-15],[122,-18],[113,-22]],
-      ];
-
-      const MAP_BOUNDS = { lonMin: -105, lonMax: 158, latMin: -42, latMax: 70 };
-      const MAP_W = 900, MAP_H = 430, MAP_PAD = 28;
+      // Natural Earth coastline data; the same projection positions region markers.
+      const MAP_BOUNDS = { lonMin: -180, lonMax: 180, latMin: -60, latMax: 85 };
+      const MAP_W = 960, MAP_H = 416, MAP_PAD = 24;
 
       function project([lon, lat]) {
         const x = MAP_PAD + ((lon - MAP_BOUNDS.lonMin) / (MAP_BOUNDS.lonMax - MAP_BOUNDS.lonMin)) * (MAP_W - 2 * MAP_PAD);
@@ -1448,7 +1523,7 @@
         }
         const maxSupply = Math.max(1, ...mapped.map((r) => r.supply));
         const graticule = renderGraticule();
-        const land = LAND_BLOBS.map((pts) => `<path class="map-land" d="${blobPath(pts)}"></path>`).join("");
+        const land = WORLD_LAND.map((rings) => `<path class="map-land" fill-rule="evenodd" d="${rings.map(blobPath).join(" ")}"></path>`).join("");
         // Largest few get a direct label; the rest rely on the legend + tooltip + table (mark spec: label selectively).
         const labelThreshold = [...mapped].map((r) => r.supply).sort((a, b) => b - a)[Math.min(4, mapped.length - 1)] ?? 0;
         const bubbles = mapped.map((r) => {
@@ -1474,9 +1549,10 @@
         }).join("");
 
         container.innerHTML = `
-          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="img" aria-label="Regional supply and demand map">
+          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="group" aria-label="Regional supply and demand map">
             ${graticule}
             ${land}
+            <g class="ocean-labels" aria-hidden="true"><text x="150" y="230">PACIFIC OCEAN</text><text x="400" y="235">ATLANTIC</text><text x="660" y="280">INDIAN OCEAN</text></g>
             ${bubbles}
           </svg>
           <div class="hover-tooltip" id="mapTooltip"></div>
@@ -1485,7 +1561,7 @@
             <span class="swatch"><span class="dot" style="background:var(--status-warning)"></span>Balanced</span>
             <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Oversupplied (supply &gt; demand)</span>
             <span class="swatch"><span class="dot" style="background:var(--muted)"></span>No recent demand data</span>
-            <span class="swatch">Bubble size = open vessels</span>
+            <span class="swatch">Bubble size = open vessels</span><a class="map-credit" href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>
           </div>
         `;
         if (unmapped.length) {
@@ -1498,7 +1574,7 @@
         const tooltip = document.getElementById("mapTooltip");
         container.querySelectorAll("g[data-region]").forEach((g) => {
           const hit = g.querySelector(".map-bubble-hit");
-          const show = () => {
+          const show = (event) => {
             const region = g.dataset.region, supply = g.dataset.supply, demand = g.dataset.demand, status = g.dataset.status;
             const days = g.dataset.days, windowDays = g.dataset.window;
             const consistencyLine = days === "" || windowDays === ""
@@ -1506,22 +1582,17 @@
               : `<div class="muted">Open tonnage on ${escapeHtml(days)} of the last ${escapeHtml(windowDays)} days</div>`;
             const html = `
               <div class="t-title">${escapeHtml(region)}</div>
-              <div class="t-value">${formatNumber(supply)} open vessels</div>
-              <div class="t-value">${formatNumber(demand)} orders in the last 14 days</div>
+              <div class="t-metric"><strong>${formatNumber(supply)}</strong><span>open vessels</span></div>
+              <div class="t-row"><span>Orders · last 14 days</span><strong>${formatNumber(demand)}</strong></div>
               <div class="muted">${escapeHtml(status)}</div>
               ${consistencyLine}
             `;
-            const circle = g.querySelector(".map-bubble");
-            const cx = parseFloat(circle.getAttribute("cx")), cy = parseFloat(circle.getAttribute("cy"));
-            // .hover-tooltip is `position: fixed`, so these need to be
-            // viewport-relative (container's own on-screen rect), not
-            // container-relative the way `position: absolute` would want.
-            const rect = container.getBoundingClientRect();
-            const scaleX = rect.width / MAP_W;
-            showTooltip(tooltip, html, rect.left + cx * scaleX, rect.top + (cy * scaleX) - 10);
+            const [x, y] = tooltipPoint(event, hit);
+            showTooltip(tooltip, html, x, y, hit);
           };
           const hide = () => hideTooltip(tooltip);
           hit.addEventListener("pointerenter", show);
+          hit.addEventListener("pointermove", show);
           hit.addEventListener("focus", show);
           hit.addEventListener("pointerleave", hide);
           hit.addEventListener("blur", hide);
@@ -1635,7 +1706,7 @@
       // rather than inventing a shorter label for it.
       function regionBreakdownHtml(regions) {
         return (regions || []).map(
-          (r) => `<div class="t-value">${escapeHtml(r.region)}: ${formatNumber(r.count)}</div>`
+          (r) => `<div class="t-row"><span>${escapeHtml(r.region)}</span><strong>${formatNumber(r.count)}</strong></div>`
         ).join("");
       }
 
@@ -1678,17 +1749,18 @@
         const tooltip = document.getElementById("chartTooltip");
         container.querySelectorAll("rect[data-index]").forEach((rect) => {
           const d = series[Number(rect.dataset.index)];
-          const show = () => {
+          const show = (event) => {
             const html = `
               <div class="t-title">${escapeHtml(dayLabel(d.day))}</div>
-              <div class="t-value">${formatNumber(d.count)} total</div>
+              <div class="t-metric"><strong>${formatNumber(d.count)}</strong><span>${metric === "new_orders" ? "new orders" : "new vessels"}</span></div>
               ${regionBreakdownHtml(d.regions)}
             `;
-            const box = rect.getBoundingClientRect();
-            showTooltip(tooltip, html, box.left + box.width / 2, box.top - 6);
+            const [x, y] = tooltipPoint(event, rect);
+            showTooltip(tooltip, html, x, y, rect);
           };
           const hide = () => hideTooltip(tooltip);
           rect.addEventListener("pointerenter", show);
+          rect.addEventListener("pointermove", show);
           rect.addEventListener("focus", show);
           rect.addEventListener("pointerleave", hide);
           rect.addEventListener("blur", hide);
@@ -1743,7 +1815,7 @@
 
       function regionMoveBreakdownHtml(regions) {
         return (regions || []).map(
-          (r) => `<div class="t-value">${escapeHtml(r.region)}: +${formatNumber(r.up)} / ${MINUS}${formatNumber(r.down)}</div>`
+          (r) => `<div class="t-row"><span>${escapeHtml(r.region)}</span><strong>+${formatNumber(r.up)} / ${MINUS}${formatNumber(r.down)}</strong></div>`
         ).join("");
       }
 
@@ -1810,19 +1882,21 @@
         const tooltip = document.getElementById("chartTooltip");
         container.querySelectorAll("g.move-col").forEach((col) => {
           const d = series[Number(col.dataset.index)];
-          const show = () => {
+          const show = (event) => {
             const html = `
               <div class="t-title">${escapeHtml(dayLabel(d.day))}</div>
-              <div class="t-value">+${formatNumber(d.up)} back to Open</div>
-              <div class="t-value">${MINUS}${formatNumber(d.down)} to Fixed / On Subs</div>
-              <div class="t-value">Net ${signed(d.up - d.down)}</div>
+              <div class="t-row"><span>Back to Open</span><strong class="t-positive">+${formatNumber(d.up)}</strong></div>
+              <div class="t-row"><span>To Fixed / On Subs</span><strong class="t-negative">${MINUS}${formatNumber(d.down)}</strong></div>
+              <div class="t-net">Net movement <strong>${signed(d.up - d.down)}</strong></div>
               ${regionMoveBreakdownHtml(d.regions)}
             `;
-            const box = col.getBoundingClientRect();
-            showTooltip(tooltip, html, box.left + box.width / 2, box.top - 6);
+            const target = event?.target?.matches(".move-bar") ? event.target : col;
+            const [x, y] = tooltipPoint(event, target);
+            showTooltip(tooltip, html, x, y, target);
           };
           const hide = () => hideTooltip(tooltip);
           col.addEventListener("pointerenter", show);
+          col.addEventListener("pointermove", show);
           col.addEventListener("focusin", show);
           col.addEventListener("pointerleave", hide);
           col.addEventListener("focusout", hide);
@@ -2427,7 +2501,7 @@
           ? `Find order with order id: ${ids[0]} and provide details for it`
           : `Find orders with order ids: ${ids.join(", ")} and provide details for them`;
         const notice = document.getElementById("ordersSendNotice");
-        document.querySelector('.tab-btn[data-tab="chat"]').click();
+        if (document.getElementById("chatToggle").getAttribute("aria-expanded") !== "true") document.getElementById("chatToggle").click();
         if (writeToChatComposer(prompt)) {
           notice.textContent = "";
         } else {
@@ -4136,5 +4210,6 @@
 
       refreshTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     </script>
+    <script src="/static/workspace.js"></script>
   </body>
 </html>

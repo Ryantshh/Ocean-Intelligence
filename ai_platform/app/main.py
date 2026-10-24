@@ -40,7 +40,7 @@ CHAINLIT_PUBLIC_PREFIX = "/chat/public/"
 
 @app.middleware("http")
 async def revalidate_chainlit_public(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    """Make browsers revalidate Chainlit's public files on every load.
+    """Make browsers revalidate dashboard and chat assets on every load.
 
     Chainlit serves custom elements such as ``Results.jsx`` with no
     ``Cache-Control``, so browsers reuse a stale copy for hours after an edit.
@@ -56,10 +56,10 @@ async def revalidate_chainlit_public(request: Request, call_next: Callable[[Requ
     Returns
     -------
     Response
-        The response, with ``Cache-Control: no-cache`` on public files.
+        The response, with ``Cache-Control: no-cache`` on UI pages and assets.
     """
     response = await call_next(request)
-    if request.url.path.startswith(CHAINLIT_PUBLIC_PREFIX):
+    if request.url.path == "/" or request.url.path.startswith((CHAINLIT_PUBLIC_PREFIX, "/static/")):
         response.headers["Cache-Control"] = "no-cache"
     return response
 

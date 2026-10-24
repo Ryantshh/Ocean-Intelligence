@@ -1141,9 +1141,15 @@ function Voyages({ set }) {
   return (
     <div className="oi-v">
       <style>{`
-        .oi-v { display: flex; flex-direction: column; gap: 0.8rem; font-size: 0.78rem; color: hsl(var(--foreground)); }
+        .oi-v { min-width:0; container-type:inline-size; display: flex; flex-direction: column; gap: 0.8rem; font-size: 0.78rem; color: hsl(var(--foreground)); }
         .oi-v-card { border: 1px solid hsl(var(--border)); border-radius: 0.625rem; background: hsl(var(--background)); padding: 0.6rem 0.75rem; }
+        @container (max-width:520px) {
+          .oi-v .oi-v-row { grid-template-columns:minmax(0,1fr) 4.6rem; }
+          .oi-v .oi-v-label { grid-column:1 / -1; }
+          .oi-v-row { padding:7px 0; }
+        }
         .oi-v-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin-bottom: 0.4rem; }
+        .oi-v-rank-scroll { max-width:100%; overflow-x:auto; border-radius:8px; }
         .oi-v-rank { width: 100%; border-collapse: collapse; }
         .oi-v-rank td { padding: 0.3rem 0.4rem; border-bottom: 1px solid hsl(var(--border) / 0.6); white-space: nowrap; }
         .oi-v-rank tr:last-child td { border-bottom: none; }
@@ -1185,27 +1191,43 @@ function Voyages({ set }) {
         .oi-v-details > summary { cursor: pointer; color: hsl(var(--muted-foreground)); font-size: 0.74rem; margin-bottom: 0.5rem; }
       `}</style>
 
+      <div className="oi-v-report-head">
+        <span className="oi-v-kicker">VOYAGE ECONOMICS</span>
+        <h3>Compare the possibilities.</h3>
+        <p>{ranked.length} calculated · {waiting.length} awaiting calculation</p>
+      </div>
+      {draft.result && <section className="oi-v-summary" aria-label="Selected vessel voyage economics">
+        <div className="oi-v-summary-id"><span>SELECTED VESSEL</span><strong>{draft.vessel_id}</strong></div>
+        <div className="oi-v-metrics">
+          <div><span>Net revenue</span><strong>{money(draft.result.revenue)}</strong></div>
+          <div><span>Total costs</span><strong>{money(draft.result.revenue - draft.result.profit)}</strong></div>
+          <div data-loss={draft.result.profit < 0}><span>Voyage profit</span><strong>{money(draft.result.profit)}</strong></div>
+        </div>
+        <p>Estimated from current voyage inputs. Recalculate after editing assumptions.</p>
+      </section>}
+
       <div className="oi-v-card">
-        <div className="oi-v-title">Ranking</div>
-        <table className="oi-v-rank">
+        <div className="oi-v-title">Vessel comparison <span className="oi-v-muted">· highest profit first</span></div>
+        <div className="oi-v-rank-scroll" role="region" aria-label="Vessel ranking" tabIndex={0}><table className="oi-v-rank">
+          <thead><tr><th scope="col">Rank</th><th scope="col">Vessel</th><th scope="col">Net revenue</th><th scope="col">Profit</th></tr></thead>
           <tbody>
             {ranked.map((each, at) => (
               <tr key={each.vessel_id} data-on={each.vessel_id === draft.vessel_id} onClick={() => setVesselId(each.vessel_id)}>
                 <td className="oi-v-muted">{at + 1}</td>
-                <td>{each.vessel_id}</td>
-                <td data-num="true"><span className="oi-v-muted">revenue </span>{money(each.result.revenue)}</td>
-                <td data-num="true"><span className="oi-v-muted">profit </span>{money(each.result.profit)}</td>
+                <td><button type="button" className="oi-v-pick" onClick={() => setVesselId(each.vessel_id)} aria-pressed={each.vessel_id === draft.vessel_id}>{each.vessel_id}</button></td>
+                <td data-num="true">{money(each.result.revenue)}</td>
+                <td data-num="true">{money(each.result.profit)}</td>
               </tr>
             ))}
             {waiting.map((each) => (
               <tr key={each.vessel_id} data-on={each.vessel_id === draft.vessel_id} onClick={() => setVesselId(each.vessel_id)}>
                 <td className="oi-v-muted">–</td>
-                <td>{each.vessel_id}</td>
+                <td><button type="button" className="oi-v-pick" onClick={() => setVesselId(each.vessel_id)} aria-pressed={each.vessel_id === draft.vessel_id}>{each.vessel_id}</button></td>
                 <td className="oi-v-muted" colSpan={2}>{statusText(each)}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <div className="oi-v-card">
