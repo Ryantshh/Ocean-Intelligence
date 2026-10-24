@@ -26,7 +26,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ai_platform.backend.db import fetch_rows
@@ -101,6 +101,8 @@ class OverrideRequest(BaseModel):
     base_tonnage_row_key: str = Field(min_length=1, max_length=128)
     override_status: toq.OverrideStatus
     entered_by: str = Field(min_length=1, max_length=120)
+    # Why the trader is making this change; logged to the audit trail.
+    reason: str = Field(min_length=1, max_length=500)
     open_area: str | None = Field(default=None, max_length=120)
     open_date_start: str | None = None
     open_date_end: str | None = None
@@ -249,6 +251,7 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
                 # make an untouched field look cleared. See insert_audit_sql.
                 new_row["commercial_status"],
                 body.entered_by,
+                reason=body.reason,
                 open_area=new_row["open_area"],
                 open_date_start=_to_timestamp(new_row["open_date_start"]),
                 open_date_end=_to_timestamp(new_row["open_date_end"]),
@@ -274,6 +277,56 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
         )
 
     return rows[0]
+
+
+@router.delete("")
+async def delete_record(
+    vessel_id: str,
+    tonnage_row_key: str,
+    entered_by: str = Query(min_length=1, max_length=120),
+    reason: str = Query(min_length=1, max_length=500),
+) -> dict[str, Any]:
+    """Delete one ``tonnage_test`` row and log the deletion to the audit trail.
+
+    The audit entry (``override_status`` = ``DELETED``, the removed row's
+    values on the ``old_*`` side) is written after the delete commits, and
+    like :func:`submit_override` a failure logging it does not fail the delete.
+
+    Raises
+    ------
+    HTTPException
+        404 if the row no longer exists for that vessel; 502 on a database failure.
+    """
+    rows = await _run(*toq.delete_tonnage_row_sql(tonnage_row_key, vessel_id))
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Record no longer exists for vessel_id={vessel_id!r} "
+                "-- it may have just been edited or deleted elsewhere. Refresh and try again."
+            ),
+        )
+    old = rows[0]
+    try:
+        await _run(
+            *toq.insert_audit_sql(
+                vessel_id,
+                "DELETED",
+                entered_by,
+                reason=reason,
+                old_override_status=old["commercial_status"],
+                old_open_area=old["open_area"],
+                old_open_date_start=_to_timestamp(old["open_date_start"]),
+                old_open_date_end=_to_timestamp(old["open_date_end"]),
+            )
+        )
+    except HTTPException as exc:
+        logger.warning(
+            "trader_override_audit insert failed for deleted vessel_id=%r (%s); "
+            "tonnage_test delete already committed, continuing",
+            vessel_id, exc.detail,
+        )
+    return {"deleted": True, "vessel_id": vessel_id}
 
 
 @router.get("/audit")

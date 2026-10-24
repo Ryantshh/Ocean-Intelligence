@@ -166,6 +166,23 @@ def tonnage_row_snapshot_sql(base_tonnage_row_key: str, vessel_id: str) -> tuple
     )
 
 
+def delete_tonnage_row_sql(base_tonnage_row_key: str, vessel_id: str) -> tuple[str, list]:
+    """Delete one ``tonnage_test`` row, returning its trader-editable fields.
+
+    ``RETURNING`` hands back the deleted row's values so the API layer can
+    log them to ``trader_override_audit`` (as the ``old_*`` side) without a
+    separate read that could race the delete. Empty result means the row no
+    longer exists for that vessel.
+    """
+    return (
+        (
+            "DELETE FROM public.tonnage_test WHERE tonnage_row_key = $1 AND vessel_id = $2 "
+            "RETURNING commercial_status, open_area, open_date_start, open_date_end"
+        ),
+        [base_tonnage_row_key, vessel_id],
+    )
+
+
 def vessel_history_sql(vessel_id: str) -> tuple[str, list]:
     """Every reported record for one vessel, newest first.
 
@@ -308,7 +325,7 @@ _AUDIT_COLUMNS = (
     "old_open_area", "open_area",
     "old_open_date_start", "open_date_start",
     "old_open_date_end", "open_date_end",
-    "entered_by", "created_at",
+    "entered_by", "created_at", "reason",
 )
 
 
@@ -317,6 +334,7 @@ def insert_audit_sql(
     override_status: OverrideStatus,
     entered_by: str,
     *,
+    reason: str | None = None,
     open_area: str | None = None,
     open_date_start: object = None,
     open_date_end: object = None,
@@ -351,6 +369,8 @@ def insert_audit_sql(
         form requires it).
     entered_by : str
         Free-text trader identifier -- the dashboard route has no login.
+    reason : str or None
+        Why the trader made (or deleted) this record, logged as typed.
     open_area : optional
         The vessel's resulting value for that column, from the same
         ``RETURNING`` row -- already plain text, no parsing needed here.
@@ -373,21 +393,21 @@ def insert_audit_sql(
         "vessel_id, old_override_status, override_status, "
         "old_open_area, open_area, "
         "old_open_date_start, open_date_start, "
-        "old_open_date_end, open_date_end, entered_by"
+        "old_open_date_end, open_date_end, entered_by, reason"
     )
     returning = ", ".join(_AUDIT_COLUMNS)
     return (
         (
             f"INSERT INTO public.trader_override_audit ({columns}) "
             "VALUES ($1, $2, $3, $4, $5, $6::timestamp, $7::timestamp, "
-            "$8::timestamp, $9::timestamp, $10) "
+            "$8::timestamp, $9::timestamp, $10, $11) "
             f"RETURNING {returning}"
         ),
         [
             vessel_id, old_override_status, override_status,
             old_open_area, open_area,
             old_open_date_start, open_date_start,
-            old_open_date_end, open_date_end, entered_by,
+            old_open_date_end, open_date_end, entered_by, reason,
         ],
     )
 

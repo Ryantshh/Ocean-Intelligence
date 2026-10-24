@@ -108,6 +108,27 @@ def order_detail_sql(order_id: str, order_seq: int) -> tuple[str, list]:
     )
 
 
+def order_records_sql(order_id: str) -> tuple[str, list]:
+    """Every ``order_seq`` row sharing one ``order_id``, for the delete picker.
+
+    Same columns as :func:`order_detail_sql`, ordered by ``order_seq``.
+    """
+    return (
+        (
+            "SELECT order_id::text AS order_id, order_seq, "
+            "(SELECT count(*) FROM public.order_test t "
+            "WHERE t.order_id = o.order_id) AS order_seq_count, "
+            "cargo_type, cargo_description, "
+            "load_port, load_zone, discharge_port, discharge_parent_zone, "
+            "cargo_weight_min, cargo_weight_max, laycan_start, laycan_end, "
+            "date_received, update_date, assigned "
+            "FROM public.order_test o "
+            "WHERE order_id = $1::text::bigint ORDER BY order_seq"
+        ),
+        [order_id],
+    )
+
+
 def update_order_sql(
     order_id: str,
     order_seq: int,
@@ -172,6 +193,23 @@ def update_order_sql(
     )
 
 
+def delete_order_sql(order_id: str, order_seq: int) -> tuple[str, list]:
+    """Delete one ``(order_id, order_seq)`` row, returning its editable fields.
+
+    ``RETURNING`` supplies the deleted values for the audit log's ``old_*``
+    side. Empty result means the order no longer exists. Twins sharing
+    ``order_id`` are left alone.
+    """
+    return (
+        (
+            "DELETE FROM public.order_test "
+            "WHERE order_id = $1::text::bigint AND order_seq = $2 "
+            "RETURNING laycan_start, laycan_end, cargo_weight_min, cargo_weight_max"
+        ),
+        [order_id, order_seq],
+    )
+
+
 # Columns every audit insert/select below lists explicitly, in this order.
 _AUDIT_COLUMNS = (
     "id", "order_id", "order_seq",
@@ -179,7 +217,7 @@ _AUDIT_COLUMNS = (
     "old_laycan_end", "laycan_end",
     "old_cargo_weight_min", "cargo_weight_min",
     "old_cargo_weight_max", "cargo_weight_max",
-    "customer_name", "entered_by", "created_at",
+    "customer_name", "entered_by", "created_at", "action", "reason",
 )
 
 
@@ -197,6 +235,8 @@ def insert_audit_sql(
     old_laycan_end: object = None,
     old_cargo_weight_min: float | None = None,
     old_cargo_weight_max: float | None = None,
+    action: str = "UPDATE",
+    reason: str | None = None,
 ) -> tuple[str, list]:
     """Log one trader submission to ``order_override_audit``, before and after.
 
@@ -231,6 +271,13 @@ def insert_audit_sql(
         The order's own values for those columns just before the update,
         from a read of :func:`order_detail_sql` taken beforehand.
 
+    action : str
+        ``UPDATE`` (default) or ``DELETE``; a delete logs the removed row's
+        values on the ``old_*`` side and leaves the new side null.
+
+    reason : str or None
+        Why the trader made (or deleted) this record, logged as typed.
+
     Returns
     -------
     tuple
@@ -241,14 +288,14 @@ def insert_audit_sql(
         "old_laycan_end, laycan_end, "
         "old_cargo_weight_min, cargo_weight_min, "
         "old_cargo_weight_max, cargo_weight_max, "
-        "customer_name, entered_by"
+        "customer_name, entered_by, action, reason"
     )
     returning = ", ".join(_AUDIT_COLUMNS)
     return (
         (
             f"INSERT INTO public.order_override_audit ({columns}) "
             "VALUES ($1, $2, $3::timestamp, $4::timestamp, $5::timestamp, $6::timestamp, "
-            "$7::numeric, $8::numeric, $9::numeric, $10::numeric, $11, $12) "
+            "$7::numeric, $8::numeric, $9::numeric, $10::numeric, $11, $12, $13, $14) "
             f"RETURNING {returning}"
         ),
         [
@@ -256,7 +303,7 @@ def insert_audit_sql(
             old_laycan_end, laycan_end,
             old_cargo_weight_min, cargo_weight_min,
             old_cargo_weight_max, cargo_weight_max,
-            customer_name, entered_by,
+            customer_name, entered_by, action, reason,
         ],
     )
 
