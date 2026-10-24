@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ai_platform.app.api.dashboard import router as dashboard_router
 from ai_platform.app.api.export import router as export_router
+from ai_platform.app.api.voyage_defaults import router as voyage_defaults_router
 from ai_platform.backend.db import close_pool
 from ai_platform.order_override.order_override import router as order_override_router
 from ai_platform.trader_override.trader_override import router as trader_override_router
@@ -103,6 +104,7 @@ app.include_router(dashboard_router)
 app.include_router(export_router)
 app.include_router(trader_override_router)
 app.include_router(order_override_router)
+app.include_router(voyage_defaults_router)
 app.mount("/static", StaticFiles(directory=str(DASHBOARD_DIR)), name="static")
 
 mount_chainlit(app=app, target=CHAINLIT_TARGET, path="/chat")

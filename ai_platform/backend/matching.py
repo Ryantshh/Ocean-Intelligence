@@ -6,6 +6,10 @@ checks every order is there, and runs one matcher agent per order in parallel, e
 in a fresh context. The matcher builds its own vessel search from the row; code
 writes each order's report from the rows it found. Only the reports return to the
 main agent; the vessel rows go to the results panel through the custom stream.
+
+Each matched vessel also gets a voyage draft: the calculator inputs filled from
+the order and vessel rows, ranked by profit within its order. Drafts still
+needing the trader's input rank last.
 """
 
 from __future__ import annotations
@@ -27,6 +31,13 @@ from ai_platform.backend.llm import get_chat_model
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.tables import TONNAGE, VesselSearch
 from ai_platform.backend.tools import _search
+from ai_platform.backend.voyage import (
+    VOYAGE_FIELDS,
+    VoyageDraft,
+    draft_voyage,
+    rank_voyages,
+)
+from ai_platform.backend.voyage_defaults import load_voyage_defaults
 
 _logger = get_logger("agent")
 
@@ -219,32 +230,43 @@ matcher_agent = create_agent(
 )
 
 
-def _report(order_id: str, rows: Sequence[dict[str, Any]]) -> str:
-    """Write an order's report: the match count, then one bullet per vessel.
+def _report(order_id: str, rows: Sequence[dict[str, Any]], drafts: Sequence[VoyageDraft]) -> str:
+    """Write an order's report: the match count, then one bullet per ranked vessel.
 
     Parameters
     ----------
     order_id : str
         The order matched.
     rows : Sequence of dict
-        Its matched vessels, earliest open date first.
+        Its matched vessels.
+    drafts : Sequence of VoyageDraft
+        Their voyage drafts, ranked.
 
     Returns
     -------
     str
-        ``- VESSEL 0887 · 183k dwt · laden · Singapore · open 2025-01-01 → 2025-01-03``
-        per vessel under a count line.
+        ``- VESSEL 0887 · revenue 1,100,000 · profit 456,916 · 183k dwt · laden ·
+        Singapore · open 2025-01-01 → 2025-01-03`` per ranked vessel under a count
+        line, then how many vessels still need the trader's input.
     """
     if not rows:
         return f"{order_id}: no open vessel fits this order."
-    lines = [f"{order_id}: {len(rows)} vessels matched."]
-    lines += [
-        f"- {row.get('vessel_id')} · {round((row.get('dwt') or 0) / 1000)}k dwt · "
-        f"{str(row.get('ballast_laden') or 'unknown').lower()} · "
-        f"{row.get('open_area') or 'unknown area'} · "
-        f"open {str(row.get('open_date_start'))[:10]} → {str(row.get('open_date_end'))[:10]}"
-        for row in rows
-    ]
+    rows_by_vessel = {str(row.get("vessel_id")): row for row in rows}
+    ranked = [draft for draft in drafts if draft.result]
+    waiting_count = len(drafts) - len(ranked)
+    lines = [f"{order_id}: {len(rows)} vessels matched, {len(ranked)} ranked by voyage profit."]
+    for draft in ranked:
+        row = rows_by_vessel.get(draft.vessel_id, {})
+        result = draft.result
+        lines.append(
+            f"- {draft.vessel_id} · revenue {result.revenue:,.0f} · profit {result.profit:,.0f} · "
+            f"{round((row.get('dwt') or 0) / 1000)}k dwt · "
+            f"{str(row.get('ballast_laden') or 'unknown').lower()} · "
+            f"{row.get('open_area') or 'unknown area'} · "
+            f"open {str(row.get('open_date_start'))[:10]} → {str(row.get('open_date_end'))[:10]}"
+        )
+    if waiting_count:
+        lines.append(f"{waiting_count} vessels need the trader's input in the results panel before they can be ranked.")
     return "\n".join(lines)
 
 
@@ -277,6 +299,7 @@ async def _match_one(
     order_id: str,
     row: dict[str, Any],
     conditions: dict[str, Any],
+    saved: dict[str, float],
     limit: asyncio.Semaphore,
     write: Callable[[Any], None],
 ) -> dict[str, Any]:
@@ -295,6 +318,8 @@ async def _match_one(
         Its full cargo row.
     conditions : dict
         The trader's vessel conditions, applied to its search in code.
+    saved : dict of str to float
+        The trader's saved voyage defaults, prefilled into every draft.
     limit : asyncio.Semaphore
         Shared cap on matchers running at once.
     write : Callable
@@ -314,10 +339,13 @@ async def _match_one(
                 context=MatcherContext(conditions=conditions),
             )
             search, rows = _last_search(final_state["messages"])
-            report = _report(order_id, rows)
+            drafts = await asyncio.to_thread(
+                lambda: rank_voyages([draft_voyage(row, vessel, saved) for vessel in rows])
+            )
+            report = _report(order_id, rows, drafts)
         except Exception as error:
             _logger.exception("matcher failed for order %s", order_id)
-            report, rows = f"The vessel search for order {order_id} failed: {error}", []
+            report, rows, drafts = f"The vessel search for order {order_id} failed: {error}", [], []
         write(
             {
                 "kind": "match_finished",
@@ -327,7 +355,7 @@ async def _match_one(
                 "search": {"vessels": search},
             }
         )
-    return {"order_id": order_id, "report": report, "rows": rows}
+    return {"order_id": order_id, "report": report, "rows": rows, "drafts": drafts}
 
 
 def _panel_rows(results: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -359,11 +387,10 @@ async def match_orders(
     runtime: ToolRuntime,
     vessel_conditions: VesselConditions | None = None,
 ) -> dict[str, Any]:
-    """Find open vessels for two or more orders, one matcher per order.
+    """Find open vessels for one or more orders and rank them by voyage profit.
 
-    Use this when the user asks which vessels could cover, fit, lift or take
-    several orders; for a single order, run the vessels search yourself with the
-    matching rule. Pass the order numbers. Every order must already be in a search
+    Use this whenever the user asks which vessels could cover, fit, lift or take
+    one or more orders, even a single order. Pass the order numbers. Every order must already be in a search
     result of this conversation: if any is not, nothing is matched and
     ``not_in_results`` lists them — search those order numbers, then call this
     again with the same numbers. Never call it in the same step as that search.
@@ -380,7 +407,8 @@ async def match_orders(
     -------
     dict
         ``orders``: per order, ``matched`` (vessel count; report this, never a
-        tally) and ``report`` (one bullet per matched vessel). ``not_found``: orders
+        tally) and ``report`` (one bullet per ranked vessel, highest voyage
+        profit first, then how many still need the trader's input). ``not_found``: orders
         searched by number that do not exist. ``cannot_match``: orders lacking a
         load zone or laycan. ``not_in_results``: orders not yet in any search
         result; when set, ``orders`` is empty.
@@ -397,17 +425,28 @@ async def match_orders(
     ]
     matchable_ids = [order_id for order_id in found_ids if order_id not in cannot_match]
     conditions = vessel_conditions.model_dump(exclude_none=True) if vessel_conditions else {}
+    saved = await load_voyage_defaults(runtime.config.get("configurable", {}).get("user_identifier"))
     limit = asyncio.Semaphore(MAX_PARALLEL_MATCHERS)
     results = await asyncio.gather(
         *(
-            _match_one(number, order_id, rows[order_id], conditions, limit, runtime.stream_writer)
+            _match_one(number, order_id, rows[order_id], conditions, saved, limit, runtime.stream_writer)
             for number, order_id in enumerate(matchable_ids, start=1)
         )
     )
 
     panel_rows = _panel_rows(results)
     if panel_rows:
-        runtime.stream_writer({"kind": "match_rows", "rows": panel_rows})
+        runtime.stream_writer(
+            {
+                "kind": "match_rows",
+                "rows": panel_rows,
+                "voyages": {
+                    result["order_id"]: [draft.model_dump(mode="json") for draft in result["drafts"]]
+                    for result in results
+                },
+                "fields": VOYAGE_FIELDS,
+            }
+        )
     return {
         "orders": [
             {"order_id": result["order_id"], "matched": len(result["rows"]), "report": result["report"]}

@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import re
+from datetime import UTC, datetime
 
 import chainlit as cl
 from botocore.config import Config
@@ -66,7 +67,22 @@ class ThreadListDataLayer(SQLAlchemyDataLayer):
     ``delete_element`` returns before the row is gone. Chainlit removes a form
     from the screen only after the delete completes, so awaiting it leaves an
     answered form on screen for the length of two database round trips.
+
+    Thread ``createdAt`` is written by Chainlit as server local time with a "Z"
+    suffix, so a thread started late in a UTC+8 day reads as tomorrow and the
+    sidebar files it under "Previous 7 days". New timestamps are written in real
+    UTC, and the sidebar dates each thread by its newest step instead.
     """
+
+    async def get_current_timestamp(self) -> str:
+        """Return the current time in UTC, ISO formatted with a "Z" suffix.
+
+        Returns
+        -------
+        str
+            For example ``2026-10-22T13:29:30.744163Z``.
+        """
+        return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     async def delete_element(self, element_id: str, thread_id: str | None = None) -> None:
         """Schedule the element delete and return without waiting for it.
@@ -137,7 +153,7 @@ class ThreadListDataLayer(SQLAlchemyDataLayer):
         threads: list[ThreadDict] = [
             ThreadDict(
                 id=str(row["thread_id"]),
-                createdAt=row["thread_createdat"],
+                createdAt=row["updatedat"] or row["thread_createdat"],
                 name=row["thread_name"],
                 userId=row["user_id"],
                 userIdentifier=row["user_identifier"],

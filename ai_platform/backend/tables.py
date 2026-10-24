@@ -368,6 +368,8 @@ ORDERS = TableSpec(
     ),
     id_field="order_ids",
     horizon_column="date_received",
+    latest_key="order_id",
+    latest_order="update_date DESC NULLS LAST, date_received DESC NULLS LAST, order_seq DESC",
 )
 
 
@@ -377,6 +379,7 @@ TONNAGE = TableSpec(
     display_columns=(
         "vessel_id",
         "dwt",
+        "grain_capacity",
         "ship_size",
         "ship_type",
         "vessel_status",
