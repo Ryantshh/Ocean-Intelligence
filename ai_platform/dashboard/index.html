@@ -377,6 +377,11 @@
       /* Chat is Chainlit's own /chat page in a full-screen frame. Hiding it
          keeps it loaded, so neither side reloads when switching tabs. */
       #tab-chat { position: fixed; inset: 0; }
+      .defaults-page { max-width: 46rem; margin: 0 auto; padding: 5rem 1.5rem 4rem; }
+      .defaults-page h2 { margin: 0; }
+      form.override-form label.defaults-row { display: grid; flex-direction: initial; grid-template-columns: minmax(0, 1fr) 9rem 4.5rem; align-items: center; gap: 0.75rem; }
+      .defaults-row span.unit { font-size: 0.78rem; color: var(--muted); }
+      form.override-form .defaults-row input { text-align: right; font-variant-numeric: tabular-nums; }
       #chatFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
       .tab-btn.hidden { display: none; }
       /* Dashboard / override pages, switched inside <main>: an ordinary bar
@@ -575,10 +580,25 @@
     <nav class="tabs">
       <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
       <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
+      <button type="button" class="tab-btn" data-tab="voyage-defaults">Voyage defaults</button>
     </nav>
 
     <div id="tab-chat" class="tab-panel">
       <iframe id="chatFrame" src="/chat" title="Ocean Intelligence chat"></iframe>
+    </div>
+
+    <div id="tab-voyage-defaults" class="tab-panel hidden defaults-page">
+      <h2>Voyage defaults</h2>
+      <p class="sub" id="defaultsIntro">
+        Your own starting values for the voyage calculator. Every vessel matched
+        to an order starts from these; a blank box uses the calculator default
+        shown. Changes apply to the next match.
+      </p>
+      <form class="override-form" id="defaultsForm">
+        <div id="defaultsFields" class="muted">Loading&hellip;</div>
+        <div class="form-message" id="defaultsMessage"></div>
+        <button type="submit" id="defaultsSave">Save defaults</button>
+      </form>
     </div>
 
     <main class="hidden">
@@ -1070,7 +1090,9 @@
             main.classList.toggle("wide", tab === "tonnage-overrides" || tab === "order-overrides");
           } else {
             document.getElementById("tab-chat").classList.toggle("hidden", tab !== "chat");
-            main.classList.toggle("hidden", tab === "chat");
+            document.getElementById("tab-voyage-defaults").classList.toggle("hidden", tab !== "voyage-defaults");
+            main.classList.toggle("hidden", tab !== "dashboard");
+            if (tab === "voyage-defaults") loadVoyageDefaults();
           }
         });
       });
@@ -1098,6 +1120,55 @@
         const cls = { OPEN: "badge-open", "ON SUBS": "badge-watchlist", FIXED: "badge-fixed", "LIKELY FIXED": "badge-likely-fixed" }[status] || "badge-fixed";
         return `<span class="badge ${cls}">${escapeHtml(status || "—")}</span>`;
       }
+
+      // ---- voyage defaults ----------------------------------------------
+      // The fields, their calculator defaults and the trader's saved values come
+      // from /api/voyage-defaults, so this page holds no field list of its own.
+      let voyageDefaultFields = [];
+
+      async function loadVoyageDefaults() {
+        const holder = document.getElementById("defaultsFields");
+        try {
+          const { fields, saved } = await getJson("/api/voyage-defaults");
+          voyageDefaultFields = fields;
+          let group = null;
+          holder.className = "";
+          holder.innerHTML = fields.map((field) => {
+            const heading = field.group !== group ? `<div class="form-section-label">${escapeHtml(field.group)}</div>` : "";
+            group = field.group;
+            const value = saved[field.name] ?? "";
+            return `${heading}<label class="defaults-row">${escapeHtml(field.label)}
+              <input type="number" step="any" min="0" name="${escapeHtml(field.name)}"
+                value="${escapeHtml(value)}" placeholder="${escapeHtml(field.default)}" />
+              <span class="unit">${escapeHtml(field.unit)}</span></label>`;
+          }).join("");
+        } catch (error) {
+          holder.className = "error";
+          holder.textContent = `Could not load your defaults: ${error.message}`;
+        }
+      }
+
+      document.getElementById("defaultsForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = document.getElementById("defaultsMessage");
+        const button = document.getElementById("defaultsSave");
+        const values = {};
+        voyageDefaultFields.forEach((field) => {
+          const input = event.target.elements[field.name];
+          if (input && input.value !== "") values[field.name] = Number(input.value);
+        });
+        button.disabled = true;
+        try {
+          await postJson("/api/voyage-defaults", values);
+          message.className = "form-message visible success";
+          message.textContent = "Saved. The next vessel match uses these values.";
+        } catch (error) {
+          message.className = "form-message visible error";
+          message.textContent = `Could not save: ${error.message}`;
+        } finally {
+          button.disabled = false;
+        }
+      });
 
       async function getJson(path) {
         const response = await fetch(path);
