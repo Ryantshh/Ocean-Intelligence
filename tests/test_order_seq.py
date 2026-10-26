@@ -40,10 +40,10 @@ class OrderOverrideQueryTests(unittest.TestCase):
         self.assertEqual(params[5], 2)
 
     def test_audit_records_order_seq(self):
-        sql, params = ooq.insert_audit_sql("1", 3, "trader")
+        sql, params = ooq.insert_audit_sql("1", 3, "trader", reason="broker update")
         self.assertIn("order_id, order_seq,", sql)
         self.assertEqual(params[:2], ["1", 3])
-        self.assertEqual(params[-1], "trader")
+        self.assertIn("trader", params)
 
     def test_picker_lists_each_order_seq_with_its_count(self):
         sql, _ = ooq.orders_sql()
@@ -75,18 +75,22 @@ class OrderOverrideApiTests(unittest.TestCase):
             "order_id": "5", "order_seq": 2, "laycan_start": None, "laycan_end": None,
             "cargo_weight_min": None, "cargo_weight_max": None,
         }
-        run = AsyncMock(side_effect=[[snapshot], [snapshot], [{}]])
-        with patch.object(order_override, "_run", run):
+        run = AsyncMock(side_effect=[[snapshot], [snapshot]])
+        audit = AsyncMock(return_value=[{}])
+        with patch.object(order_override, "_run", run), patch.object(order_override, "fetch_rows", audit):
             response = self.client.post(
                 "/api/order-override",
-                json={"order_id": "5", "order_seq": 2, "entered_by": "trader", "cargo_weight_max": 9},
+                json={
+                    "order_id": "5", "order_seq": 2, "entered_by": "trader",
+                    "reason": "broker update", "cargo_weight_max": 9,
+                },
             )
         self.assertEqual(response.status_code, 201)
-        detail_call, update_call, audit_call = run.call_args_list
+        detail_call, update_call = run.call_args_list
         self.assertEqual(detail_call.args[1], ["5", 2])
         self.assertIn("AND order_seq = $6", update_call.args[0])
         self.assertEqual(update_call.args[1][5], 2)
-        self.assertEqual(audit_call.args[1][:2], ["5", 2])
+        self.assertEqual(audit.call_args.args[1][:2], ["5", 2])
 
 
 class DashboardOrderListTests(unittest.TestCase):
