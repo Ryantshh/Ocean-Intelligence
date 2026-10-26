@@ -168,6 +168,17 @@ body.chat-open .status-tile { min-width:0; padding:16px; }
 .map-legend { font-size:10px; gap:10px 14px; padding:13px; }
 .map-unmapped { font-size:10px; line-height:1.6; }
 .trend-chart { margin-top:18px; }
+/* Fullscreen two-column layout only: the Daily trends panel takes the map
+   panel's height (contain:size keeps its own content from setting the row
+   height) and the three charts share it equally. index.html redraws each
+   chart to fill its share (fittedChartHeight). Stacked, or with the
+   assistant open, the charts keep their usual shape. */
+@media(min-width:1101px) {
+  body:not(.chat-open) .summary-grid { align-items:stretch; }
+  body:not(.chat-open) .trends-panel { --trends-fit:1; contain:size; display:flex; flex-direction:column; }
+  body:not(.chat-open) .trends-panel .trend-chart { flex:1 1 0; min-height:0; display:flex; flex-direction:column; }
+  body:not(.chat-open) .trends-panel :is(#chartNewVessels,#chartStatusChanges,#chartNewOrders) { flex:1 1 0; min-height:0; overflow:hidden; }
+}
 .trend-chart-title { font-size:10px; line-height:1.5; }
 .change-group { border-radius:12px; padding:18px; }
 .change-group h3 { display:flex; align-items:center; gap:8px; margin-bottom:15px; font-size:12px; }
