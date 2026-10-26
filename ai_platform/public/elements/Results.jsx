@@ -801,6 +801,480 @@ ${toMarkdown(columns, chosen)}`);
 }
 
 
+const PORT_SUGGESTIONS = 50;
+
+const SOURCE_TAGS = {
+  supabase: "Supabase",
+  computed: "Computed",
+  default: "Default",
+  saved: "Your default",
+  trader: "Edited",
+};
+
+// The port list is the same for every panel, so it is fetched once per page and
+// shared through window, as each element runs in its own sandbox.
+function usePortNames() {
+  const [names, setNames] = useState(() => window.__oiPortNames ?? []);
+  useEffect(() => {
+    if (window.__oiPortNames) return;
+    callAction({ name: "port_names", payload: {} })
+      .then((reply) => {
+        const found = (reply?.response ?? reply)?.names ?? [];
+        window.__oiPortNames = found;
+        setNames(found);
+      })
+      .catch(() => {});
+  }, []);
+  return names;
+}
+
+function money(value) {
+  return Math.round(value).toLocaleString();
+}
+
+function toNumber(text) {
+  if (isBlank(text)) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
+// One section per group name, in the order groups first appear; a port box leads
+// its section so the distance worked out from it sits directly below.
+function groupFields(fields, level) {
+  const groups = new Map();
+  for (const field of fields.filter((each) => each.level === level)) {
+    if (!groups.has(field.group)) groups.set(field.group, []);
+    groups.get(field.group).push(field);
+  }
+  return [...groups].map(([name, members]) => ({
+    name,
+    fields: [...members.filter((each) => each.kind === "port"), ...members.filter((each) => each.kind !== "port")],
+  }));
+}
+
+function Voyages({ set }) {
+  const fields = set.fields ?? [];
+  const [drafts, setDrafts] = useState(set.voyages ?? []);
+  const [vesselId, setVesselId] = useState(drafts[0]?.vessel_id ?? null);
+  const [orderEdits, setOrderEdits] = useState({ ports: {}, values: {} });
+  const [vesselEdits, setVesselEdits] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const portNames = usePortNames();
+
+  const draft = drafts.find((each) => each.vessel_id === vesselId) ?? drafts[0];
+  const first = drafts[0];
+  if (!draft) return null;
+  const baseOf = (field) => (field.level === "order" ? first : draft);
+
+  const editsFor = (id) => vesselEdits[id] ?? { ports: {}, values: {} };
+  const editBucket = (field) =>
+    field.level === "order" ? orderEdits : editsFor(draft.vessel_id);
+
+  const typedValue = (field) => {
+    const bucket = field.kind === "port" ? editBucket(field).ports : editBucket(field).values;
+    return bucket[field.name];
+  };
+
+  const shown = (field) => {
+    const typed = typedValue(field);
+    if (typed !== undefined) return typed;
+    const base = baseOf(field);
+    const stored = field.kind === "port" ? base.ports[field.name] : base.values[field.name];
+    return isBlank(stored) ? "" : String(stored);
+  };
+
+  const isNeeded = (field) => {
+    if (!isBlank(typedValue(field))) return false;
+    const owners = field.level === "order" ? drafts : [draft];
+    return owners.some((each) => each.needed.includes(field.name));
+  };
+
+  const sourceTag = (field) => {
+    if (typedValue(field) !== undefined) return "Edited";
+    return SOURCE_TAGS[baseOf(field).sources[field.name]] ?? "";
+  };
+
+  const fieldByName = Object.fromEntries(fields.map((field) => [field.name, field]));
+
+  // A needed number counts as filled once typed; a needed port only once the
+  // backend has accepted it, since only then is its distance known.
+  const stillNeeded = (each) =>
+    each.needed.filter((name) => {
+      const field = fieldByName[name];
+      if (!field || field.kind === "port") return true;
+      const typed =
+        field.level === "order" ? orderEdits.values[name] : editsFor(each.vessel_id).values[name];
+      return isBlank(typed);
+    });
+  const waitingCount = drafts.filter((each) => stillNeeded(each).length).length;
+
+  const clearPortEdits = (vesselIds, key) => {
+    if (fieldByName[key]?.level === "order") {
+      setOrderEdits((edits) => {
+        const ports = { ...edits.ports };
+        delete ports[key];
+        return { ...edits, ports };
+      });
+    }
+    setVesselEdits((all) => {
+      const next = { ...all };
+      vesselIds.forEach((id) => {
+        if (!next[id]) return;
+        const ports = { ...next[id].ports };
+        delete ports[key];
+        next[id] = { ...next[id], ports };
+      });
+      return next;
+    });
+  };
+
+  const refreshPorts = async (key, name, vesselIds) => {
+    const targets = drafts.filter((each) => vesselIds.includes(each.vessel_id));
+    if (!targets.length) return;
+    try {
+      const reply = await callAction({
+        name: "refresh_ports",
+        payload: { vessels: targets.map((each) => ({ draft: each, ports: { [key]: name } })) },
+      });
+      const updated = (reply?.response ?? reply)?.voyages;
+      if (!Array.isArray(updated)) throw new Error("no voyages in reply");
+      const byId = Object.fromEntries(updated.map((each) => [each.vessel_id, each]));
+      setDrafts((current) => current.map((each) => byId[each.vessel_id] ?? each));
+      clearPortEdits(vesselIds, key);
+      const problem = updated.flatMap((each) => each.problems)[0];
+      setNotice(problem ?? `${fieldByName[key]?.label ?? "Port"} set — distances updated`);
+    } catch {
+      setNotice("Could not update the distances — try again");
+    }
+  };
+
+  const portVessels = (field) =>
+    field.level === "order" ? drafts.map((each) => each.vessel_id) : [draft.vessel_id];
+
+  // Browsers show only the start of a long suggestion list, so the full port
+  // list is narrowed to what the trader has typed instead of sent whole.
+  const matchingPorts = (typed) => {
+    const wanted = typed.trim().toLowerCase();
+    if (!wanted) return [];
+    const starts = portNames.filter((name) => name.toLowerCase().startsWith(wanted));
+    const contains = portNames.filter(
+      (name) => !name.toLowerCase().startsWith(wanted) && name.toLowerCase().includes(wanted),
+    );
+    return [...starts, ...contains].slice(0, PORT_SUGGESTIONS);
+  };
+
+  const isKnownPort = (name, options) => {
+    const wanted = name.trim().toLowerCase();
+    return Boolean(wanted) && [...options, ...portNames].some((each) => each.toLowerCase() === wanted);
+  };
+
+  const commitPort = (field) => {
+    const typed = typedValue(field);
+    if (typed === undefined) return;
+    const stored = baseOf(field).ports[field.name] ?? "";
+    if (typed.trim() === stored) {
+      clearPortEdits(portVessels(field), field.name);
+      return;
+    }
+    refreshPorts(field.name, typed, portVessels(field));
+  };
+
+  const write = (field, text) => {
+    const key = field.kind === "port" ? "ports" : "values";
+    if (field.level === "order") {
+      setOrderEdits((edits) => ({ ...edits, [key]: { ...edits[key], [field.name]: text } }));
+      return;
+    }
+    setVesselEdits((all) => {
+      const mine = all[draft.vessel_id] ?? { ports: {}, values: {} };
+      return { ...all, [draft.vessel_id]: { ...mine, [key]: { ...mine[key], [field.name]: text } } };
+    });
+  };
+
+  const applyToAllVessels = (field) => {
+    const value = shown(field);
+    if (field.kind === "port") {
+      refreshPorts(field.name, value, drafts.map((each) => each.vessel_id));
+      return;
+    }
+    const key = "values";
+    setVesselEdits((all) =>
+      Object.fromEntries(
+        drafts.map((each) => {
+          const mine = all[each.vessel_id] ?? { ports: {}, values: {} };
+          return [each.vessel_id, { ...mine, [key]: { ...mine[key], [field.name]: value } }];
+        }),
+      ),
+    );
+    setNotice(`${field.label} set to ${value} for all ${drafts.length} vessels — press Calculate`);
+  };
+
+  const numbers = (values) =>
+    Object.fromEntries(Object.entries(values).map(([name, text]) => [name, toNumber(text)]));
+
+  const calculate = async () => {
+    if (busy) return;
+    setBusy(true);
+    setNotice("");
+    const vessels = drafts.map((each) => {
+      const mine = editsFor(each.vessel_id);
+      return {
+        draft: each,
+        ports: { ...orderEdits.ports, ...mine.ports },
+        values: { ...numbers(orderEdits.values), ...numbers(mine.values) },
+      };
+    });
+    try {
+      const reply = await callAction({ name: "calculate_voyages", payload: { vessels } });
+      const ranked = (reply?.response ?? reply)?.voyages;
+      if (!Array.isArray(ranked)) throw new Error("no voyages in reply");
+      setDrafts(ranked);
+      setOrderEdits({ ports: {}, values: {} });
+      setVesselEdits({});
+      const ready = ranked.filter((each) => each.result).length;
+      setNotice(`${ready} of ${ranked.length} vessels ranked`);
+      updateElement({
+        ...props,
+        sets: props.sets.map((each) =>
+          each.label === set.label ? { ...each, voyages: ranked } : each,
+        ),
+      });
+    } catch {
+      setNotice("Could not calculate — try again");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyLink = (field) =>
+    field.level === "vessel" && drafts.length > 1 ? (
+      <button
+        type="button"
+        className="oi-v-apply"
+        disabled={isBlank(shown(field))}
+        onClick={() => applyToAllVessels(field)}
+      >
+        Apply to all vessels
+      </button>
+    ) : null;
+
+  const renderField = (field) => {
+    const needed = isNeeded(field);
+    const tag = sourceTag(field);
+    if (field.kind === "port") {
+      const base = baseOf(field);
+      const options = base.port_options[field.name] ?? [];
+      const listId = `oi-v-ports-${field.name}-${options.length ? base.vessel_id : "all"}`;
+      const place = base.places[field.name];
+      return (
+        <div className="oi-v-row" key={field.name}>
+          <label className="oi-v-label">
+            {field.label}
+            <span className="oi-v-place">In data: {isBlank(place) ? "(blank)" : place}</span>
+            {applyLink(field)}
+          </label>
+          <input
+            className="oi-v-input oi-v-port"
+            data-needed={needed}
+            list={listId}
+            value={shown(field)}
+            placeholder={options.length ? "pick a port…" : "start typing a port…"}
+            onChange={(event) => {
+              const value = event.target.value;
+              write(field, value);
+              const stored = baseOf(field).ports[field.name] ?? "";
+              if (isKnownPort(value, options) && value.trim() !== stored) {
+                refreshPorts(field.name, value, portVessels(field));
+              }
+            }}
+            onBlur={() => commitPort(field)}
+            onKeyDown={(event) => event.key === "Enter" && commitPort(field)}
+          />
+          <datalist id={listId}>
+            {(options.length ? options : matchingPorts(shown(field))).map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <span className="oi-v-tag" data-needed={needed}>{needed ? "Needed" : tag}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="oi-v-row" key={field.name}>
+        <label className="oi-v-label">
+          {field.label}
+          {applyLink(field)}
+        </label>
+        <span className="oi-v-numwrap">
+          <input
+            className="oi-v-input"
+            data-needed={needed}
+            type="number"
+            step="any"
+            value={shown(field)}
+            onChange={(event) => write(field, event.target.value)}
+          />
+          <span className="oi-v-unit">{field.unit}</span>
+        </span>
+        <span className="oi-v-tag" data-needed={needed}>{needed ? "Needed" : tag}</span>
+      </div>
+    );
+  };
+
+  const renderGroups = (level) =>
+    groupFields(fields, level).map((group) => (
+      <div className="oi-v-group" key={group.name}>
+        <div className="oi-v-group-name">{group.name}</div>
+        {group.fields.map(renderField)}
+      </div>
+    ));
+
+  const statusText = (each) => {
+    const count = stillNeeded(each).length;
+    return count ? `Needs input (${count} ${count === 1 ? "field" : "fields"})` : "Ready — press Calculate";
+  };
+
+  const ranked = drafts.filter((each) => each.result);
+  const waiting = drafts.filter((each) => !each.result);
+
+  return (
+    <div className="oi-v">
+      <style>{`
+        .oi-v { min-width:0; container-type:inline-size; display: flex; flex-direction: column; gap: 0.8rem; font-size: 0.78rem; color: hsl(var(--foreground)); }
+        .oi-v-card { border: 1px solid hsl(var(--border)); border-radius: 0.625rem; background: hsl(var(--background)); padding: 0.6rem 0.75rem; }
+        @container (max-width:520px) {
+          .oi-v .oi-v-row { grid-template-columns:minmax(0,1fr) 4.6rem; }
+          .oi-v .oi-v-label { grid-column:1 / -1; }
+          .oi-v-row { padding:7px 0; }
+        }
+        .oi-v-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin-bottom: 0.4rem; }
+        .oi-v-rank-scroll { max-width:100%; overflow-x:auto; border-radius:8px; }
+        .oi-v-rank { width: 100%; border-collapse: collapse; }
+        .oi-v-rank td { padding: 0.3rem 0.4rem; border-bottom: 1px solid hsl(var(--border) / 0.6); white-space: nowrap; }
+        .oi-v-rank tr:last-child td { border-bottom: none; }
+        .oi-v-rank tr { cursor: pointer; }
+        .oi-v-rank tr:hover { background: hsl(var(--accent) / 0.5); }
+        .oi-v-rank tr[data-on="true"] { background: hsl(var(--primary) / 0.12); }
+        .oi-v-rank td[data-num="true"] { text-align: right; font-variant-numeric: tabular-nums; }
+        .oi-v-muted { color: hsl(var(--muted-foreground)); }
+        .oi-v-group { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.35rem 0; }
+        .oi-v-group + .oi-v-group { border-top: 1px solid hsl(var(--border) / 0.6); }
+        .oi-v-group-name { font-weight: 600; font-size: 0.74rem; }
+        .oi-v-row { display: grid; grid-template-columns: minmax(0, 1fr) 11rem 4.6rem; align-items: center; gap: 0.5rem; }
+        .oi-v-label { display: flex; flex-direction: column; min-width: 0; }
+        .oi-v-apply {
+          align-self: flex-start; margin-top: 0.15rem; padding: 0; font: inherit; font-size: 0.7rem;
+          color: hsl(var(--primary)); background: none; border: none; cursor: pointer;
+        }
+        .oi-v-apply:disabled { color: hsl(var(--muted-foreground)); cursor: default; }
+        .oi-v-place { font-size: 0.7rem; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .oi-v-numwrap { display: flex; align-items: center; gap: 0.3rem; }
+        .oi-v-input {
+          width: 100%; min-width: 0; padding: 0.25rem 0.4rem; font: inherit; color: inherit;
+          background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: 0.375rem;
+        }
+        .oi-v-numwrap .oi-v-input { text-align: right; font-variant-numeric: tabular-nums; }
+        .oi-v-input:focus { outline: none; border-color: hsl(var(--ring)); }
+        .oi-v-input[data-needed="true"] { border-color: hsl(var(--destructive)); box-shadow: 0 0 0 1px hsl(var(--destructive)); }
+        .oi-v-unit { flex: none; width: 3.2rem; font-size: 0.7rem; color: hsl(var(--muted-foreground)); }
+        .oi-v-tag { font-size: 0.68rem; color: hsl(var(--muted-foreground)); text-align: right; }
+        .oi-v-tag[data-needed="true"] { color: hsl(var(--destructive)); font-weight: 600; }
+        .oi-v-dot { display: inline-block; width: 0.4rem; height: 0.4rem; margin-left: 0.3rem; border-radius: 50%; background: hsl(var(--destructive)); vertical-align: middle; }
+        .oi-v-problem { color: hsl(var(--destructive)); font-size: 0.72rem; }
+        .oi-v-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+        .oi-v-calc {
+          padding: 0.35rem 0.9rem; font: inherit; font-size: 0.75rem; font-weight: 500; border-radius: 0.4rem;
+          border: 1px solid hsl(var(--primary)); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); cursor: pointer;
+        }
+        .oi-v-calc:disabled { opacity: 0.5; cursor: not-allowed; }
+        .oi-v-details > summary { cursor: pointer; color: hsl(var(--muted-foreground)); font-size: 0.74rem; margin-bottom: 0.5rem; }
+      `}</style>
+
+      <div className="oi-v-report-head">
+        <span className="oi-v-kicker">VOYAGE ECONOMICS</span>
+        <h3>Compare the possibilities.</h3>
+        <p>{ranked.length} calculated · {waiting.length} awaiting calculation</p>
+      </div>
+      {draft.result && <section className="oi-v-summary" aria-label="Selected vessel voyage economics">
+        <div className="oi-v-summary-id"><span>SELECTED VESSEL</span><strong>{draft.vessel_id}</strong></div>
+        <div className="oi-v-metrics">
+          <div><span>Net revenue</span><strong>{money(draft.result.revenue)}</strong></div>
+          <div><span>Total costs</span><strong>{money(draft.result.revenue - draft.result.profit)}</strong></div>
+          <div data-loss={draft.result.profit < 0}><span>Voyage profit</span><strong>{money(draft.result.profit)}</strong></div>
+        </div>
+        <p>Estimated from current voyage inputs. Recalculate after editing assumptions.</p>
+      </section>}
+
+      <div className="oi-v-card">
+        <div className="oi-v-title">Vessel comparison <span className="oi-v-muted">· highest profit first</span></div>
+        <div className="oi-v-rank-scroll" role="region" aria-label="Vessel ranking" tabIndex={0}><table className="oi-v-rank">
+          <thead><tr><th scope="col">Rank</th><th scope="col">Vessel</th><th scope="col">Net revenue</th><th scope="col">Profit</th></tr></thead>
+          <tbody>
+            {ranked.map((each, at) => (
+              <tr key={each.vessel_id} data-on={each.vessel_id === draft.vessel_id} onClick={() => setVesselId(each.vessel_id)}>
+                <td className="oi-v-muted">{at + 1}</td>
+                <td><button type="button" className="oi-v-pick" onClick={() => setVesselId(each.vessel_id)} aria-pressed={each.vessel_id === draft.vessel_id}>{each.vessel_id}</button></td>
+                <td data-num="true">{money(each.result.revenue)}</td>
+                <td data-num="true">{money(each.result.profit)}</td>
+              </tr>
+            ))}
+            {waiting.map((each) => (
+              <tr key={each.vessel_id} data-on={each.vessel_id === draft.vessel_id} onClick={() => setVesselId(each.vessel_id)}>
+                <td className="oi-v-muted">–</td>
+                <td><button type="button" className="oi-v-pick" onClick={() => setVesselId(each.vessel_id)} aria-pressed={each.vessel_id === draft.vessel_id}>{each.vessel_id}</button></td>
+                <td className="oi-v-muted" colSpan={2}>{statusText(each)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+
+      <div className="oi-v-card">
+        <div className="oi-v-title">Order fields · same for every vessel</div>
+        {renderGroups("order")}
+      </div>
+
+      <div className="oi-v-card">
+        <div className="oi-t-tabs">
+          {drafts.map((each) => (
+            <button
+              key={each.vessel_id}
+              className={each.vessel_id === draft.vessel_id ? "oi-t-tab oi-t-tab-on" : "oi-t-tab"}
+              onClick={() => setVesselId(each.vessel_id)}
+            >
+              {each.vessel_id}
+              {stillNeeded(each).length > 0 && <span className="oi-v-dot" title="Needs input" />}
+            </button>
+          ))}
+        </div>
+        <div className="oi-v-title" style={{ marginTop: "0.6rem" }}>
+          {draft.vessel_id}
+          {draft.result
+            ? ` · revenue ${money(draft.result.revenue)} · profit ${money(draft.result.profit)}`
+            : ` · ${statusText(draft).toLowerCase()}`}
+        </div>
+        {draft.problems.map((problem) => (
+          <div className="oi-v-problem" key={problem}>{problem}</div>
+        ))}
+        {renderGroups("vessel")}
+      </div>
+
+      <div className="oi-v-bar">
+        <span className="oi-t-notice">
+          {notice ||
+            (waitingCount
+              ? `${waitingCount} ${waitingCount === 1 ? "vessel needs" : "vessels need"} input before you can calculate`
+              : "")}
+        </span>
+        <button className="oi-v-calc" disabled={busy || waitingCount > 0} onClick={calculate}>
+          {busy ? "Calculating…" : "Calculate"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Results() {
   const sets = (props.sets ?? []).filter((set) => (set.rows ?? []).length);
   const seq = Number(props.seq) || 0;
@@ -844,7 +1318,17 @@ export default function Results() {
           ))}
         </div>
       )}
-      <Table key={active.label ?? active.noun} {...active} />
+      {active.voyages?.length ? (
+        <>
+          <Voyages key={active.label} set={active} />
+          <details className="oi-v-details">
+            <summary>Matched vessels table ({active.rows.length})</summary>
+            <Table key={active.label ?? active.noun} {...active} />
+          </details>
+        </>
+      ) : (
+        <Table key={active.label ?? active.noun} {...active} />
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ai_platform.app.api.dashboard import router as dashboard_router
 from ai_platform.app.api.export import router as export_router
+from ai_platform.app.api.voyage_defaults import router as voyage_defaults_router
 from ai_platform.backend.db import close_pool
 from ai_platform.order_override.order_override import router as order_override_router
 from ai_platform.trader_override.trader_override import router as trader_override_router
@@ -39,7 +40,7 @@ CHAINLIT_PUBLIC_PREFIX = "/chat/public/"
 
 @app.middleware("http")
 async def revalidate_chainlit_public(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    """Make browsers revalidate Chainlit's public files on every load.
+    """Make browsers revalidate dashboard and chat assets on every load.
 
     Chainlit serves custom elements such as ``Results.jsx`` with no
     ``Cache-Control``, so browsers reuse a stale copy for hours after an edit.
@@ -55,10 +56,10 @@ async def revalidate_chainlit_public(request: Request, call_next: Callable[[Requ
     Returns
     -------
     Response
-        The response, with ``Cache-Control: no-cache`` on public files.
+        The response, with ``Cache-Control: no-cache`` on UI pages and assets.
     """
     response = await call_next(request)
-    if request.url.path.startswith(CHAINLIT_PUBLIC_PREFIX):
+    if request.url.path == "/" or request.url.path.startswith((CHAINLIT_PUBLIC_PREFIX, "/static/")):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -103,6 +104,7 @@ app.include_router(dashboard_router)
 app.include_router(export_router)
 app.include_router(trader_override_router)
 app.include_router(order_override_router)
+app.include_router(voyage_defaults_router)
 app.mount("/static", StaticFiles(directory=str(DASHBOARD_DIR)), name="static")
 
 mount_chainlit(app=app, target=CHAINLIT_TARGET, path="/chat")

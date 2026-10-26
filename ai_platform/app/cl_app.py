@@ -7,6 +7,7 @@ server.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -20,11 +21,13 @@ from langgraph.types import Command
 from ai_platform.app.data_layer import get_data_layer
 from ai_platform.backend.agent import agent
 from ai_platform.backend.context import CONTEXT_WINDOW, PROMPT_TOKENS, message_tokens
+from ai_platform.backend.distances import PORT_NAMES
 from ai_platform.backend.llm import stream_chat
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.matching import MATCH_COLUMNS
 from ai_platform.backend.tables import OrderSearch, VesselSearch, resolve_table
 from ai_platform.backend.tracing import langfuse_handler
+from ai_platform.backend.voyage import VoyageDraft, apply_trader_edits, rank_voyages
 
 __all__ = ["get_data_layer"]
 
@@ -276,8 +279,12 @@ async def run_agent(question: str) -> None:
     -------
     None
     """
+    user = cl.user_session.get("user")
     config = {
-        "configurable": {"thread_id": cl.context.session.id},
+        "configurable": {
+            "thread_id": cl.context.session.id,
+            "user_identifier": user.identifier if user else None,
+        },
         "callbacks": [langfuse_handler],
     }
     payload: Any = {"messages": [{"role": "user", "content": question}]}
@@ -480,8 +487,14 @@ async def _render_match_event(
         rows_by_order: dict[str, list[dict[str, Any]]] = {}
         for row in event.get("rows") or []:
             rows_by_order.setdefault(str(row.get("order_id")), []).append(row)
+        voyages = event.get("voyages") or {}
         sets = [
-            {**results_props("matches", rows), "label": f"Order {matched_order}"}
+            {
+                **results_props("matches", rows),
+                "label": f"Order {matched_order}",
+                "voyages": voyages.get(matched_order, []),
+                "fields": event.get("fields") or [],
+            }
             for matched_order, rows in rows_by_order.items()
         ]
         return await _show_panel(sets, reply, f"matches-{time.time()}")
@@ -776,6 +789,87 @@ async def _ask_user(payload: dict[str, Any]) -> dict[str, str] | None:
         for key, value in answer.items()
         if key not in {"submitted", "id"}
     }
+
+
+@cl.action_callback("calculate_voyages")
+async def calculate_voyages(action: cl.Action) -> dict[str, Any]:
+    """Recalculate one order's voyages from the trader's panel input.
+
+    Called by ``Results.jsx`` through ``callAction``; Chainlit hands the return
+    value straight back to the panel. No model is called.
+
+    Parameters
+    ----------
+    action : cl.Action
+        ``payload.vessels``: per vessel, ``draft`` as last sent to the panel,
+        ``ports`` (port box to name) and ``values`` (input name to number).
+
+    Returns
+    -------
+    dict
+        ``voyages``: the order's drafts with the edits applied, ranked.
+    """
+    vessels = action.payload.get("vessels") or []
+    ranked = await asyncio.to_thread(
+        lambda: rank_voyages(
+            [
+                apply_trader_edits(
+                    VoyageDraft.model_validate(vessel["draft"]),
+                    vessel.get("ports") or {},
+                    vessel.get("values") or {},
+                )
+                for vessel in vessels
+            ]
+        )
+    )
+    return {"voyages": [draft.model_dump(mode="json") for draft in ranked]}
+
+
+@cl.action_callback("refresh_ports")
+async def refresh_ports(action: cl.Action) -> dict[str, Any]:
+    """Apply the trader's port picks and recompute the sea distances, without calculating.
+
+    Called by ``Results.jsx`` as soon as a port box changes, so distances and
+    what is still needed show before the trader presses Calculate.
+
+    Parameters
+    ----------
+    action : cl.Action
+        ``payload.vessels``: per vessel, ``draft`` and ``ports`` (port box to name).
+
+    Returns
+    -------
+    dict
+        ``voyages``: the drafts with ports and distances updated, results cleared,
+        in the order sent.
+    """
+    vessels = action.payload.get("vessels") or []
+    updated = await asyncio.to_thread(
+        lambda: [
+            apply_trader_edits(VoyageDraft.model_validate(vessel["draft"]), vessel.get("ports") or {}, {}, is_calculating=False)
+            for vessel in vessels
+        ]
+    )
+    return {"voyages": [draft.model_dump(mode="json") for draft in updated]}
+
+
+@cl.action_callback("port_names")
+async def port_names(action: cl.Action) -> dict[str, Any]:
+    """Send the panel every port name a port box accepts.
+
+    Fetched once by ``Results.jsx`` rather than carried in each saved panel.
+
+    Parameters
+    ----------
+    action : cl.Action
+        Unused beyond its name.
+
+    Returns
+    -------
+    dict
+        ``names``: port names that resolve to exactly one port, sorted.
+    """
+    return {"names": PORT_NAMES}
 
 
 def root_message(content: str = "") -> cl.Message:

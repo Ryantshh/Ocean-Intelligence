@@ -3,8 +3,8 @@
 Lets a trader manually record a vessel's commercial status heard privately
 (via broker/messaging) before it reaches Shipfix/the pipeline. The
 override goes straight into ``public.tonnage_test`` -- not a separate
-overrides table -- by replacing the trader's chosen baseline row with a
-copy carrying their edits (see
+overrides table -- by updating the trader's chosen baseline row in
+place (see
 :func:`trader_override_queries.override_tonnage_row_sql`), so the
 Dashboard tab's own ``vessel_current_status`` view (which always takes the
 newest ``tonnage_test`` row per vessel) picks the change up automatically,
@@ -26,7 +26,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ai_platform.backend.db import fetch_rows
@@ -95,12 +95,14 @@ class OverrideRequest(BaseModel):
 
     vessel_id: str = Field(min_length=1, max_length=64)
     # tonnage_row_key of the existing tonnage_test row this submission
-    # replaces -- from a row GET /vessels/{vessel_id} returned; the vessel's
+    # updates in place -- from a row GET /vessels/{vessel_id} returned; the vessel's
     # newest row by default, or an older one if the trader clicked a
     # different row in Current Record. See override_tonnage_row_sql.
     base_tonnage_row_key: str = Field(min_length=1, max_length=128)
     override_status: toq.OverrideStatus
     entered_by: str = Field(min_length=1, max_length=120)
+    # Why the trader is making this change; logged to the audit trail.
+    reason: str = Field(min_length=1, max_length=500)
     open_area: str | None = Field(default=None, max_length=120)
     open_date_start: str | None = None
     open_date_end: str | None = None
@@ -118,6 +120,13 @@ async def list_vessels() -> list[dict[str, Any]]:
     """
     sql, params = toq.vessels_sql()
     return await _run(sql, params)
+
+
+@router.get("/open-areas")
+async def list_open_areas() -> list[str]:
+    """Predefined open areas: the distinct ``open_area`` values in ``tonnage_test``."""
+    rows = await _run(*toq.open_areas_sql())
+    return [r["open_area"] for r in rows]
 
 
 @router.get("/vessels/{vessel_id}")
@@ -154,25 +163,25 @@ async def vessel_detail(vessel_id: str) -> list[dict[str, Any]]:
 
 @router.post("", status_code=201)
 async def submit_override(body: OverrideRequest) -> dict[str, Any]:
-    """Record one trader-entered status update by replacing its baseline row.
+    """Record one trader-entered status update by updating its baseline row in place.
 
     Also logs the submission to ``trader_override_audit`` once the
-    ``tonnage_test`` swap succeeds -- the audit entry is a record of what
+    ``tonnage_test`` update succeeds -- the audit entry is a record of what
     happened, not a second attempt at the real write, so a failure logging
-    it does not roll back or fail the swap, which has already committed by
+    it does not roll back or fail the update, which has already committed by
     that point.
 
     Parameters
     ----------
     body : OverrideRequest
-        Vessel, the baseline row being replaced, status, who's entering it,
+        Vessel, the baseline row being updated, status, who's entering it,
         and whatever else the trader has fresh word on.
 
     Returns
     -------
     dict
-        The ``tonnage_test`` row that was inserted in the baseline row's
-        place.
+        The ``tonnage_test`` baseline row as updated in place (same
+        ``tonnage_row_key``).
 
     Raises
     ------
@@ -188,10 +197,18 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
             status_code=404, detail=f"Unknown vessel_id: {body.vessel_id!r}"
         )
 
-    # Read the baseline row's own values before it's swapped out, purely so
+    if body.open_area is not None:
+        allowed = {r["open_area"] for r in await _run(*toq.open_areas_sql())}
+        if body.open_area not in allowed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"open_area {body.open_area!r} is not one of the predefined open areas",
+            )
+
+    # Read the baseline row's own values before it's updated, purely so
     # the audit log below can record what each field changed *from* -- also
     # doubles as the existence check for base_tonnage_row_key, ahead of the
-    # swap itself.
+    # update itself.
     snapshot_rows = await _run(*toq.tonnage_row_snapshot_sql(body.base_tonnage_row_key, body.vessel_id))
     if not snapshot_rows:
         raise HTTPException(
@@ -227,13 +244,14 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
         await _run(
             *toq.insert_audit_sql(
                 body.vessel_id,
-                # The audit log's "new" side is the swap's own effective
+                # The audit log's "new" side is the update's own effective
                 # values, not the raw request body -- a field the trader
                 # left blank resolved to the base row's old value via
                 # COALESCE, so logging the (blank) body field here would
                 # make an untouched field look cleared. See insert_audit_sql.
                 new_row["commercial_status"],
                 body.entered_by,
+                reason=body.reason,
                 open_area=new_row["open_area"],
                 open_date_start=_to_timestamp(new_row["open_date_start"]),
                 open_date_end=_to_timestamp(new_row["open_date_end"]),
@@ -259,6 +277,56 @@ async def submit_override(body: OverrideRequest) -> dict[str, Any]:
         )
 
     return rows[0]
+
+
+@router.delete("")
+async def delete_record(
+    vessel_id: str,
+    tonnage_row_key: str,
+    entered_by: str = Query(min_length=1, max_length=120),
+    reason: str = Query(min_length=1, max_length=500),
+) -> dict[str, Any]:
+    """Delete one ``tonnage_test`` row and log the deletion to the audit trail.
+
+    The audit entry (``override_status`` = ``DELETED``, the removed row's
+    values on the ``old_*`` side) is written after the delete commits, and
+    like :func:`submit_override` a failure logging it does not fail the delete.
+
+    Raises
+    ------
+    HTTPException
+        404 if the row no longer exists for that vessel; 502 on a database failure.
+    """
+    rows = await _run(*toq.delete_tonnage_row_sql(tonnage_row_key, vessel_id))
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Record no longer exists for vessel_id={vessel_id!r} "
+                "-- it may have just been edited or deleted elsewhere. Refresh and try again."
+            ),
+        )
+    old = rows[0]
+    try:
+        await _run(
+            *toq.insert_audit_sql(
+                vessel_id,
+                "DELETED",
+                entered_by,
+                reason=reason,
+                old_override_status=old["commercial_status"],
+                old_open_area=old["open_area"],
+                old_open_date_start=_to_timestamp(old["open_date_start"]),
+                old_open_date_end=_to_timestamp(old["open_date_end"]),
+            )
+        )
+    except HTTPException as exc:
+        logger.warning(
+            "trader_override_audit insert failed for deleted vessel_id=%r (%s); "
+            "tonnage_test delete already committed, continuing",
+            vessel_id, exc.detail,
+        )
+    return {"deleted": True, "vessel_id": vessel_id}
 
 
 @router.get("/audit")

@@ -51,3 +51,8 @@ ALTER TABLE public.trader_override_audit
     ADD COLUMN IF NOT EXISTS old_open_date_start TIMESTAMP,
     ADD COLUMN IF NOT EXISTS old_open_date_end TIMESTAMP,
     ADD COLUMN IF NOT EXISTS old_order_assignment TEXT;
+
+-- Why the trader overrode or deleted the record (required by the form).
+-- Nullable: rows logged before this column existed have no reason.
+ALTER TABLE public.trader_override_audit
+    ADD COLUMN IF NOT EXISTS reason TEXT;

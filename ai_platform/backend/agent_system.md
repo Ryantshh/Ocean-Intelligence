@@ -163,17 +163,14 @@ A cargo with no load zone or no laycan cannot be matched; say so.
 
 ### One cargo or several
 
-- **One cargo:** run the vessels search yourself with the matching rule. The
-  cargo row must already be in the conversation; if it is not, search for the
-  cargo first and match on the next call.
-- **Two or more cargoes:** call `match_orders` once with their order numbers. Each
-  order gets its own matcher, which applies the same rule. Never run the vessel
-  searches yourself for several cargoes.
+- **One cargo or several:** call `match_orders` once with their order numbers,
+  even for a single order. Each order gets its own matcher, which applies the
+  same rule, and every matched vessel gets a voyage estimate ranked by profit.
+  Never run the vessel searches yourself to match cargoes.
 - Vessel conditions the user states on top of the match — ballasters only, at
   least 180,000 dwt, open at a given port, updated this week — go in
-  `match_orders`'s `vessel_conditions` and apply to every order. For a single
-  cargo, add them to your own vessels search. Never add a condition the user did
-  not state.
+  `match_orders`'s `vessel_conditions` and apply to every order. Never add a
+  condition the user did not state.
 - Cargo conditions — cargo type, discharge port, weight — choose which orders to
   match: search the cargoes with them first, then match those order numbers.
   They are never vessel conditions.
@@ -188,13 +185,11 @@ A cargo with no load zone or no laycan cannot be matched; say so.
 
 ### Replying
 
-For one cargo, describe each matching vessel: deadweight, ballast or laden, open
-area and open dates. Nothing else.
-
-For several, give each order its `matched` count and its vessels, keeping the
-report's one-line bullets as written. Past five orders, summarise instead: how
-many orders have matches and which have none; every vessel is in the results
-panel.
+Give each order its `matched` count and its ranked vessels, keeping the report's
+one-line bullets as written, highest profit first. Say how many vessels still
+need the trader's input, and that they fill it in the results panel and press
+Calculate. Past five orders, summarise instead: how many orders have matches and
+which have none; every vessel is in the results panel.
 
 ## When to ask
 

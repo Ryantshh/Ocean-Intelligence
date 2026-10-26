@@ -25,7 +25,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+import asyncpg
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ai_platform.backend.db import fetch_rows
@@ -73,6 +74,8 @@ class OrderOverrideRequest(BaseModel):
     order_id: str = Field(min_length=1, max_length=64)
     order_seq: int = Field(ge=1)
     entered_by: str = Field(min_length=1, max_length=120)
+    # Why the trader is making this change; logged to the audit trail.
+    reason: str = Field(min_length=1, max_length=500)
     laycan_start: str | None = None
     laycan_end: str | None = None
     cargo_weight_min: float | None = Field(default=None, ge=0)
@@ -92,6 +95,12 @@ async def list_orders() -> list[dict[str, Any]]:
     """
     sql, params = ooq.orders_sql()
     return await _run(sql, params)
+
+
+@router.get("/orders/{order_id}")
+async def order_records(order_id: str) -> list[dict[str, Any]]:
+    """Every ``order_seq`` record sharing ``order_id`` (empty list if none)."""
+    return await _run(*ooq.order_records_sql(order_id))
 
 
 @router.get("/orders/{order_id}/{order_seq}")
@@ -188,11 +197,12 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
     new_row = rows[0]
 
     try:
-        await _run(
+        await fetch_rows(
             *ooq.insert_audit_sql(
                 body.order_id,
                 body.order_seq,
                 body.entered_by,
+                reason=body.reason,
                 # The audit log's "new" side is the update's own effective
                 # values, not the raw request body -- a field the trader
                 # left blank resolved to the order's old value via
@@ -209,18 +219,73 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
                 old_cargo_weight_max=snapshot["cargo_weight_max"],
             )
         )
-    except HTTPException as exc:
+    except asyncpg.UndefinedTableError:
         # order_override_audit is a log, not the source of truth -- the
-        # order_test update above already committed, so a missing/broken
-        # audit table (its setup SQL never applied) must not fail the
-        # submission itself, only the Audit Trail table's own read.
+        # order_test update above already committed, so a missing audit
+        # table (its setup SQL never applied) must not fail the submission.
         logger.warning(
-            "order_override_audit insert failed for order_id=%r, order_seq=%d (%s); "
+            "order_override_audit table is missing; run order_override_audit_setup.sql. "
+            "order_test update already committed, continuing"
+        )
+    except Exception:
+        # Any other failure is a real bug (bad cast, wrong column, ...): keep
+        # the committed update, but log the full traceback so it isn't hidden.
+        logger.exception(
+            "order_override_audit insert failed for order_id=%r, order_seq=%d; "
             "order_test update already committed, continuing",
-            body.order_id, body.order_seq, exc.detail,
+            body.order_id, body.order_seq,
         )
 
     return new_row
+
+
+@router.delete("")
+async def delete_order(
+    order_id: str,
+    order_seq: int,
+    entered_by: str = Query(min_length=1, max_length=120),
+    reason: str = Query(min_length=1, max_length=500),
+) -> dict[str, Any]:
+    """Delete one order from ``order_test`` and log the deletion to the audit trail.
+
+    Only the named ``(order_id, order_seq)`` is removed. The audit entry
+    (``action`` = ``DELETE``, removed values on the ``old_*`` side) is
+    written after the delete commits and, like :func:`submit_order_override`,
+    never fails it.
+
+    Raises
+    ------
+    HTTPException
+        404 if the order doesn't exist; 502 on a database failure.
+    """
+    rows = await _run(*ooq.delete_order_sql(order_id, order_seq))
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown order: order_id={order_id!r}, order_seq={order_seq}",
+        )
+    old = rows[0]
+    try:
+        await fetch_rows(
+            *ooq.insert_audit_sql(
+                order_id,
+                order_seq,
+                entered_by,
+                reason=reason,
+                old_laycan_start=_to_timestamp(old["laycan_start"]),
+                old_laycan_end=_to_timestamp(old["laycan_end"]),
+                old_cargo_weight_min=old["cargo_weight_min"],
+                old_cargo_weight_max=old["cargo_weight_max"],
+                action="DELETE",
+            )
+        )
+    except Exception:
+        logger.exception(
+            "order_override_audit insert failed for deleted order_id=%r, order_seq=%d; "
+            "order_test delete already committed, continuing",
+            order_id, order_seq,
+        )
+    return {"deleted": True, "order_id": order_id, "order_seq": order_seq}
 
 
 @router.get("/audit")
@@ -247,7 +312,11 @@ async def audit(order_id: str | None = None, limit: int = 200) -> list[dict[str,
     """
     sql, params = ooq.audit_sql(order_id, limit)
     try:
-        return await _run(sql, params)
-    except HTTPException:
-        logger.warning("order_override_audit read failed; reporting empty audit trail")
+        return await fetch_rows(sql, params)
+    except asyncpg.UndefinedTableError:
+        logger.warning("order_override_audit table is missing; reporting empty audit trail")
         return []
+    except Exception as exc:
+        # A real failure must show up, not masquerade as "no updates yet".
+        logger.exception("order_override_audit read failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

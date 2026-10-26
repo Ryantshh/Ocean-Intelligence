@@ -11,7 +11,8 @@
       // entirely (no localStorage entry yet) falls through to the
       // @media (prefers-color-scheme) block in <style> below.
       (function () {
-        var saved = localStorage.getItem("theme");
+        var saved;
+        try { saved = localStorage.getItem("theme"); } catch {}
         if (saved === "light" || saved === "dark") {
           document.documentElement.setAttribute("data-theme", saved);
         }
@@ -373,10 +374,28 @@
       .tab-btn:hover { color: var(--fg); }
       .tab-btn.active { color: var(--fg); background: var(--card); border-color: var(--border); }
       .tab-panel.hidden, main.hidden { display: none; }
+      .mode-switch { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
+      .mode-btn {
+        font: inherit; font-size: 0.875rem; font-weight: 600; padding: 0.4rem 0.9rem;
+        border: 1px solid var(--border); border-radius: 0.6rem; background: transparent;
+        color: var(--muted); cursor: pointer;
+      }
+      .mode-btn:hover { color: var(--fg); }
+      .mode-btn.active { color: var(--fg); background: var(--card); }
+      .mode-btn[data-mode="delete"].active { color: var(--status-critical); border-color: var(--status-critical); }
+      .ov-wrap { display: contents; }
+      .mode-delete .ov-hide { display: none !important; }
+      .del-only { display: none; }
+      .mode-delete .del-only { display: block; }
       main { padding-top: 5rem; }
       /* Chat is Chainlit's own /chat page in a full-screen frame. Hiding it
          keeps it loaded, so neither side reloads when switching tabs. */
       #tab-chat { position: fixed; inset: 0; }
+      .defaults-page { max-width: 46rem; margin: 0 auto; padding: 5rem 1.5rem 4rem; }
+      .defaults-page h2 { margin: 0; }
+      form.override-form label.defaults-row { display: grid; flex-direction: initial; grid-template-columns: minmax(0, 1fr) 9rem 4.5rem; align-items: center; gap: 0.75rem; }
+      .defaults-row span.unit { font-size: 0.78rem; color: var(--muted); }
+      form.override-form .defaults-row input { text-align: right; font-variant-numeric: tabular-nums; }
       #chatFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
       .tab-btn.hidden { display: none; }
       /* Dashboard / override pages, switched inside <main>: an ordinary bar
@@ -516,10 +535,12 @@
          neutral card/border look for statuses that are neither good nor
          bad news for the vessel's tonnage. */
       #auditTable thead th, #orderAuditTable thead th { background: #3f3f46; color: #f4f4f5; border-bottom-color: #3f3f46; }
-      #auditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
-      #auditTable .badge-good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); border-color: transparent; }
-      #auditTable .badge-bad { background: color-mix(in srgb, var(--status-critical) 18%, transparent); color: var(--status-critical); border-color: transparent; }
-      #auditTable .badge-caution { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: color-mix(in srgb, var(--status-warning) 70%, var(--fg) 30%); border-color: transparent; }
+      #auditTable .badge, #orderAuditTable .badge { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+      #auditTable .badge-good, #orderAuditTable .badge-good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); border-color: transparent; }
+      #auditTable .badge-bad, #orderAuditTable .badge-bad { background: color-mix(in srgb, var(--status-critical) 18%, transparent); color: var(--status-critical); border-color: transparent; }
+      .btn-delete { margin-top: 0.5rem; width: fit-content; background: transparent; color: var(--status-critical); border: 1px solid var(--status-critical); border-radius: 6px; padding: 0.4rem 0.8rem; cursor: pointer; font: inherit; }
+      .btn-delete:disabled { opacity: 0.4; cursor: not-allowed; }
+      #auditTable .badge-caution, #orderAuditTable .badge-caution { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: color-mix(in srgb, var(--status-warning) 70%, var(--fg) 30%); border-color: transparent; }
       #auditTable .audit-diff-muted, #orderAuditTable .audit-diff-muted { color: var(--muted); }
       #auditTable .audit-diff-arrow, #orderAuditTable .audit-diff-arrow { color: var(--muted); margin: 0 0.35em; }
       #auditTable .audit-diff-new, #orderAuditTable .audit-diff-new { color: #16a34a; font-weight: 600; }
@@ -570,63 +591,93 @@
       .combobox-option:hover, .combobox-option.active { background: var(--card); }
       .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
+    <link rel="stylesheet" href="/static/workspace.css?v=voyage-3" />
   </head>
   <body>
-    <nav class="tabs">
-      <button type="button" class="tab-btn active" data-tab="chat">Chat</button>
-      <button type="button" class="tab-btn" data-tab="dashboard">Dashboard</button>
-    </nav>
-
-    <div id="tab-chat" class="tab-panel">
+    <a class="skip-link" href="#workspace">Skip to workspace</a>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="Ocean Intelligence home">
+        <svg class="brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="1.2" opacity=".4"/><path d="M8 23c4-5 8-5 12 0s8 5 12 0M10 29c4-4 7-4 10 0s6 4 10 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="m20 7 5 12-5-3-5 3 5-12Z" fill="currentColor"/></svg>
+        <span>Ocean Intelligence<small>CARGILL OCEAN TRANSPORTATION</small></span>
+      </a>
+      <nav class="tabs primary-tabs" aria-label="Workspace navigation">
+        <button type="button" class="tab-btn active" data-tab="dashboard" aria-current="page">Overview</button>
+        <button type="button" class="tab-btn" data-tab="voyage-defaults">Voyage defaults</button>
+      </nav>
+      <div class="header-actions">
+        <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch theme"></button>
+        <button type="button" id="chatToggle" class="assistant-toggle" aria-expanded="false" aria-controls="tab-chat"><svg class="assistant-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/><path d="M20 2v4M18 4h4"/></svg> <span>Ocean assistant</span></button>
+      </div>
+    </header>
+    <aside id="tab-chat" class="chat-panel hidden" aria-label="Ocean assistant">
+      <div id="chatResize" class="chat-resize" role="separator" tabindex="0" aria-label="Resize assistant panel" aria-orientation="vertical" aria-valuemin="360" aria-valuemax="1600" aria-valuenow="900"></div>
+      <div class="chat-panel-head"><div><strong>Ocean assistant</strong><small>Your maritime intelligence partner</small></div><button type="button" id="chatClose" aria-label="Close assistant">×</button></div>
       <iframe id="chatFrame" src="/chat" title="Ocean Intelligence chat"></iframe>
+    </aside>
+
+    <div id="tab-voyage-defaults" class="tab-panel hidden defaults-page">
+      <p class="eyebrow">VOYAGE PLANNING</p><h2 class="defaults-title">Set the course.</h2><p class="defaults-subtitle">Your voyage assumptions, in one place.</p>
+      <p class="sub" id="defaultsIntro">
+        Your own starting values for the voyage calculator. Every vessel matched
+        to an order starts from these; a blank box uses the calculator default
+        shown. Changes apply to the next match.
+      </p>
+      <form class="override-form" id="defaultsForm">
+        <div id="defaultsFields" class="muted">Loading&hellip;</div>
+        <div class="form-message" id="defaultsMessage"></div>
+        <div class="defaults-save-bar"><span>Blank fields use the calculator defaults shown.</span><button type="submit" id="defaultsSave">Save voyage defaults <span aria-hidden="true">↗</span></button></div>
+      </form>
     </div>
 
-    <main class="hidden">
+    <main id="workspace" tabindex="-1">
+      <div class="workspace-heading"><div><p class="eyebrow">MARKET INTELLIGENCE</p><h1>Your ocean. <span>In perspective.</span></h1><p class="workspace-description">Fleet availability, cargo demand, and the movements that matter.</p></div><div class="hero-chart" aria-hidden="true"><svg viewBox="0 0 360 150" fill="none"><defs><linearGradient id="chartFade"><stop stop-color="currentColor" stop-opacity="0"/><stop offset="1" stop-color="currentColor" stop-opacity=".4"/></linearGradient></defs><g stroke="currentColor" stroke-opacity=".16"><circle cx="258" cy="75" r="63"/><circle cx="258" cy="75" r="46"/><circle cx="258" cy="75" r="28"/><path d="M180 75h156M258 0v150M204 21l108 108M204 129 312 21"/></g><path d="M0 126C70 126 74 30 145 30s72 83 113 45 67-22 102-22" stroke="url(#chartFade)" stroke-width="1.5" stroke-dasharray="4 5"/><path d="m258 33 12 45-12-7-12 7 12-45Z" fill="currentColor" opacity=".7"/><circle cx="145" cy="30" r="4" fill="currentColor" opacity=".5"/><g fill="currentColor" opacity=".65" font-size="8" letter-spacing="2"><text x="254" y="11">N</text><text x="329" y="78">E</text><text x="254" y="148">S</text><text x="177" y="78">W</text></g></svg><span>INTELLIGENCE / IN EVERY DIRECTION</span></div></div>
       <div class="refresh-bar">
         <span class="muted" id="lastRefreshed">Loading&hellip;</span>
-        <button type="button" id="refreshNowBtn" class="history-btn">Refresh now</button>
-        <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch to light mode"></button>
+        <button type="button" id="refreshNowBtn" class="history-btn"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 13-3l2 3M4 16l2 3a8 8 0 0 0 13-3"/></svg> Refresh data</button>
       </div>
       <div class="stale-banner hidden" id="staleBanner"></div>
 
-      <nav class="tabs sub-tabs">
+      <nav class="tabs sub-tabs" aria-label="Market tools">
         <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage Status Override</button>
-        <button type="button" class="tab-btn" data-tab="order-overrides">Order Status Override</button>
+        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage overrides</button>
+        <button type="button" class="tab-btn" data-tab="order-overrides">Order overrides</button>
       </nav>
 
       <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
-        <div class="section-head"><h2>Market Summary</h2></div>
+        <div class="section-head"><h2><span class="section-number">01</span> Market overview</h2><span class="section-note">Select a status to explore the fleet</span></div>
         <div class="status-tiles" id="statusTiles">
           <button type="button" class="status-tile status-tile-open" data-status="OPEN">
             <span class="value" id="statusTileOpen">—</span>
-            <span class="label">Open</span>
+            <span class="label">Open</span><span class="tile-detail">Available tonnage</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15l9 4 9-4-3-7H6l-3 7ZM12 3v12M8 6h8"/></svg>
           </button>
           <button type="button" class="status-tile status-tile-watchlist" data-status="ON SUBS">
             <span class="value" id="statusTileWatchlist">—</span>
-            <span class="label">On Subs</span>
+            <span class="label">On Subs</span><span class="tile-detail">Under negotiation</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>
           </button>
           <button type="button" class="status-tile status-tile-fixed" data-status="FIXED" title="Under a fixture right now: a report whose open window covers today says fixed, and the vessel has been heard from within 5 days. A fixture reported for a future window reads as Open until that window starts, so this count is small by design.">
             <span class="value" id="statusTileFixed">—</span>
-            <span class="label">Fixed</span>
+            <span class="label">Fixed</span><span class="tile-detail">Confirmed fixtures</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
           </button>
           <button type="button" class="status-tile status-tile-likely-fixed" data-status="LIKELY FIXED" title="Nothing heard about this vessel in 5+ days -- treated as probably fixed off-market rather than still open, whatever its last reported window still claims. Not a confirmed fixture.">
             <span class="value" id="statusTileLikelyFixed">—</span>
-            <span class="label">Likely Fixed</span>
+            <span class="label">Likely Fixed</span><span class="tile-detail">Awaiting fresh reports</span><svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10M7 20h10M8 4v4l8 8v4M16 4v4l-8 8v4"/></svg>
           </button>
         </div>
 
         <div class="summary-grid">
           <div class="summary-panel">
             <div class="section-head">
-              <h3>Regional Supply &amp; Demand</h3>
+              <h3><span class="panel-eyebrow">THE GLOBAL PICTURE</span>Regional supply &amp; demand</h3>
               <div class="view-toggle">
                 <button type="button" class="view-btn active" data-view="map">Map</button>
                 <button type="button" class="view-btn" data-view="table">Table</button>
               </div>
             </div>
+            <p class="map-context">Open tonnage and cargo demand by region. <span class="muted">Simulated market data.</span></p>
+            <details class="map-method"><summary>How to read this map</summary>
             <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply), counted right now so it matches the status tiles above. Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Hover a bubble (or read the Consistency column in the table view) for how many of the last 14 days that region carried any open tonnage &mdash; a region with ships every day is a different proposition from one that happens to have them today. Simulated as of today's real date minus one year, not today's actual date.</p>
+            </details>
             <div id="regionMapFilterBanner" class="day-filter-banner hidden">
               <span id="regionMapFilterLabel"></span>
               <button type="button" id="regionMapFilterClear">Clear filter</button>
@@ -643,7 +694,7 @@
           </div>
 
           <div class="summary-panel">
-            <h3>Daily Trends <span class="muted" style="font-weight:400; font-size:0.75rem;">(last 14 days, simulated)</span></h3>
+            <h3><span class="panel-eyebrow">MARKET PULSE</span>Daily trends <span class="muted" style="font-weight:400; font-size:0.75rem;">(last 14 days, simulated)</span></h3>
             <div class="trend-chart">
               <div class="trend-chart-title">New vessels</div>
               <div id="chartNewVessels"><p class="muted" style="font-size:0.8rem;">Loading&hellip;</p></div>
@@ -666,7 +717,7 @@
 
       <section id="changes-section">
         <div class="section-head">
-          <h2>Change Feed</h2>
+          <h2><span class="section-number">02</span> Change Feed</h2>
           <div class="toolbar">
             <button type="button" class="window-btn active" data-window="dod" title="Since the previous working day; Monday compares to Friday">Day-on-day</button>
             <button type="button" class="window-btn" data-window="wow" title="Seven completed days, ending yesterday">Week-on-week</button>
@@ -677,7 +728,7 @@
 
       <section id="vessels-section">
         <div class="section-head">
-          <h2>Vessel Tracker</h2>
+          <h2><span class="section-number">03</span> Vessel Tracker</h2>
         </div>
         <div id="vesselDayFilterBanner" class="day-filter-banner hidden">
           <span id="vesselDayFilterLabel"></span>
@@ -721,7 +772,7 @@
 
       <section id="orders-section">
         <div class="section-head">
-          <h2>Order Tracker</h2>
+          <h2><span class="section-number">04</span> Order Tracker</h2>
         </div>
         <div id="orderDayFilterBanner" class="day-filter-banner hidden">
           <span id="orderDayFilterLabel"></span>
@@ -761,7 +812,7 @@
       </section>
 
       <section id="ecsa-section">
-        <div class="section-head"><h2>ECSA Ballast Tracker</h2></div>
+        <div class="section-head"><h2><span class="section-number">05</span> ECSA Ballast Tracker</h2></div>
         <p class="sub" style="margin:0 0 0.75rem;">Every vessel currently ballasting (empty, repositioning) toward East Coast South America. Expand a row for its status history trail. Last-carried-cargo data isn't available in this dataset, so "Destination" below is the vessel's next reported AIS destination, not what it last carried.</p>
         <div class="ecsa-summary">
           <span class="muted" id="ecsaCount">Loading&hellip;</span>
@@ -786,13 +837,23 @@
       </div>
 
       <div id="tab-tonnage-overrides" class="tab-panel hidden">
-      <section id="overrides-section">
+      <section id="overrides-section" class="mode-override">
+        <div class="mode-switch">
+          <button type="button" class="mode-btn active" data-mode="override">Override a record</button>
+          <button type="button" class="mode-btn" data-mode="delete">Delete a record</button>
+        </div>
         <div class="override-layout">
           <div class="form-panel">
-            <h3>Enter a Status Update</h3>
-            <p class="sub" style="margin-bottom:1rem;">
+            <h3 class="ov-hide">Enter a Status Update</h3>
+            <p class="sub ov-hide" style="margin-bottom:1rem;">
               Only Vessel, Status, and Entered by are required -- fill in
               whatever else you actually have fresh word on.
+            </p>
+            <h3 class="del-only">Delete a Vessel Record</h3>
+            <p class="sub del-only" style="margin-bottom:1rem;">
+              Pick a vessel, click the record to remove in the Current Record
+              table, then delete it. Only Vessel and Entered by are needed.
+              The deletion is logged in the Audit Trail.
             </p>
             <form class="override-form" id="overrideForm">
               <label class="field-required">Vessel
@@ -806,13 +867,21 @@
                   <ul class="combobox-list hidden" id="ovVesselList" role="listbox"></ul>
                 </div>
               </label>
+              <div class="ov-wrap ov-hide">
               <label class="field-required">Status
                 <select id="ovStatus" required>
                   <option value="" disabled selected>Select a status</option>
                 </select>
               </label>
               <label>Open area
-                <input id="ovOpenArea" type="text" maxlength="120" placeholder="e.g. Singapore" />
+                <div class="combobox" id="ovOpenAreaCombobox">
+                  <input
+                    type="text" id="ovOpenArea" placeholder="Type to search an open area (blank keeps current)&hellip;"
+                    autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                    aria-controls="ovOpenAreaList"
+                  />
+                  <ul class="combobox-list hidden" id="ovOpenAreaList" role="listbox"></ul>
+                </div>
               </label>
               <div class="field-row">
                 <label>Open date start
@@ -824,12 +893,17 @@
                   <span class="field-hint" id="ovOpenDateEndHint"></span>
                 </label>
               </div>
+              </div>
 
               <p class="form-section-label">Attribution</p>
               <label class="field-required">Entered by
                 <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
-              <button type="submit" id="ovSubmit">Submit Update</button>
+              <label class="field-required">Reason
+                <textarea id="ovReason" rows="2" placeholder="Why are you overriding or deleting this record?" required maxlength="500"></textarea>
+              </label>
+              <button type="submit" id="ovSubmit" class="ov-hide">Submit Update</button>
+              <button type="button" id="ovDelete" class="btn-delete del-only" disabled>Delete selected record</button>
               <div class="form-message" id="ovMessage"></div>
             </form>
           </div>
@@ -851,7 +925,7 @@
             </table></div>
             <p class="sub" style="margin:0.4rem 0 0; font-size:0.78rem;" id="currentRecordCount"></p>
 
-            <div class="record-section-gap">
+            <div class="record-section-gap ov-hide">
               <h3>New Record</h3>
               <p class="sub" style="margin-bottom:0.75rem;">
                 What the latest row will look like once this update is saved &mdash;
@@ -868,45 +942,40 @@
         <div class="drilldown-head" style="margin-top:2.5rem;">
           <h2>Audit Trail</h2>
         </div>
-        <div class="info-bulletin">
-          <p>
-            Every status update submitted through this form, newest first --
-            scoped to trader submissions only, not every position report.
-            Each row's <strong>When</strong> column is that submission's
-            <code>created_at</code> timestamp.
-          </p>
-          <p>
-            5 days after a vessel's most recent update with no further
-            submission, the Dashboard tab reclassifies it
-            <strong>LIKELY FIXED</strong> on its own -- checked live on
-            every dashboard load, not a once-daily schedule, so it's never
-            more than one page load stale.
-          </p>
-        </div>
         <div class="table-wrap"><table id="auditTable">
           <thead><tr>
             <th>Vessel</th><th>Commercial Status</th><th>Open area</th><th>Open window</th>
-            <th>Entered by</th><th>When</th>
+            <th>Entered by</th><th>Reason</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="6"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
 
       <div id="tab-order-overrides" class="tab-panel hidden">
-      <section id="order-overrides-section">
+      <section id="order-overrides-section" class="mode-override">
+        <div class="mode-switch">
+          <button type="button" class="mode-btn active" data-mode="override">Override an order</button>
+          <button type="button" class="mode-btn" data-mode="delete">Delete an order</button>
+        </div>
         <div class="override-layout">
           <div class="form-panel">
-            <h3>Enter a Laycan Update</h3>
-            <p class="sub" style="margin-bottom:1rem;">
+            <h3 class="ov-hide">Enter a Laycan Update</h3>
+            <p class="sub ov-hide" style="margin-bottom:1rem;">
               Only Order and Entered by are required -- fill in whatever else
               you actually have fresh word on.
+            </p>
+            <h3 class="del-only">Delete an Order</h3>
+            <p class="sub del-only" style="margin-bottom:1rem;">
+              Pick the order (order_id and order_seq) to remove. Only that
+              order_seq is deleted -- any twins sharing the order_id stay. Only
+              Order and Entered by are needed. The deletion is logged in the Audit Trail.
             </p>
             <form class="override-form" id="orderOverrideForm">
               <label class="field-required">Order
                 <div class="combobox" id="ooOrderCombobox">
                   <input
-                    type="text" id="ooOrderInput" placeholder="Type to search an order&hellip;"
+                    type="text" id="ooOrderInput" placeholder="Type to search an order ID&hellip;"
                     autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
                     aria-controls="ooOrderList" required
                   />
@@ -915,6 +984,7 @@
                   <ul class="combobox-list hidden" id="ooOrderList" role="listbox"></ul>
                 </div>
               </label>
+              <div class="ov-wrap ov-hide">
               <div class="field-row">
                 <label>Laycan start
                   <input id="ooLaycanStart" type="date" />
@@ -944,12 +1014,17 @@
                 that schema decision is made, so nothing typed here is silently
                 lost.
               </p>
+              </div>
 
               <p class="form-section-label">Attribution</p>
               <label class="field-required">Entered by
                 <input id="ooEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
-              <button type="submit" id="ooSubmit">Submit Update</button>
+              <label class="field-required">Reason
+                <textarea id="ooReason" rows="2" placeholder="Why are you overriding or deleting this order?" required maxlength="500"></textarea>
+              </label>
+              <button type="submit" id="ooSubmit" class="ov-hide">Submit Update</button>
+              <button type="button" id="ooDelete" class="btn-delete del-only" disabled>Delete this order</button>
               <div class="form-message" id="ooMessage"></div>
             </form>
           </div>
@@ -969,7 +1044,7 @@
               <tbody><tr><td class="record-empty">Select an order to see its current record.</td></tr></tbody>
             </table></div>
 
-            <div class="record-section-gap">
+            <div class="record-section-gap ov-hide">
               <h3>New Record</h3>
               <p class="sub" style="margin-bottom:0.75rem;">
                 What this order will look like once this update is saved &mdash;
@@ -986,25 +1061,12 @@
         <div class="drilldown-head" style="margin-top:2.5rem;">
           <h2>Audit Trail</h2>
         </div>
-        <div class="info-bulletin">
-          <p>
-            Every update submitted through this form, newest first -- scoped
-            to trader submissions only, not every order on file. Each row's
-            <strong>When</strong> column is that submission's
-            <code>created_at</code> timestamp.
-          </p>
-          <p>
-            <strong>Customer name</strong> is logged here even though it
-            isn't written to the order's own record yet -- see the note
-            above the form.
-          </p>
-        </div>
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
             <th>Order</th><th>Order seq</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
-            <th>Customer name</th><th>Entered by</th><th>When</th>
+            <th>Customer name</th><th>Entered by</th><th>Reason</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="7"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="8"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -1026,6 +1088,7 @@
       </div>
     </div>
 
+    <script src="/static/world-land.js"></script>
     <script>
       // ---- theme toggle -----------------------------------------------
       // Icon-only, matching chat's own dark/light toggle convention: the
@@ -1062,9 +1125,64 @@
         }
       }
 
+      // The embedded Chainlit theme provider owns inline tokens as well as its
+      // root class. Override both without reloading or interrupting the session.
+      let chatThemeObserver;
+      const chatPalette = fetch("/chat/public/theme.json")
+        .then((response) => { if (!response.ok) throw new Error("Theme unavailable"); return response.json(); })
+        .then((data) => data.variables)
+        .catch(() => null);
+      function syncChatTheme(theme) {
+        const frame = document.getElementById("chatFrame");
+        try {
+          const doc = frame.contentDocument;
+          const root = doc?.documentElement;
+          if (!root) return;
+          if (doc.head && !doc.getElementById("ocean-results-layout")) {
+            const script = doc.createElement("script");
+            script.id = "ocean-results-layout";
+            script.src = "/chat/public/results-layout.js";
+            doc.head.appendChild(script);
+          }
+          root.dataset.oceanTheme = theme;
+          if (!root.classList.contains(theme) || root.classList.contains(theme === "light" ? "dark" : "light")) {
+            root.classList.remove("light", "dark"); root.classList.add(theme);
+          }
+          if (root.style.colorScheme !== theme) root.style.colorScheme = theme;
+          chatPalette.then((palettes) => {
+            if (!palettes || !doc.head || doc.getElementById("ocean-dashboard-theme")) return;
+            const style = doc.createElement("style");
+            style.id = "ocean-dashboard-theme";
+            style.textContent = Object.entries(palettes).map(([mode, tokens]) =>
+              `:root[data-ocean-theme="${mode}"] {${Object.entries(tokens).map(([key, value]) => `${key}:${value} !important;`).join("")}}`
+            ).join("\n") + `
+              :root[data-ocean-theme] #theme-toggle { display:none !important; }
+              :root[data-ocean-theme="light"] img.logo { content:url("/chat/public/logo_light.svg"); }
+              :root[data-ocean-theme="dark"] img.logo { content:url("/chat/public/logo_dark.svg"); }
+            `;
+            doc.head.appendChild(style);
+          });
+        } catch { /* Direct /chat navigation remains independently themed. */ }
+      }
+      function bindChatTheme() {
+        chatThemeObserver?.disconnect();
+        syncChatTheme(currentTheme());
+        try {
+          const root = document.getElementById("chatFrame").contentDocument?.documentElement;
+          if (!root) return;
+          chatThemeObserver = new MutationObserver(() => syncChatTheme(currentTheme()));
+          chatThemeObserver.observe(root, { attributes: true, attributeFilter: ["class", "style"] });
+        } catch {}
+      }
+      document.getElementById("chatFrame").addEventListener("load", bindChatTheme);
+      bindChatTheme();
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        updateThemeButton(); syncChatTheme(currentTheme());
+      });
       function applyTheme(theme) {
         document.documentElement.setAttribute("data-theme", theme);
-        localStorage.setItem("theme", theme);
+        try { localStorage.setItem("theme", theme); localStorage.setItem("vite-ui-theme", theme); } catch {}
+        syncChatTheme(theme);
         updateThemeButton();
       }
 
@@ -1073,11 +1191,7 @@
       });
       updateThemeButton();
 
-      // ---- top-level tabs ---------------------------------------------
-      // Two bars: the pinned Chat / Dashboard bar swaps the chat frame for
-      // <main>; the .sub-tabs bar inside <main> swaps its own pages. Each
-      // bar only touches its own buttons, so switching a sub-tab keeps
-      // "Dashboard" highlighted up top.
+      // Workspace navigation and market tools operate independently of chat.
       document.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const nav = btn.closest("nav");
@@ -1085,14 +1199,29 @@
           const main = document.querySelector("main");
           nav.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
           btn.classList.add("active");
+          nav.querySelectorAll(".tab-btn").forEach((b) => { if (b === btn) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
           if (nav.classList.contains("sub-tabs")) {
             main.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
             document.getElementById(`tab-${tab}`).classList.remove("hidden");
             main.classList.toggle("wide", tab === "tonnage-overrides" || tab === "order-overrides");
           } else {
-            document.getElementById("tab-chat").classList.toggle("hidden", tab !== "chat");
-            main.classList.toggle("hidden", tab === "chat");
+            document.getElementById("tab-voyage-defaults").classList.toggle("hidden", tab !== "voyage-defaults");
+            main.classList.toggle("hidden", tab !== "dashboard");
+            if (tab === "voyage-defaults") loadVoyageDefaults();
           }
+        });
+      });
+
+      // Override / Delete switch inside each override tab: one CSS class on
+      // the section swaps which form fields and buttons are shown.
+      document.querySelectorAll(".mode-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const section = btn.closest("section");
+          section.querySelectorAll(".mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
+          section.classList.toggle("mode-delete", btn.dataset.mode === "delete");
+          section.classList.toggle("mode-override", btn.dataset.mode !== "delete");
+          // Override and delete pick orders differently; start each mode clean.
+          if (section.id === "order-overrides-section") resetOrderPicker();
         });
       });
 
@@ -1120,6 +1249,59 @@
         return `<span class="badge ${cls}">${escapeHtml(status || "—")}</span>`;
       }
 
+      // ---- voyage defaults ----------------------------------------------
+      // The fields, their calculator defaults and the trader's saved values come
+      // from /api/voyage-defaults, so this page holds no field list of its own.
+      let voyageDefaultFields = [];
+
+      async function loadVoyageDefaults() {
+        const holder = document.getElementById("defaultsFields");
+        try {
+          const { fields, saved } = await getJson("/api/voyage-defaults");
+          voyageDefaultFields = fields;
+          const groups = new Map();
+          fields.forEach((field) => {
+            if (!groups.has(field.group)) groups.set(field.group, []);
+            groups.get(field.group).push(field);
+          });
+          holder.className = "defaults-grid";
+          holder.innerHTML = [...groups].map(([name, items], index) => `
+            <fieldset class="defaults-card"><legend><span class="section-number">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(name)}</legend>
+            ${items.map((field) => {
+              const value = saved[field.name] ?? "";
+              return `<label class="defaults-row"><span>${escapeHtml(field.label)}</span>
+                <input type="number" step="any" min="0" name="${escapeHtml(field.name)}"
+                  value="${escapeHtml(value)}" placeholder="${escapeHtml(field.default)}" />
+                <span class="unit">${escapeHtml(field.unit)}</span></label>`;
+            }).join("")}</fieldset>`).join("");
+        } catch (error) {
+          holder.className = "error";
+          holder.textContent = `Could not load your defaults: ${error.message}`;
+        }
+      }
+
+      document.getElementById("defaultsForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = document.getElementById("defaultsMessage");
+        const button = document.getElementById("defaultsSave");
+        const values = {};
+        voyageDefaultFields.forEach((field) => {
+          const input = event.target.elements[field.name];
+          if (input && input.value !== "") values[field.name] = Number(input.value);
+        });
+        button.disabled = true;
+        try {
+          await postJson("/api/voyage-defaults", values);
+          message.className = "form-message visible success";
+          message.textContent = "Saved. The next vessel match uses these values.";
+        } catch (error) {
+          message.className = "form-message visible error";
+          message.textContent = `Could not save: ${error.message}`;
+        } finally {
+          button.disabled = false;
+        }
+      });
+
       async function getJson(path) {
         const response = await fetch(path);
         if (!response.ok) {
@@ -1127,6 +1309,13 @@
           throw new Error(body.detail || `HTTP ${response.status}`);
         }
         return response.json();
+      }
+
+      async function deleteJson(path) {
+        const response = await fetch(path, { method: "DELETE" });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+        return body;
       }
 
       async function postJson(path, payload) {
@@ -1153,21 +1342,54 @@
       // must already be viewport-relative coordinates (the tooltip is
       // `position: fixed`), then nudges it back on-screen if the box would
       // otherwise run past any edge of the browser window.
-      function showTooltip(tooltip, html, x, y) {
-        tooltip.innerHTML = html;
-        tooltip.style.left = `${x}px`;
-        tooltip.style.top = `${y}px`;
+      // One viewport-level tooltip avoids transformed/animated ancestors
+      // changing the coordinate system of position:fixed descendants.
+      const floatingTooltip = document.createElement("div");
+      floatingTooltip.id = "oceanTooltip";
+      floatingTooltip.className = "hover-tooltip";
+      floatingTooltip.setAttribute("role", "tooltip");
+      floatingTooltip.setAttribute("aria-hidden", "true");
+      document.body.appendChild(floatingTooltip);
+      let tooltipAnchor = null;
+      function showTooltip(_tooltip, html, x, y, anchor) {
+        const tooltip = floatingTooltip;
+        if (tooltipAnchor && tooltipAnchor !== anchor) tooltipAnchor.removeAttribute("aria-describedby");
+        tooltipAnchor = anchor || null;
+        tooltipAnchor?.setAttribute("aria-describedby", tooltip.id);
+        if (tooltip.innerHTML !== html) tooltip.innerHTML = html;
+        tooltip.setAttribute("aria-hidden", "false");
         tooltip.classList.add("visible");
         const box = tooltip.getBoundingClientRect();
-        const margin = 8;
-        if (box.left < margin) tooltip.style.left = `${x + (margin - box.left)}px`;
-        else if (box.right > window.innerWidth - margin) tooltip.style.left = `${x - (box.right - (window.innerWidth - margin))}px`;
-        if (box.top < margin) tooltip.style.top = `${y + (margin - box.top)}px`;
+        const margin = 12, gap = 14;
+        const headerBottom = document.querySelector(".app-header").getBoundingClientRect().bottom;
+        const minTop = Math.max(margin, headerBottom + 8);
+        let left = x + gap;
+        if (left + box.width > innerWidth - margin) left = x - box.width - gap;
+        left = Math.max(margin, Math.min(left, innerWidth - box.width - margin));
+        let top = y - 24;
+        top = Math.max(minTop, Math.min(top, innerHeight - box.height - margin));
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
       }
-
-      function hideTooltip(tooltip) {
-        tooltip.classList.remove("visible");
+      function hideTooltip() {
+        floatingTooltip.classList.remove("visible");
+        floatingTooltip.setAttribute("aria-hidden", "true");
+        tooltipAnchor?.removeAttribute("aria-describedby");
+        tooltipAnchor = null;
       }
+      function tooltipPoint(event, target) {
+        if (event && event.type.startsWith("pointer")) return [event.clientX, event.clientY];
+        const rect = target.getBoundingClientRect();
+        return [rect.right, rect.top + rect.height / 2];
+      }
+      window.addEventListener("scroll", () => {
+        if (tooltipAnchor && document.activeElement === tooltipAnchor) {
+          const [x, y] = tooltipPoint(null, tooltipAnchor);
+          showTooltip(null, floatingTooltip.innerHTML, x, y, tooltipAnchor);
+        } else hideTooltip();
+      }, true);
+      window.addEventListener("resize", hideTooltip);
+      document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideTooltip(); });
 
       // ---- regional supply & demand: map ----------------------------------
       // Centroids for the Baltic-Exchange-style trade zones this dataset
@@ -1208,39 +1430,9 @@
         "Scandinavia": [12, 60],
       };
 
-      // Simplified continent outlines, in the same [lon, lat] space as
-      // REGION_COORDS -- hand-plotted from general coastline knowledge
-      // (equirectangular-style vertices), not sourced from a GeoJSON/
-      // TopoJSON dataset or any mapping library: this stays a
-      // self-contained static page with no external data files or CDN
-      // dependency, consistent with the rest of this project. Simplified,
-      // not survey-accurate, but each landmass keeps its recognisable
-      // silhouette (Gulf of Mexico, the Central American isthmus, the
-      // Andean coast, the Horn of Africa, the Arabian and Indian
-      // peninsulas, Indochina, Scandinavia) rather than a rough blob.
-      const LAND_BLOBS = [
-        // North America
-        [[-165,68],[-140,70],[-95,72],[-80,68],[-65,60],[-52,48],[-55,40],[-75,35],[-80,25],[-97,26],[-90,18],[-92,14],[-84,9],[-77,8],[-82,22],[-97,20],[-105,20],[-110,23],[-115,30],[-124,40],[-124,48],[-130,55],[-140,60],[-155,60],[-165,55],[-168,65]],
-        // South America
-        [[-77,8],[-72,-4],[-80,-5],[-81,-15],[-75,-20],[-70,-30],[-71,-40],[-73,-52],[-68,-55],[-65,-50],[-62,-40],[-58,-35],[-48,-25],[-35,-8],[-40,0],[-50,2],[-60,8],[-70,10],[-77,8]],
-        // Europe (incl. Scandinavia)
-        [[-9,43],[-9,48],[0,50],[5,51],[8,54],[6,58],[10,63],[20,69],[28,70],[30,60],[28,55],[30,50],[27,42],[20,40],[15,38],[10,38],[3,42],[-9,43]],
-        // British Isles
-        [[-10,51],[-8,55],[-5,58],[-2,58],[0,53],[-3,50],[-6,50],[-10,51]],
-        // Africa
-        [[-17,35],[-6,36],[10,37],[20,33],[32,31],[35,28],[43,12],[51,12],[45,2],[40,-5],[40,-15],[35,-25],[27,-33],[18,-35],[13,-25],[12,-15],[9,5],[-5,5],[-10,10],[-17,15],[-17,35]],
-        // Madagascar
-        [[43,-12],[47,-13],[50,-16],[47,-25],[43,-22],[43,-12]],
-        // Asia (Middle East through the Far East, incl. India/Indochina/Arabia bumps)
-        [[27,42],[40,42],[48,40],[55,38],[60,42],[70,45],[85,50],[100,52],[115,50],[130,48],[142,45],[140,35],[130,32],[122,30],[120,23],[110,18],[105,10],[98,8],[95,15],[88,22],[80,8],[77,8],[73,15],[68,24],[61,25],[57,26],[51,24],[43,12],[35,28],[32,31],[27,42]],
-        // Japan
-        [[130,32],[132,34],[140,36],[142,40],[140,43],[135,40],[130,35],[130,32]],
-        // Australia
-        [[113,-22],[114,-28],[118,-33],[130,-32],[137,-35],[145,-38],[150,-37],[153,-28],[145,-17],[135,-12],[128,-15],[122,-18],[113,-22]],
-      ];
-
-      const MAP_BOUNDS = { lonMin: -105, lonMax: 158, latMin: -42, latMax: 70 };
-      const MAP_W = 900, MAP_H = 430, MAP_PAD = 28;
+      // Natural Earth coastline data; the same projection positions region markers.
+      const MAP_BOUNDS = { lonMin: -180, lonMax: 180, latMin: -60, latMax: 85 };
+      const MAP_W = 960, MAP_H = 416, MAP_PAD = 24;
 
       function project([lon, lat]) {
         const x = MAP_PAD + ((lon - MAP_BOUNDS.lonMin) / (MAP_BOUNDS.lonMax - MAP_BOUNDS.lonMin)) * (MAP_W - 2 * MAP_PAD);
@@ -1331,7 +1523,7 @@
         }
         const maxSupply = Math.max(1, ...mapped.map((r) => r.supply));
         const graticule = renderGraticule();
-        const land = LAND_BLOBS.map((pts) => `<path class="map-land" d="${blobPath(pts)}"></path>`).join("");
+        const land = WORLD_LAND.map((rings) => `<path class="map-land" fill-rule="evenodd" d="${rings.map(blobPath).join(" ")}"></path>`).join("");
         // Largest few get a direct label; the rest rely on the legend + tooltip + table (mark spec: label selectively).
         const labelThreshold = [...mapped].map((r) => r.supply).sort((a, b) => b - a)[Math.min(4, mapped.length - 1)] ?? 0;
         const bubbles = mapped.map((r) => {
@@ -1357,9 +1549,10 @@
         }).join("");
 
         container.innerHTML = `
-          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="img" aria-label="Regional supply and demand map">
+          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="group" aria-label="Regional supply and demand map">
             ${graticule}
             ${land}
+            <g class="ocean-labels" aria-hidden="true"><text x="150" y="230">PACIFIC OCEAN</text><text x="400" y="235">ATLANTIC</text><text x="660" y="280">INDIAN OCEAN</text></g>
             ${bubbles}
           </svg>
           <div class="hover-tooltip" id="mapTooltip"></div>
@@ -1368,7 +1561,7 @@
             <span class="swatch"><span class="dot" style="background:var(--status-warning)"></span>Balanced</span>
             <span class="swatch"><span class="dot" style="background:var(--status-good)"></span>Oversupplied (supply &gt; demand)</span>
             <span class="swatch"><span class="dot" style="background:var(--muted)"></span>No recent demand data</span>
-            <span class="swatch">Bubble size = open vessels</span>
+            <span class="swatch">Bubble size = open vessels</span><a class="map-credit" href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>
           </div>
         `;
         if (unmapped.length) {
@@ -1381,7 +1574,7 @@
         const tooltip = document.getElementById("mapTooltip");
         container.querySelectorAll("g[data-region]").forEach((g) => {
           const hit = g.querySelector(".map-bubble-hit");
-          const show = () => {
+          const show = (event) => {
             const region = g.dataset.region, supply = g.dataset.supply, demand = g.dataset.demand, status = g.dataset.status;
             const days = g.dataset.days, windowDays = g.dataset.window;
             const consistencyLine = days === "" || windowDays === ""
@@ -1389,22 +1582,17 @@
               : `<div class="muted">Open tonnage on ${escapeHtml(days)} of the last ${escapeHtml(windowDays)} days</div>`;
             const html = `
               <div class="t-title">${escapeHtml(region)}</div>
-              <div class="t-value">${formatNumber(supply)} open vessels</div>
-              <div class="t-value">${formatNumber(demand)} orders in the last 14 days</div>
+              <div class="t-metric"><strong>${formatNumber(supply)}</strong><span>open vessels</span></div>
+              <div class="t-row"><span>Orders · last 14 days</span><strong>${formatNumber(demand)}</strong></div>
               <div class="muted">${escapeHtml(status)}</div>
               ${consistencyLine}
             `;
-            const circle = g.querySelector(".map-bubble");
-            const cx = parseFloat(circle.getAttribute("cx")), cy = parseFloat(circle.getAttribute("cy"));
-            // .hover-tooltip is `position: fixed`, so these need to be
-            // viewport-relative (container's own on-screen rect), not
-            // container-relative the way `position: absolute` would want.
-            const rect = container.getBoundingClientRect();
-            const scaleX = rect.width / MAP_W;
-            showTooltip(tooltip, html, rect.left + cx * scaleX, rect.top + (cy * scaleX) - 10);
+            const [x, y] = tooltipPoint(event, hit);
+            showTooltip(tooltip, html, x, y, hit);
           };
           const hide = () => hideTooltip(tooltip);
           hit.addEventListener("pointerenter", show);
+          hit.addEventListener("pointermove", show);
           hit.addEventListener("focus", show);
           hit.addEventListener("pointerleave", hide);
           hit.addEventListener("blur", hide);
@@ -1518,7 +1706,7 @@
       // rather than inventing a shorter label for it.
       function regionBreakdownHtml(regions) {
         return (regions || []).map(
-          (r) => `<div class="t-value">${escapeHtml(r.region)}: ${formatNumber(r.count)}</div>`
+          (r) => `<div class="t-row"><span>${escapeHtml(r.region)}</span><strong>${formatNumber(r.count)}</strong></div>`
         ).join("");
       }
 
@@ -1561,17 +1749,18 @@
         const tooltip = document.getElementById("chartTooltip");
         container.querySelectorAll("rect[data-index]").forEach((rect) => {
           const d = series[Number(rect.dataset.index)];
-          const show = () => {
+          const show = (event) => {
             const html = `
               <div class="t-title">${escapeHtml(dayLabel(d.day))}</div>
-              <div class="t-value">${formatNumber(d.count)} total</div>
+              <div class="t-metric"><strong>${formatNumber(d.count)}</strong><span>${metric === "new_orders" ? "new orders" : "new vessels"}</span></div>
               ${regionBreakdownHtml(d.regions)}
             `;
-            const box = rect.getBoundingClientRect();
-            showTooltip(tooltip, html, box.left + box.width / 2, box.top - 6);
+            const [x, y] = tooltipPoint(event, rect);
+            showTooltip(tooltip, html, x, y, rect);
           };
           const hide = () => hideTooltip(tooltip);
           rect.addEventListener("pointerenter", show);
+          rect.addEventListener("pointermove", show);
           rect.addEventListener("focus", show);
           rect.addEventListener("pointerleave", hide);
           rect.addEventListener("blur", hide);
@@ -1626,7 +1815,7 @@
 
       function regionMoveBreakdownHtml(regions) {
         return (regions || []).map(
-          (r) => `<div class="t-value">${escapeHtml(r.region)}: +${formatNumber(r.up)} / ${MINUS}${formatNumber(r.down)}</div>`
+          (r) => `<div class="t-row"><span>${escapeHtml(r.region)}</span><strong>+${formatNumber(r.up)} / ${MINUS}${formatNumber(r.down)}</strong></div>`
         ).join("");
       }
 
@@ -1693,19 +1882,21 @@
         const tooltip = document.getElementById("chartTooltip");
         container.querySelectorAll("g.move-col").forEach((col) => {
           const d = series[Number(col.dataset.index)];
-          const show = () => {
+          const show = (event) => {
             const html = `
               <div class="t-title">${escapeHtml(dayLabel(d.day))}</div>
-              <div class="t-value">+${formatNumber(d.up)} back to Open</div>
-              <div class="t-value">${MINUS}${formatNumber(d.down)} to Fixed / On Subs</div>
-              <div class="t-value">Net ${signed(d.up - d.down)}</div>
+              <div class="t-row"><span>Back to Open</span><strong class="t-positive">+${formatNumber(d.up)}</strong></div>
+              <div class="t-row"><span>To Fixed / On Subs</span><strong class="t-negative">${MINUS}${formatNumber(d.down)}</strong></div>
+              <div class="t-net">Net movement <strong>${signed(d.up - d.down)}</strong></div>
               ${regionMoveBreakdownHtml(d.regions)}
             `;
-            const box = col.getBoundingClientRect();
-            showTooltip(tooltip, html, box.left + box.width / 2, box.top - 6);
+            const target = event?.target?.matches(".move-bar") ? event.target : col;
+            const [x, y] = tooltipPoint(event, target);
+            showTooltip(tooltip, html, x, y, target);
           };
           const hide = () => hideTooltip(tooltip);
           col.addEventListener("pointerenter", show);
+          col.addEventListener("pointermove", show);
           col.addEventListener("focusin", show);
           col.addEventListener("pointerleave", hide);
           col.addEventListener("focusout", hide);
@@ -2310,7 +2501,7 @@
           ? `Find order with order id: ${ids[0]} and provide details for it`
           : `Find orders with order ids: ${ids.join(", ")} and provide details for them`;
         const notice = document.getElementById("ordersSendNotice");
-        document.querySelector('.tab-btn[data-tab="chat"]').click();
+        if (document.getElementById("chatToggle").getAttribute("aria-expanded") !== "true") document.getElementById("chatToggle").click();
         if (writeToChatComposer(prompt)) {
           notice.textContent = "";
         } else {
@@ -2886,7 +3077,7 @@
           formValue: () => document.getElementById("ovStatus").value || null,
           diffColor: "var(--diff-commercial-status)" },
         { key: "open_area", label: "open area", overridable: true, inputId: "ovOpenArea",
-          formValue: () => document.getElementById("ovOpenArea").value.trim() || null,
+          formValue: () => canonicalOpenArea(document.getElementById("ovOpenArea").value),
           diffColor: "var(--diff-open-area)" },
         { key: "open_date_start", label: "open date start", overridable: true, fmt: formatDate, inputId: "ovOpenDateStart",
           formValue: () => toSimulatedDate(document.getElementById("ovOpenDateStart").value) || null,
@@ -2971,6 +3162,7 @@
         const currentBody = document.querySelector("#currentRecordTable tbody");
         const newBody = document.querySelector("#newRecordTable tbody");
         const colCount = RECORD_COLUMNS.length;
+        document.getElementById("ovDelete").disabled = !(currentRecords && currentRecords.length);
 
         const countLabel = document.getElementById("currentRecordCount");
         if (!currentRecords || !currentRecords.length) {
@@ -3174,6 +3366,95 @@
         document.getElementById(id).addEventListener("change", renderRecordTables);
       });
 
+      // ---- open area combobox: type-to-filter over the predefined list ----
+      // Only values already in tonnage_test.open_area can be submitted (the
+      // server enforces the same list); free text that matches none is
+      // rejected on submit and ignored by the live diff.
+      const OPEN_AREA_SUGGESTION_LIMIT = 50;
+      let openAreasCache = [];
+      let openAreaActiveIndex = -1;
+      const openAreaInput = () => document.getElementById("ovOpenArea");
+      const openAreaList = () => document.getElementById("ovOpenAreaList");
+
+      function canonicalOpenArea(text) {
+        const t = text.trim().toLowerCase();
+        if (!t) return null;
+        return openAreasCache.find((a) => a.toLowerCase() === t) || null;
+      }
+
+      function closeOpenAreaList() {
+        openAreaList().classList.add("hidden");
+        openAreaInput().setAttribute("aria-expanded", "false");
+        openAreaActiveIndex = -1;
+      }
+
+      function selectOpenArea(area) {
+        openAreaInput().value = area;
+        closeOpenAreaList();
+        openAreaInput().dispatchEvent(new Event("change"));
+      }
+
+      function renderOpenAreaSuggestions(query) {
+        const list = openAreaList();
+        const q = query.trim().toLowerCase();
+        const matches = (q ? openAreasCache.filter((a) => a.toLowerCase().includes(q)) : openAreasCache)
+          .slice(0, OPEN_AREA_SUGGESTION_LIMIT);
+        openAreaActiveIndex = -1;
+        if (!matches.length) {
+          list.innerHTML = `<li class="combobox-empty">No open areas match "${escapeHtml(query)}"</li>`;
+        } else {
+          list.innerHTML = matches.map((a, i) =>
+            `<li class="combobox-option" role="option" data-index="${i}"><span>${escapeHtml(a)}</span></li>`
+          ).join("");
+          list.querySelectorAll(".combobox-option").forEach((el, i) => {
+            el.addEventListener("mousedown", (event) => {
+              event.preventDefault();
+              selectOpenArea(matches[i]);
+            });
+          });
+        }
+        list.classList.remove("hidden");
+        openAreaInput().setAttribute("aria-expanded", "true");
+        list._matches = matches;
+      }
+
+      function moveOpenAreaActive(delta) {
+        const options = openAreaList().querySelectorAll(".combobox-option");
+        if (!options.length) return;
+        openAreaActiveIndex = (openAreaActiveIndex + delta + options.length) % options.length;
+        options.forEach((el, i) => el.classList.toggle("active", i === openAreaActiveIndex));
+        options[openAreaActiveIndex].scrollIntoView({ block: "nearest" });
+      }
+
+      openAreaInput().addEventListener("input", () => renderOpenAreaSuggestions(openAreaInput().value));
+      openAreaInput().addEventListener("focus", () => renderOpenAreaSuggestions(openAreaInput().value));
+      openAreaInput().addEventListener("blur", closeOpenAreaList);
+      openAreaInput().addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (openAreaList().classList.contains("hidden")) renderOpenAreaSuggestions(openAreaInput().value);
+          moveOpenAreaActive(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveOpenAreaActive(-1);
+        } else if (event.key === "Enter") {
+          if (openAreaActiveIndex >= 0 && openAreaList()._matches) {
+            event.preventDefault();
+            selectOpenArea(openAreaList()._matches[openAreaActiveIndex]);
+          }
+        } else if (event.key === "Escape") {
+          closeOpenAreaList();
+        }
+      });
+
+      async function loadOpenAreaOptions() {
+        try {
+          openAreasCache = await getJson("/api/trader-override/open-areas");
+        } catch (error) {
+          openAreaInput().placeholder = "Could not load open areas";
+        }
+      }
+
       async function loadVesselOptions() {
         try {
           vesselsCache = await getJson("/api/trader-override/vessels");
@@ -3193,6 +3474,7 @@
       const AUDIT_STATUS_CLASS = {
         FIXED: "badge-good",
         "ON SUBS": "badge-good",
+        DELETED: "badge-bad",
       };
 
       function auditStatusBadge(status) {
@@ -3213,15 +3495,22 @@
       const AUDIT_ARROW = `<span class="audit-diff-arrow">&rarr;</span>`;
       const auditNew = (html) => `<span class="audit-diff-new">${html}</span>`;
 
-      function auditDiffText(oldVal, newVal) {
+      const AUDIT_DELETED = '<span class="badge badge-bad">DELETED</span>';
+
+      function auditDiffText(oldVal, newVal, deleted = false) {
         const oldText = oldVal === null || oldVal === undefined || oldVal === "" ? null : escapeHtml(String(oldVal));
         const newText = newVal === null || newVal === undefined || newVal === "" ? null : escapeHtml(String(newVal));
+        if (deleted) return `${oldText ?? AUDIT_DASH}${AUDIT_ARROW}${AUDIT_DELETED}`;
         const newSide = auditNew(newText ?? "Null");
         if (oldText === newText) return newSide;
         return `${oldText ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
       }
 
       function auditStatusDiff(row) {
+        if (row.override_status === "DELETED") {
+          const oldBadge = row.old_override_status ? auditStatusBadge(row.old_override_status) : AUDIT_DASH;
+          return `${oldBadge}${AUDIT_ARROW}${auditStatusBadge("DELETED")}`;
+        }
         const newBadge = auditStatusBadge(row.override_status);
         if (row.old_override_status === row.override_status) return newBadge;
         const oldBadge = row.old_override_status ? auditStatusBadge(row.old_override_status) : AUDIT_DASH;
@@ -3232,20 +3521,21 @@
       // Order tab's laycan_start/end (and its cargo_weight_min/max, via
       // formatNumber) can share one range-diff renderer instead of two
       // near-identical copies.
-      function auditRangeDiff(row, oldStartKey, oldEndKey, startKey, endKey, fmt = formatDate) {
-        const oldRange = row[oldStartKey] || row[oldEndKey]
+      function auditRangeDiff(row, oldStartKey, oldEndKey, startKey, endKey, fmt = formatDate, deleted = false) {
+        const oldRange = row[oldStartKey] != null || row[oldEndKey] != null
           ? `${fmt(row[oldStartKey])} – ${fmt(row[oldEndKey])}`
           : null;
-        const newRange = row[startKey] || row[endKey]
+        const newRange = row[startKey] != null || row[endKey] != null
           ? `${fmt(row[startKey])} – ${fmt(row[endKey])}`
           : null;
+        if (deleted) return `${oldRange ?? AUDIT_DASH}${AUDIT_ARROW}${AUDIT_DELETED}`;
         const newSide = auditNew(newRange ?? "Null");
         if (oldRange === newRange) return newSide;
         return `${oldRange ?? AUDIT_DASH}${AUDIT_ARROW}${newSide}`;
       }
 
       function auditWindowDiff(row) {
-        return auditRangeDiff(row, "old_open_date_start", "old_open_date_end", "open_date_start", "open_date_end");
+        return auditRangeDiff(row, "old_open_date_start", "old_open_date_end", "open_date_start", "open_date_end", formatDate, row.override_status === "DELETED");
       }
 
       function auditRow(row) {
@@ -3253,9 +3543,10 @@
           <tr>
             <td>${escapeHtml(row.vessel_id)}</td>
             <td>${auditStatusDiff(row)}</td>
-            <td>${auditDiffText(row.old_open_area, row.open_area)}</td>
+            <td>${auditDiffText(row.old_open_area, row.open_area, row.override_status === "DELETED")}</td>
             <td>${auditWindowDiff(row)}</td>
             <td>${escapeHtml(row.entered_by)}</td>
+            <td>${row.reason ? escapeHtml(row.reason) : AUDIT_DASH}</td>
             <td>${formatDate(row.created_at)}</td>
           </tr>
         `;
@@ -3267,10 +3558,10 @@
           const rows = await getJson("/api/trader-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(auditRow).join("")
-            : '<tr><td colspan="6" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="6" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 
@@ -3286,7 +3577,13 @@
         const vesselId = document.getElementById("ovVessel").value;
         const overrideStatus = document.getElementById("ovStatus").value;
         const enteredBy = document.getElementById("ovEnteredBy").value.trim();
-        const openArea = document.getElementById("ovOpenArea").value.trim();
+        const reason = document.getElementById("ovReason").value.trim();
+        const openAreaText = document.getElementById("ovOpenArea").value.trim();
+        const openArea = canonicalOpenArea(openAreaText);
+        if (openAreaText && !openArea) {
+          showFormMessage("error", `"${openAreaText}" is not a predefined open area -- pick one from the list.`);
+          return;
+        }
         const openDateStart = document.getElementById("ovOpenDateStart").value;
         const openDateEnd = document.getElementById("ovOpenDateEnd").value;
 
@@ -3297,6 +3594,10 @@
         }
         if (!overrideStatus || !enteredBy) {
           showFormMessage("error", "Status and Entered by are required.");
+          return;
+        }
+        if (!reason) {
+          showFormMessage("error", "Reason is required.");
           return;
         }
         if (openDateStart && openDateEnd && openDateEnd < openDateStart) {
@@ -3333,6 +3634,7 @@
             base_tonnage_row_key: baseTonnageRowKey,
             override_status: overrideStatus,
             entered_by: enteredBy,
+            reason,
             open_area: openArea || null,
             open_date_start: toSimulatedDate(openDateStart),
             open_date_end: toSimulatedDate(openDateEnd),
@@ -3357,11 +3659,43 @@
         }
       });
 
+      // Delete the Current Record row the trader has selected (tonnage).
+      document.getElementById("ovDelete").addEventListener("click", async () => {
+        const record = currentRecords && currentRecords[selectedRecordIndex];
+        const vesselId = vesselHidden().value;
+        const enteredBy = document.getElementById("ovEnteredBy").value.trim();
+        if (!record || !vesselId) return;
+        if (!enteredBy) {
+          showFormMessage("error", "Fill in 'Entered by' before deleting a record.");
+          return;
+        }
+        const reason = document.getElementById("ovReason").value.trim();
+        if (!reason) {
+          showFormMessage("error", "Fill in 'Reason' before deleting a record.");
+          return;
+        }
+        if (!confirm(`Permanently delete the selected record for ${vesselId}? This is logged in the Audit Trail.`)) return;
+        try {
+          await deleteJson(
+            `/api/trader-override?vessel_id=${encodeURIComponent(vesselId)}`
+            + `&tonnage_row_key=${encodeURIComponent(record.tonnage_row_key)}`
+            + `&entered_by=${encodeURIComponent(enteredBy)}`
+            + `&reason=${encodeURIComponent(reason)}`
+          );
+          document.getElementById("ovReason").value = "";
+          showFormMessage("success", `Deleted the selected record for ${vesselId}.`);
+          await Promise.all([loadRecordPanel(vesselId), loadVesselOptions(), loadAudit()]);
+        } catch (error) {
+          showFormMessage("error", `Could not delete record: ${error.message}`);
+        }
+      });
+
       populateStatusOptions();
       applyOpenDateBounds();
       renderTableHeaders();
       renderRecordTables();
       loadVesselOptions();
+      loadOpenAreaOptions();
       loadAudit();
 
       // ---- order status override --------------------------------------------
@@ -3383,10 +3717,66 @@
       const orderList = () => document.getElementById("ooOrderList");
 
       function orderLabel(o) {
-        const route = [o.load_port, o.discharge_port].filter(Boolean).join(" → ");
         const seq = Number(o.order_seq_count) > 1 ? ` (order_seq ${o.order_seq} of ${o.order_seq_count})` : "";
-        return (route ? `${o.order_id} — ${route}` : o.order_id) + seq;
+        return o.order_id + seq;
       }
+
+      // Delete mode works on one order_id at a time: the picker lists each
+      // order_id once, and the Current Record table lists every order_seq
+      // sharing it so the row to delete can be clicked.
+      const orderDeleteMode = () =>
+        document.getElementById("order-overrides-section").classList.contains("mode-delete");
+      let deleteOrders = null; // every order_seq row for the picked order_id
+      let deleteSeqIndex = 0;
+
+      function resetOrderPicker() {
+        orderHidden().value = "";
+        orderSeqHidden().value = "";
+        orderInput().value = "";
+        currentOrder = null;
+        deleteOrders = null;
+        deleteSeqIndex = 0;
+        renderOrderRecordTables();
+      }
+
+      function renderOrderDeleteTable() {
+        const body = document.querySelector("#orderCurrentRecordTable tbody");
+        const colCount = ORDER_RECORD_COLUMNS.length;
+        const seqNote = document.getElementById("ooSeqNote");
+        document.getElementById("ooDelete").disabled = !(deleteOrders && deleteOrders.length);
+        if (!deleteOrders || !deleteOrders.length) {
+          seqNote.hidden = true;
+          body.innerHTML = `<tr><td class="record-empty" colspan="${colCount}">Select an order to see its records.</td></tr>`;
+          return;
+        }
+        seqNote.hidden = false;
+        seqNote.textContent = `order_id ${deleteOrders[0].order_id} has ${deleteOrders.length} record(s). `
+          + "Click the record (order_seq) to delete -- only that one is removed.";
+        body.innerHTML = deleteOrders.map((row, i) => {
+          const cells = ORDER_RECORD_COLUMNS.map((c) => displayValue(row[c.key], c.fmt, false, undefined)).join("");
+          return `<tr data-seq-index="${i}" class="${i === deleteSeqIndex ? "selected-row" : ""}">${cells}</tr>`;
+        }).join("");
+      }
+
+      async function loadDeleteRecords(orderId) {
+        const body = document.querySelector("#orderCurrentRecordTable tbody");
+        body.innerHTML = `<tr><td class="record-empty" colspan="${ORDER_RECORD_COLUMNS.length}"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr>`;
+        try {
+          deleteOrders = await getJson(`/api/order-override/orders/${encodeURIComponent(orderId)}`);
+          deleteSeqIndex = 0;
+          renderOrderDeleteTable();
+        } catch (error) {
+          deleteOrders = null;
+          body.innerHTML = `<tr><td class="error" colspan="${ORDER_RECORD_COLUMNS.length}">Could not load records: ${escapeHtml(error.message)}</td></tr>`;
+        }
+      }
+
+      document.querySelector("#orderCurrentRecordTable tbody").addEventListener("click", (event) => {
+        const row = event.target.closest("tr[data-seq-index]");
+        if (!row || !deleteOrders || !orderDeleteMode()) return;
+        deleteSeqIndex = Number(row.dataset.seqIndex);
+        renderOrderDeleteTable();
+      });
 
       function closeOrderList() {
         orderList().classList.add("hidden");
@@ -3431,9 +3821,11 @@
       }
 
       function renderOrderRecordTables() {
+        if (orderDeleteMode()) { renderOrderDeleteTable(); return; }
         const currentBody = document.querySelector("#orderCurrentRecordTable tbody");
         const newBody = document.querySelector("#orderNewRecordTable tbody");
         const colCount = ORDER_RECORD_COLUMNS.length;
+        document.getElementById("ooDelete").disabled = !currentOrder;
 
         const seqNote = document.getElementById("ooSeqNote");
         const twins = currentOrder ? Number(currentOrder.order_seq_count) : 0;
@@ -3497,6 +3889,14 @@
       }
 
       function selectOrder(o) {
+        if (orderDeleteMode()) {
+          orderHidden().value = o.order_id;
+          orderSeqHidden().value = "";
+          orderInput().value = o.order_id;
+          closeOrderList();
+          loadDeleteRecords(o.order_id);
+          return;
+        }
         orderHidden().value = o.order_id;
         orderSeqHidden().value = o.order_seq;
         orderInput().value = orderLabel(o);
@@ -3507,13 +3907,16 @@
       function renderOrderSuggestions(query) {
         const list = orderList();
         const q = query.trim().toLowerCase();
+        let pool = ordersCache;
+        if (orderDeleteMode()) {
+          // One entry per order_id; its records are listed in the table.
+          const seen = new Set();
+          pool = ordersCache.filter((o) => !seen.has(o.order_id) && seen.add(o.order_id));
+        }
         const matches = (
           q
-            ? ordersCache.filter((o) =>
-                [o.order_id, o.cargo_type, o.load_port, o.discharge_port]
-                  .some((v) => v && String(v).toLowerCase().includes(q))
-              )
-            : ordersCache
+            ? pool.filter((o) => String(o.order_id).toLowerCase().includes(q))
+            : pool
         ).slice(0, ORDER_SUGGESTION_LIMIT);
 
         orderActiveIndex = -1;
@@ -3522,7 +3925,9 @@
         } else {
           list.innerHTML = matches.map((o, i) => `
             <li class="combobox-option" role="option" data-index="${i}">
-              <span>${escapeHtml(orderLabel(o))}</span>
+              <span>${escapeHtml(orderDeleteMode()
+                ? o.order_id + (Number(o.order_seq_count) > 1 ? ` (${o.order_seq_count} records)` : "")
+                : orderLabel(o))}</span>
             </li>
           `).join("");
           list.querySelectorAll(".combobox-option").forEach((el, i) => {
@@ -3583,7 +3988,7 @@
         try {
           ordersCache = await getJson("/api/order-override/orders");
           orderInput().placeholder = ordersCache.length
-            ? "Type to search an order…"
+            ? "Type to search an order ID…"
             : "No orders available";
         } catch (error) {
           orderInput().placeholder = "Could not load orders";
@@ -3602,6 +4007,7 @@
         const orderId = document.getElementById("ooOrder").value;
         const orderSeq = Number(orderSeqHidden().value);
         const enteredBy = document.getElementById("ooEnteredBy").value.trim();
+        const reason = document.getElementById("ooReason").value.trim();
         const laycanStart = document.getElementById("ooLaycanStart").value;
         const laycanEnd = document.getElementById("ooLaycanEnd").value;
         const cargoWeightMinRaw = document.getElementById("ooCargoWeightMin").value;
@@ -3616,6 +4022,10 @@
         }
         if (!enteredBy) {
           showOrderFormMessage("error", "Entered by is required.");
+          return;
+        }
+        if (!reason) {
+          showOrderFormMessage("error", "Reason is required.");
           return;
         }
         if (laycanStart && laycanEnd && laycanEnd < laycanStart) {
@@ -3633,6 +4043,7 @@
             order_id: orderId,
             order_seq: orderSeq,
             entered_by: enteredBy,
+            reason,
             laycan_start: toSimulatedDate(laycanStart),
             laycan_end: toSimulatedDate(laycanEnd),
             cargo_weight_min: cargoWeightMin,
@@ -3656,12 +4067,13 @@
       function orderAuditRow(row) {
         return `
           <tr>
-            <td>${escapeHtml(row.order_id)}</td>
+            <td>${escapeHtml(row.order_id)}${row.action === "DELETE" ? ' <span class="badge badge-bad">DELETED</span>' : ""}</td>
             <td>${row.order_seq == null ? AUDIT_DASH : escapeHtml(row.order_seq)}</td>
-            <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end")}</td>
-            <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber)}</td>
-            <td>${row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
+            <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end", formatDate, row.action === "DELETE")}</td>
+            <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber, row.action === "DELETE")}</td>
+            <td>${row.action === "DELETE" ? AUDIT_DELETED : row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
             <td>${escapeHtml(row.entered_by)}</td>
+            <td>${row.reason ? escapeHtml(row.reason) : AUDIT_DASH}</td>
             <td>${formatDate(row.created_at)}</td>
           </tr>
         `;
@@ -3673,12 +4085,44 @@
           const rows = await getJson("/api/order-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(orderAuditRow).join("")
-            : '<tr><td colspan="7" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="8" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
+
+      document.getElementById("ooDelete").addEventListener("click", async () => {
+        const target = deleteOrders && deleteOrders[deleteSeqIndex];
+        if (!target) return;
+        const orderId = target.order_id;
+        const orderSeq = Number(target.order_seq);
+        const enteredBy = document.getElementById("ooEnteredBy").value.trim();
+        if (!enteredBy) {
+          showOrderFormMessage("error", "Fill in 'Entered by' before deleting an order.");
+          return;
+        }
+        const reason = document.getElementById("ooReason").value.trim();
+        if (!reason) {
+          showOrderFormMessage("error", "Fill in 'Reason' before deleting an order.");
+          return;
+        }
+        if (!confirm(`Permanently delete order ${orderId} (order_seq ${orderSeq})? This is logged in the Audit Trail.`)) return;
+        try {
+          await deleteJson(
+            `/api/order-override?order_id=${encodeURIComponent(orderId)}`
+            + `&order_seq=${orderSeq}&entered_by=${encodeURIComponent(enteredBy)}`
+            + `&reason=${encodeURIComponent(reason)}`
+          );
+          document.getElementById("ooReason").value = "";
+          showOrderFormMessage("success", `Deleted order ${orderId} (order_seq ${orderSeq}).`);
+          await Promise.all([loadOrderOptions(), loadOrderAudit()]);
+          await loadDeleteRecords(orderId);
+          if (!deleteOrders || !deleteOrders.length) resetOrderPicker();
+        } catch (error) {
+          showOrderFormMessage("error", `Could not delete order: ${error.message}`);
+        }
+      });
 
       renderOrderTableHeaders();
       renderOrderRecordTables();
@@ -3766,5 +4210,6 @@
 
       refreshTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     </script>
+    <script src="/static/workspace.js"></script>
   </body>
 </html>
