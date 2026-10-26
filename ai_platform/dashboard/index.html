@@ -675,9 +675,17 @@
               </div>
             </div>
             <p class="map-context">Open tonnage and cargo demand by region. <span class="muted">Simulated market data.</span></p>
-            <details class="map-method"><summary>How to read this map</summary>
-            <p class="sub" style="margin:0 0 0.75rem;">Bubble size is open vessels per region (supply), counted right now so it matches the status tiles above. Color is demand pressure where recent order data exists; most regions currently have none in this dataset's simulated window, shown neutral rather than guessed. Hover a bubble (or read the Consistency column in the table view) for how many of the last 14 days that region carried any open tonnage &mdash; a region with ships every day is a different proposition from one that happens to have them today. Simulated as of today's real date minus one year, not today's actual date.</p>
-            </details>
+            <div class="day-summary" role="region" aria-labelledby="daySummaryTitle">
+              <div class="day-summary-head">
+                <h4 id="daySummaryTitle">Last 24 hours</h4>
+                <span class="day-summary-range" id="daySummaryRange"></span>
+              </div>
+              <div class="day-summary-stats" id="daySummaryBody"><p class="muted">Loading&hellip;</p></div>
+              <p class="day-summary-foot">
+                Supply moves and New vessels count what takes effect on simulated today;
+                Field changes and New orders cover the 24 hours exactly. Same definitions as the Change Feed.
+              </p>
+            </div>
             <div id="regionMapFilterBanner" class="day-filter-banner hidden">
               <span id="regionMapFilterLabel"></span>
               <button type="button" id="regionMapFilterClear">Clear filter</button>
@@ -2728,6 +2736,82 @@
         return `Since previous working day: ${start.toLocaleString("en-GB", withTime)} to ${end.toLocaleString("en-GB", withTime)} (UTC)`;
       }
 
+      // ---- Last 24 hours (map panel) --------------------------------------
+      // The Change Feed's own four lists, asked for over window=24h: exactly
+      // the 24 hours before simulated "now" (change_window_bounds in
+      // dashboard_queries.py). Supply moves and New vessels are dated by whole
+      // day, so here they are the ones taking effect on simulated today; Field
+      // changes and New orders are timestamped and cover the 24 hours exactly.
+      // Counts are the lists' row counts, as the Change Feed shows them.
+      function topCounts(values, limit) {
+        const counts = new Map();
+        values.filter(Boolean).forEach((v) => counts.set(v, (counts.get(v) || 0) + 1));
+        return [...counts]
+          .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+          .slice(0, limit);
+      }
+
+      function dayStat(valueHtml, label, detailHtml) {
+        return `
+          <div class="day-stat">
+            <span class="day-stat-value">${valueHtml}</span>
+            <span class="day-stat-label">${escapeHtml(label)}</span>
+            <span class="day-stat-detail">${detailHtml}</span>
+          </div>`;
+      }
+
+      async function loadDaySummary(isRefresh = false) {
+        const body = document.getElementById("daySummaryBody");
+        const range = document.getElementById("daySummaryRange");
+        try {
+          const data = await getJson("/api/dashboard/changes?window=24h");
+          const fmt = { timeZone: "UTC", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false };
+          const at = (iso) => new Date(`${iso}Z`).toLocaleString("en-GB", fmt);
+          range.textContent = `${at(data.tonnage_since)} to ${at(data.tonnage_until)} UTC (simulated)`;
+
+          const moves = data.vessel_status_changes;
+          const up = moves.filter((m) => m.direction === "up").length;
+          const down = moves.length - up;
+          const net = up - down;
+          const changedFields = data.field_changes.flatMap((row) => FIELD_CHANGE_SPECS
+            .filter(([, cur, prev]) => String(row[cur] ?? "") !== String(row[prev] ?? ""))
+            .map(([label]) => label));
+          const changedVessels = new Set(data.field_changes.map((r) => r.vessel_id)).size;
+          const list = (pairs) => pairs.map(([name, n]) => `${escapeHtml(name)} ${n}`).join(" &middot; ");
+          const fieldTop = topCounts(changedFields, 3);
+          const zoneTop = topCounts(data.new_orders.map((o) => o.load_zone), 3);
+
+          body.innerHTML = [
+            dayStat(
+              `<span class="up">+${up}</span> <span class="down">&minus;${down}</span>`,
+              "Supply moves",
+              `${up} back to Open, ${down} left Open &middot; net ${net > 0 ? "+" : ""}${net}`
+            ),
+            dayStat(
+              formatNumber(data.new_vessels.length),
+              "New vessels",
+              "Declared open, effective today"
+            ),
+            dayStat(
+              formatNumber(data.field_changes.length),
+              "Field changes",
+              data.field_changes.length
+                ? `${changedVessels} ${changedVessels === 1 ? "vessel" : "vessels"} &middot; ${list(fieldTop)}`
+                : "No vessel details changed"
+            ),
+            dayStat(
+              formatNumber(data.new_orders.length),
+              "New orders",
+              data.new_orders.length ? list(zoneTop) : "No orders received"
+            ),
+          ].join("");
+        } catch (error) {
+          if (isRefresh) throw error;
+          range.textContent = "";
+          body.innerHTML = `<p class="error">Could not load the last 24 hours: ${escapeHtml(error.message)}</p>`;
+        }
+      }
+
       async function loadChanges(window_, isRefresh = false) {
         const el = document.getElementById("changeFeed");
         if (!isRefresh) el.innerHTML = '<p class="muted">Loading&hellip;</p>';
@@ -4169,6 +4253,7 @@
           ["Status counts", loadStatusCounts(true)],
           ["Daily trends", loadDailyTrends(true)],
           ["Change feed", loadChanges(currentChangeWindow, true)],
+          ["Last 24 hours", loadDaySummary(true)],
           ["Vessel tracker", loadVessels(true)],
           ["Order tracker", loadOrders(true)],
           ["ECSA tracker", loadEcsa(true)],
@@ -4200,6 +4285,7 @@
         loadStatusCounts(),
         loadDailyTrends(),
         loadChanges(currentChangeWindow),
+        loadDaySummary(),
         loadVessels(),
         loadOrders(),
         loadEcsa(),
