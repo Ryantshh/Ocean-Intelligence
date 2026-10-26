@@ -75,9 +75,20 @@ body.chat-resizing iframe { pointer-events:none; }
 @media(max-width:900px) { #tab-chat { inset:0 0 0 auto; } }
 @media(min-width:901px) { body.chat-open .status-tiles { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .map-context { font-size:12px; color:var(--muted); margin:10px 0 6px; }
-.map-method { font-size:11px; color:var(--muted); margin-bottom:16px; }
-.map-method summary { cursor:pointer; color:var(--accent); width:fit-content; }
-.map-method p { margin-top:10px!important; }
+/* Map panel: "Last 24 hours" summary. A standing part of the dashboard rather
+   than a collapsible note, so it is tinted with the accent and its figures are bold. */
+.day-summary { margin:0 0 16px; padding:14px 16px; border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border)); border-left:4px solid var(--accent); border-radius:10px; background:color-mix(in srgb,var(--accent) 8%,var(--card)); }
+.day-summary-head { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:12px; }
+.day-summary-head h4 { margin:0; font-size:10px; letter-spacing:2px; font-weight:700; text-transform:uppercase; color:var(--accent); }
+.day-summary-range { font-size:11px; color:var(--muted); }
+.day-summary-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px 16px; }
+.day-stat { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.day-stat-value { font-size:24px; font-weight:700; line-height:1.15; letter-spacing:-.5px; color:var(--fg); font-variant-numeric:tabular-nums; }
+.day-stat-value .up { color:var(--status-good); }
+.day-stat-value .down { color:var(--status-critical); }
+.day-stat-label { font-size:12px; font-weight:650; color:var(--fg); }
+.day-stat-detail { font-size:11px; line-height:1.45; color:var(--muted); overflow-wrap:anywhere; }
+.day-summary-foot { margin:12px 0 0; font-size:11px; line-height:1.5; color:var(--muted); }
 
 /* Quiet depth, precise detail, and restrained motion. */
 body { background-image:radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--accent) 5%,transparent),transparent 42%); }
@@ -157,6 +168,19 @@ body.chat-open .status-tile { min-width:0; padding:16px; }
 .map-legend { font-size:10px; gap:10px 14px; padding:13px; }
 .map-unmapped { font-size:10px; line-height:1.6; }
 .trend-chart { margin-top:18px; }
+/* Fullscreen two-column layout only: the Daily trends panel takes the map
+   panel's height (contain:size keeps its own content from setting the row
+   height) and the three charts share it: Supply moves, the one traders
+   read first, gets 1.5 shares and New vessels and New orders 1 each.
+   index.html redraws each chart to fill its share (fittedChartHeight).
+   Stacked, or with the assistant open, the charts keep their usual shape. */
+@media(min-width:1101px) {
+  body:not(.chat-open) .summary-grid { align-items:stretch; }
+  body:not(.chat-open) .trends-panel { --trends-fit:1; contain:size; display:flex; flex-direction:column; }
+  body:not(.chat-open) .trends-panel .trend-chart { flex:1 1 0; min-height:0; display:flex; flex-direction:column; }
+  body:not(.chat-open) .trends-panel .trend-chart-primary { flex-grow:1.5; }
+  body:not(.chat-open) .trends-panel :is(#chartNewVessels,#chartStatusChanges,#chartNewOrders) { flex:1 1 0; min-height:0; overflow:hidden; }
+}
 .trend-chart-title { font-size:10px; line-height:1.5; }
 .change-group { border-radius:12px; padding:18px; }
 .change-group h3 { display:flex; align-items:center; gap:8px; margin-bottom:15px; font-size:12px; }

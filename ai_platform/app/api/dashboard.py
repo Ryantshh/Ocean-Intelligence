@@ -516,7 +516,14 @@ async def ecsa_vessel_history(vessel_id: str) -> list[dict[str, Any]]:
 
 @router.get("/dashboard/changes")
 async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
-    """Day-on-day or week-on-week change feed.
+    """Day-on-day, week-on-week or last-24-hours change feed.
+
+    ``window=24h`` backs the map panel's "Last 24 hours" summary: the same
+    four lists over exactly the 24 hours before simulated "now". Supply moves
+    and new vessels are dated by whole day (the day the status takes effect /
+    the vessel comes open), so in that window they are the ones on simulated
+    today; field changes and new orders carry real timestamps and fall
+    within the 24 hours exactly.
 
     ``vessel_status_changes`` is the Daily Trends chart's own definition,
     not a log of every transition: vessels returning to OPEN from FIXED or
@@ -547,9 +554,10 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
 
     Parameters
     ----------
-    window : "dod" or "wow"
-        Day-on-day since the previous weekday at the same time, or
-        week-on-week over the seven completed UTC days before simulated today.
+    window : "dod", "wow" or "24h"
+        Day-on-day since the previous weekday at the same time,
+        week-on-week over the seven completed UTC days before simulated today,
+        or the 24 hours before simulated "now".
 
     Returns
     -------
