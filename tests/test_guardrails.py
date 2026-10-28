@@ -144,6 +144,20 @@ class NewVesselsTests(unittest.TestCase):
         _, fetch = self._run(since="2025-10-27", until="2025-11-30")
         self.assertEqual(fetch.await_args.args[1][1], _midnight(date(2025, 10, 29)))
 
+    def test_zone_and_size_filter_the_dashboard_query_in_sql(self):
+        _, fetch = self._run(since="2025-10-27", parent_zone=["East Coast South America"], dwt_min=180000)
+        sql, params = fetch.await_args.args
+        self.assertTrue(sql.startswith("SELECT * FROM (WITH events AS"))
+        self.assertIn("zone = ANY($3::text[])", sql)
+        self.assertIn("nv.dwt >= $4", sql)
+        self.assertEqual(params[2:], [["East Coast South America"], 180000])
+
+    def test_no_filter_leaves_the_dashboard_query_as_is(self):
+        _, fetch = self._run(since="2025-10-27")
+        sql, params = fetch.await_args.args
+        self.assertNotIn("AS nv", sql)
+        self.assertEqual(len(params), 2)
+
 
 class FlagForDevTeamTests(unittest.TestCase):
     def test_scores_the_trace(self):

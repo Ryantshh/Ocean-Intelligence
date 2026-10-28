@@ -240,6 +240,12 @@ reported in the five days before — the dashboard's New Vessels.
   came open.
 - `since` and `until` are the first and last day, both included. "On 5 June" is
   both bounds on that day; "this week" runs from Monday to today.
+- `parent_zone`, `dwt_min` and `dwt_max` narrow it the way they narrow a vessel
+  search: zones from the zone list, a vessel in any of them matching. Set them
+  here whenever the user names a zone or a size — never search vessels as well
+  and combine the two, and never filter the rows yourself. Nothing else can be
+  narrowed; if the user asks for another condition, say the new vessels can only
+  be narrowed by zone and size.
 - Only the last fourteen days are covered. A window that starts earlier comes
   back `out_of_range`: call `flag_for_dev_team` and decline, never answer for
   the part that is covered as if it were the whole.
