@@ -239,6 +239,58 @@ class NewVesselsWindow(BaseModel):
     until: date | None = Field(
         default=None, description="last day counted, inclusive; leave null for today"
     )
+    parent_zone: list[str] | None = Field(
+        default=None,
+        description="one or more zones from the zone list, stored spelling; a vessel in any of them matches",
+    )
+    dwt_min: float | None = Field(default=None, description="deadweight, lower bound")
+    dwt_max: float | None = Field(default=None, description="deadweight, upper bound")
+
+
+def _narrow_new_vessels(
+    sql: str, params: list[Any], window: NewVesselsWindow
+) -> tuple[str, list[Any]]:
+    """Apply the zone and deadweight filters on top of the dashboard's query.
+
+    The dashboard query is shared and stays untouched; it is wrapped instead, so
+    the count is still the database's and the definition of new cannot drift.
+    Zones match as the vessel search matches them: any element of the stored
+    comma-separated list equal to any requested zone.
+
+    Parameters
+    ----------
+    sql : str
+        ``dashboard_queries.new_vessels_sql``'s statement.
+    params : list
+        Its parameters; the filters' are appended after them.
+    window : NewVesselsWindow
+        The request, carrying any filters.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``, unchanged when no filter is set.
+    """
+    params = list(params)
+    clauses = []
+    if window.parent_zone:
+        params.append(window.parent_zone)
+        clauses.append(
+            "EXISTS (SELECT 1 FROM unnest(string_to_array(nv.parent_zone, ', ')) AS zone "
+            f"WHERE zone = ANY(${len(params)}::text[]))"
+        )
+    for bound, operator in (("dwt_min", ">="), ("dwt_max", "<=")):
+        value = getattr(window, bound)
+        if value is not None:
+            params.append(value)
+            clauses.append(f"nv.dwt {operator} ${len(params)}")
+    if not clauses:
+        return sql, params
+    narrowed = (
+        f"SELECT * FROM ({sql}) AS nv WHERE {' AND '.join(clauses)} "
+        "ORDER BY nv.new_as_of DESC, nv.update_date DESC NULLS LAST"
+    )
+    return narrowed, params
 
 
 @tool("new_vessels", args_schema=NewVesselsWindow)
@@ -247,7 +299,8 @@ async def new_vessels(**request: Any) -> dict[str, Any]:
 
     A vessel is new on the day it comes OPEN while it has been reported in the
     five days before — the dashboard's New Vessels, counted the same way. Only
-    the last fourteen days are covered.
+    the last fourteen days are covered. Narrow by zone and deadweight here,
+    never by filtering the rows yourself, so the count stays exact.
 
     Returns
     -------
@@ -273,9 +326,12 @@ async def new_vessels(**request: Any) -> dict[str, Any]:
         return {"out_of_range": f"The window starts after it ends, or after today ({today:%d %B %Y})."}
 
     # until is inclusive here and exclusive in the dashboard query
-    sql, params = dashboard_queries.new_vessels_sql(
-        datetime.combine(parsed.since, time()),
-        datetime.combine(until + timedelta(days=1), time()),
+    sql, params = _narrow_new_vessels(
+        *dashboard_queries.new_vessels_sql(
+            datetime.combine(parsed.since, time()),
+            datetime.combine(until + timedelta(days=1), time()),
+        ),
+        parsed,
     )
     # The dashboard view carries more than the vessel table shows, including an
     # interval that does not serialise; keep what the results panel displays.
