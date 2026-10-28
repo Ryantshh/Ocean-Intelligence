@@ -19,7 +19,9 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.types import Command
 
 from ai_platform.app.data_layer import get_data_layer
+from ai_platform.backend import guardrails
 from ai_platform.backend.agent import agent
+from ai_platform.backend.clock import working_date
 from ai_platform.backend.context import CONTEXT_WINDOW, PROMPT_TOKENS, message_tokens
 from ai_platform.backend.distances import PORT_NAMES
 from ai_platform.backend.llm import stream_chat
@@ -53,7 +55,9 @@ which lives in the reply prose and in the table's own footer instead.
 TOOL_STEPS = {
     "search_orders_and_tonnage": "Order and tonnage search",
     "match_orders": "Vessel matching",
+    "new_vessels": "New vessels",
     "ask_user": "Clarifying question",
+    "flag_for_dev_team": "Passed to the dev team",
 }
 """Progress step shown while each tool runs."""
 
@@ -63,6 +67,9 @@ STEP_OUTPUT_CAP = 500
 Caps ``ask_user`` forms and tool errors so a stray payload cannot push the
 transcript out of the viewport.
 """
+
+PLAIN_MODEL_DISCLAIMER = "\n\n_General knowledge only: not checked against the desk's data._"
+"""Appended to every plain model reply, which has no access to the book."""
 
 CUT_OFF_NOTICE = (
     "\n\n_My answer was cut short before I finished. The results panel has every "
@@ -264,6 +271,11 @@ async def run_agent(question: str) -> None:
     what was submitted. It runs more than twice only when the agent asks twice,
     and ``RUN_LIMIT`` bounds it.
 
+    Every tool call and result is also recorded as evidence, and the reply ends
+    with the sources and confidence lines ``guardrails.footer`` builds from it —
+    or a disclaimer when nothing was searched — so how far the answer can be
+    trusted is decided by what was found, not by what the model says.
+
     The table's name is appended to the reply on a line of its own, and that line
     is load-bearing. Chainlit builds a regex from the names of a message's
     elements and turns every match in the message text into the link that opens
@@ -291,6 +303,8 @@ async def run_agent(question: str) -> None:
     reply = root_message()
     results_element_name = ""
     was_cut_off = False
+    evidence = guardrails.Evidence()
+    cancelled = False
 
     while True:
         interrupt_value: dict[str, Any] | None = None
@@ -338,7 +352,7 @@ async def run_agent(question: str) -> None:
                             node == "model" and metadata.get("finish_reason") == "length"
                         )
                         name = await _render_node_message(
-                            message, node, open_steps, reply
+                            message, node, open_steps, reply, evidence
                         )
                         results_element_name = name or results_element_name
         except Exception as error:
@@ -359,11 +373,14 @@ async def run_agent(question: str) -> None:
             await reply.stream_token(
                 "\n\nNo problem — ask again whenever you have those details."
             )
+            cancelled = True
             break
         payload = Command(resume=submitted)
 
     if was_cut_off:
         await reply.stream_token(CUT_OFF_NOTICE)
+    if not cancelled and not failed:
+        await reply.stream_token(guardrails.footer(evidence, working_date(), was_cut_off))
     if results_element_name:
         await reply.stream_token(f"\n\n{results_element_name}")
     await reply.send()
@@ -371,7 +388,11 @@ async def run_agent(question: str) -> None:
 
 
 async def _render_node_message(
-    message: Any, node: str, open_steps: dict[str, cl.Step], reply: cl.Message
+    message: Any,
+    node: str,
+    open_steps: dict[str, cl.Step],
+    reply: cl.Message,
+    evidence: guardrails.Evidence,
 ) -> str:
     """Show one message from the agent as a progress step or a results panel.
 
@@ -393,6 +414,8 @@ async def _render_node_message(
         Steps opened for tool calls, keyed by tool call id, closed on result.
     reply : cl.Message
         The reply the results panel attaches to.
+    evidence : guardrails.Evidence
+        The run's evidence, which every tool call and result is recorded into.
 
     Returns
     -------
@@ -401,6 +424,7 @@ async def _render_node_message(
     """
     if node == "model":
         for call in getattr(message, "tool_calls", None) or []:
+            evidence.record_call(call["id"], call["name"], call.get("args", {}))
             step = cl.Step(
                 name=TOOL_STEPS.get(call["name"], call["name"]),
                 type="tool",
@@ -414,6 +438,11 @@ async def _render_node_message(
     if node != "tools":
         return ""
 
+    evidence.record_result(
+        getattr(message, "tool_call_id", ""),
+        getattr(message, "content", None),
+        getattr(message, "status", None),
+    )
     sets = _sets_from(message)
     step = open_steps.pop(getattr(message, "tool_call_id", ""), None)
     if step is not None:
@@ -1058,6 +1087,7 @@ async def handle_message(message: cl.Message) -> None:
         reply = root_message()
         async for token in stream_chat(cl.chat_context.to_openai()):
             await reply.stream_token(token)
+        await reply.stream_token(PLAIN_MODEL_DISCLAIMER)
         await reply.send()
         return
 
