@@ -8,19 +8,28 @@ in the system prompt, structured per table, so it is written once.
 ``ask_user`` is a tool rather than middleware because the decision to ask belongs
 to the model. It calls ``interrupt``, which saves the run and stops; the agent
 resumes into the same call once the user submits.
+
+``new_vessels`` answers the dashboard's New Vessels question with the dashboard's
+own query, so the two can never disagree, and only over the last
+``NEW_VESSEL_LOOKBACK_DAYS``. ``flag_for_dev_team`` records a question the desk's
+data cannot answer, so declining it is never silent.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from collections.abc import Sequence
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from langchain_core.tools import tool
+from langfuse import get_client
 from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_platform.backend import tables
+from ai_platform.backend import dashboard_queries, tables
+from ai_platform.backend.clock import working_date
 from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.embeddings import embed_search_terms
 from ai_platform.backend.logging_utils import get_logger
@@ -204,3 +213,121 @@ def ask_user(**request: Any) -> dict[str, str]:
         questions.append(shown)
     _logger.info("ask_user: %s", [question["header"] for question in questions])
     return interrupt({"questions": questions})
+
+
+NEW_VESSEL_LOOKBACK_DAYS = 14
+"""How far back ``new_vessels`` answers, in days before today.
+
+A vessel is new on the day it comes open while recently reported; past a fortnight
+that is history rather than fresh supply, so older windows are declined and flagged.
+"""
+
+UNSUPPORTED_REQUEST_SCORE = "unsupported_request"
+"""Langfuse score that marks a trace as a question the desk's data cannot answer.
+
+A boolean score rather than a tag: tags are fixed when the trace starts, and a
+score can be added from inside the run. Filter on it in Langfuse to find them.
+"""
+
+
+class NewVesselsWindow(BaseModel):
+    """The days ``new_vessels`` counts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    since: date = Field(description="first day counted, inclusive")
+    until: date | None = Field(
+        default=None, description="last day counted, inclusive; leave null for today"
+    )
+
+
+@tool("new_vessels", args_schema=NewVesselsWindow)
+async def new_vessels(**request: Any) -> dict[str, Any]:
+    """Find vessels that came open as new supply between two days.
+
+    A vessel is new on the day it comes OPEN while it has been reported in the
+    five days before — the dashboard's New Vessels, counted the same way. Only
+    the last fourteen days are covered.
+
+    Returns
+    -------
+    dict
+        ``vessels``, each at its latest position with ``new_as_of`` the day it
+        came open; ``counts`` with the number of distinct vessels — use it for
+        any count you report; ``by_day`` with distinct vessels per day. When the
+        window reaches back too far, only ``out_of_range``, saying what to do.
+    """
+    parsed = NewVesselsWindow(**request)
+    today = working_date()
+    earliest = today - timedelta(days=NEW_VESSEL_LOOKBACK_DAYS)
+    until = min(parsed.until or today, today)
+    if parsed.since < earliest:
+        return {
+            "out_of_range": (
+                f"New vessels are only covered from {earliest:%d %B %Y}, the last "
+                f"{NEW_VESSEL_LOOKBACK_DAYS} days. Do not answer for the earlier days "
+                "or estimate them: call flag_for_dev_team, then tell the user."
+            )
+        }
+    if parsed.since > until:
+        return {"out_of_range": f"The window starts after it ends, or after today ({today:%d %B %Y})."}
+
+    # until is inclusive here and exclusive in the dashboard query
+    sql, params = dashboard_queries.new_vessels_sql(
+        datetime.combine(parsed.since, time()),
+        datetime.combine(until + timedelta(days=1), time()),
+    )
+    # The dashboard view carries more than the vessel table shows, including an
+    # interval that does not serialise; keep what the results panel displays.
+    columns = (*tables.TONNAGE.display_columns, "new_as_of")
+    rows = [
+        {column: row.get(column) for column in columns}
+        for row in await fetch_rows(sql, params)
+    ]
+    by_day = Counter(str(row.get("new_as_of")) for row in rows)
+    _logger.info("new_vessels %s to %s -> %d rows", parsed.since, until, len(rows))
+    return {
+        "vessels": rows,
+        "counts": {"vessels": len({row.get("vessel_id") for row in rows})},
+        "by_day": dict(sorted(by_day.items())),
+    }
+
+
+class DevFlag(BaseModel):
+    """A question the desk's data cannot answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    request: str = Field(description="what the user asked for, in their words")
+    reason: str = Field(description="why the desk's data cannot answer it, in one line")
+
+
+@tool("flag_for_dev_team", args_schema=DevFlag)
+def flag_for_dev_team(**request: Any) -> dict[str, bool]:
+    """Pass a question the desk's data cannot answer to the dev team.
+
+    Call it when the user asks about shipping or chartering but the book does not
+    hold the answer — what a vessel actually carried, past fixtures, freight
+    rates, owners or charterers, bunkers, congestion, news — or asks for new
+    vessels further back than the last fourteen days. Never for small talk or
+    nonsense; decline those without it.
+
+    Returns
+    -------
+    dict
+        ``flagged``, always true. Then tell the user it is not something you can
+        answer from the desk's data yet and that it has gone to the dev team.
+    """
+    parsed = DevFlag(**request)
+    _logger.warning("unsupported request flagged: %s (%s)", parsed.request, parsed.reason)
+    try:
+        get_client().score_current_trace(
+            name=UNSUPPORTED_REQUEST_SCORE,
+            value=1,
+            data_type="BOOLEAN",
+            comment=f"{parsed.request} | {parsed.reason}",
+        )
+    except Exception:
+        # the warning above already records it; tracing must never fail a reply
+        _logger.exception("could not score the trace for a flagged request")
+    return {"flagged": True}
