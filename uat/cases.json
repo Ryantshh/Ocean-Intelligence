@@ -1,0 +1,143 @@
+{
+  "about": "Chatbot UAT cases. expect_ask: true = must ask before searching, false = must not ask, \"either\" = both acceptable. expect_option: when the agent asks, this stored name must be among the options. reply_must_match: a regex the reply must match, for an assumption it has to state. answers: when the agent asks, the first rule whose 'when' regex matches the question (text, header and options) supplies the typed answer; with no match the agent's own first option is taken and the run is flagged. expected: the hand-written query in expected/ the reply is checked against; compare 'ids' checks the exact set of rows, 'count' only the number. Cases with no expected query are scored on behaviour only.",
+  "cases": [
+    {
+      "id": "c01", "story": "US-1.1",
+      "prompt": "Show me today's cargo list in West Aussie.",
+      "expect_ask": "either", "expect_option": "West Australia",
+      "reply_must_match": "West Australia",
+      "review": "Reading West Aussie as West Australia without asking is accepted when the reply names West Australia.",
+      "answers": [{"when": ".", "say": "West Australia"}],
+      "expected": "c01_cargo_list_west_australia.sql", "compare": "ids"
+    },
+    {
+      "id": "c02", "story": "US-1.1",
+      "prompt": "Show me the latest C3 iron ore orders.",
+      "expect_ask": true,
+      "answers": [{"when": ".", "say": "Updated in the last 30 days"}],
+      "expected": "c02_c3_iron_ore_recent.sql", "compare": "ids"
+    },
+    {
+      "id": "c03", "story": "US-1.1",
+      "prompt": "What orders are loading in ECSA?",
+      "expect_ask": true, "expect_option": "East Coast South America",
+      "answers": [{"when": ".", "say": "East Coast South America"}],
+      "expected": "c03_orders_loading_ecsa.sql", "compare": "ids"
+    },
+    {
+      "id": "c04", "story": "US-1.1",
+      "prompt": "Show me orders from PDM to North China.",
+      "expect_ask": true, "expect_option": "Madeira",
+      "answers": [
+        {"when": "north china", "say": "North China"},
+        {"when": ".", "say": "Madeira"}
+      ],
+      "expected": "c04_pdm_to_north_china.sql", "compare": "ids",
+      "review": "No Madeira cargo discharges North China in the data, so the right answer is that nothing is on the book."
+    },
+    {
+      "id": "c05", "story": "US-1.1",
+      "prompt": "Show me today's cargo list.",
+      "expect_ask": false,
+      "expected": "c05_cargo_list_today.sql", "compare": "ids"
+    },
+    {
+      "id": "c06", "story": "US-1.1",
+      "prompt": "Show me the C5 cargoes.",
+      "expect_ask": false,
+      "expected": "c06_c5_cargoes.sql", "compare": "ids"
+    },
+    {
+      "id": "c07", "story": "US-1.1",
+      "prompt": "Show me the C14 cargoes.",
+      "expect_ask": true, "stop_at_ask": true,
+      "review": "C14 has no load or discharge the agent can search on, so it should ask which region is meant."
+    },
+    {
+      "id": "c08", "story": "US-1.1",
+      "prompt": "Iron ore cargoes loading in West Australia in March.",
+      "expect_ask": "either",
+      "reply_must_match": "March\\W+2025|2025\\W+March|\\d{1,2}\\W+Mar\\w*\\W+2025",
+      "review": "Assuming March 2025 without asking is accepted only when the reply says 2025 next to March.",
+      "answers": [{"when": ".", "say": "2025"}],
+      "expected": "c08_iron_ore_west_australia_march.sql", "compare": "ids"
+    },
+    {
+      "id": "c09", "story": "US-1.1",
+      "prompt": "Cargoes of at least 170,000 tonnes loading at Tubarao.",
+      "expect_ask": false,
+      "expected": "c09_min_170k_tubarao.sql", "compare": "ids"
+    },
+    {
+      "id": "c10", "story": "US-1.1",
+      "prompt": "Show me cargoes loading in Atlantis.",
+      "expect_ask": "either", "stop_at_ask": true,
+      "review": "Negative case: no such place. Pass when it asks or reports nothing, and names no cargo."
+    },
+    {
+      "id": "v01", "story": "US-1.2",
+      "prompt": "Show me today's tonnage list open in the Pacific.",
+      "expect_ask": "either",
+      "answers": [{"when": ".", "say": "Pacific"}],
+      "expected": "v01_tonnage_list_pacific.sql", "compare": "ids",
+      "review": "Pacific is stored both as a zone and as a port label, so asking is acceptable. No vessel in the data opens in the Pacific, so the right answer is that nothing is on the book."
+    },
+    {
+      "id": "v02", "story": "US-1.2",
+      "prompt": "Show me the ECSA ballasters.",
+      "expect_ask": true, "expect_option": "East Coast South America",
+      "answers": [{"when": ".", "say": "East Coast South America"}],
+      "expected": "v02_ecsa_ballasters.sql", "compare": "ids"
+    },
+    {
+      "id": "v03", "story": "US-1.2",
+      "prompt": "Show me the WAF openers.",
+      "expect_ask": true, "expect_option": "West Africa",
+      "answers": [{"when": ".", "say": "West Africa"}],
+      "expected": "v03_waf_openers.sql", "compare": "ids",
+      "review": "Expected answer reads 'openers' as where the vessel opens, with no fixture-status filter. Confirm with the sponsor."
+    },
+    {
+      "id": "v04", "story": "US-1.2",
+      "prompt": "Show me open vessels in the Far East of at least 180,000 dwt.",
+      "expect_ask": false,
+      "expected": "v04_far_east_open_180k.sql", "compare": "ids"
+    },
+    {
+      "id": "v05", "story": "US-1.2",
+      "prompt": "Which vessels are fixed?",
+      "expect_ask": false,
+      "expected": "v05_fixed.sql", "compare": "ids"
+    },
+    {
+      "id": "v06", "story": "US-1.2",
+      "prompt": "Which vessels open in West Australia were updated in the last 3 days?",
+      "expect_ask": false,
+      "expected": "v06_west_australia_updated_3_days.sql", "compare": "ids"
+    },
+    {
+      "id": "v08", "story": "US-1.2",
+      "prompt": "Which vessels are anchored?",
+      "expect_ask": false,
+      "expected": "v08_anchored.sql", "compare": "ids"
+    },
+    {
+      "id": "v07", "story": "US-1.2",
+      "prompt": "Show me the position history of VESSEL 0743.",
+      "expect_ask": false,
+      "expected": "v07_history_vessel_0743.sql", "compare": "count"
+    },
+    {
+      "id": "v09", "story": "US-1.2",
+      "prompt": "Show me today's tonnage list in the Far East.",
+      "expect_ask": false,
+      "expected": "v09_tonnage_list_far_east.sql", "compare": "ids"
+    },
+    {
+      "id": "v10", "story": "US-1.2",
+      "prompt": "Where will VESSEL 0743 be next week?",
+      "expect_ask": "either", "stop_at_ask": true,
+      "review": "Negative case: the AIS destination and ETA must not be presented as where the vessel will be or comes open."
+    }
+  ]
+}

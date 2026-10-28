@@ -1,0 +1,248 @@
+[
+  {
+    "scenario": "2025-06-17 dod",
+    "list": "window",
+    "label": "Window bounds",
+    "passed": true,
+    "expected": "2025-06-16 23:59:59.999999 to 2025-06-17 23:59:59.999999",
+    "dashboard": "2025-06-16T23:59:59.999999 to 2025-06-17T23:59:59.999999"
+  },
+  {
+    "scenario": "2025-06-17 dod",
+    "list": "vessel_status_changes",
+    "label": "Supply moves",
+    "passed": true,
+    "expected": 9,
+    "dashboard": 9,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 dod",
+    "list": "new_vessels",
+    "label": "New vessels",
+    "passed": true,
+    "expected": 3,
+    "dashboard": 3,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 dod",
+    "list": "field_changes",
+    "label": "Field changes",
+    "passed": false,
+    "expected": 34,
+    "dashboard": 36,
+    "missing": [],
+    "extra": [
+      "VESSEL 0301 | 2025-06-17 05:49:08",
+      "VESSEL 0780 | 2025-06-17 05:49:08"
+    ]
+  },
+  {
+    "scenario": "2025-06-17 dod",
+    "list": "new_orders",
+    "label": "New orders",
+    "passed": true,
+    "expected": 7,
+    "dashboard": 7,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 wow",
+    "list": "window",
+    "label": "Window bounds",
+    "passed": true,
+    "expected": "2025-06-10 00:00:00 to 2025-06-17 00:00:00",
+    "dashboard": "2025-06-10T00:00:00 to 2025-06-17T00:00:00"
+  },
+  {
+    "scenario": "2025-06-17 wow",
+    "list": "vessel_status_changes",
+    "label": "Supply moves",
+    "passed": true,
+    "expected": 94,
+    "dashboard": 94,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 wow",
+    "list": "new_vessels",
+    "label": "New vessels",
+    "passed": true,
+    "expected": 55,
+    "dashboard": 55,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 wow",
+    "list": "field_changes",
+    "label": "Field changes",
+    "passed": true,
+    "expected": 212,
+    "dashboard": 212,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 wow",
+    "list": "new_orders",
+    "label": "New orders",
+    "passed": true,
+    "expected": 43,
+    "dashboard": 43,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 24h",
+    "list": "window",
+    "label": "Window bounds",
+    "passed": true,
+    "expected": "2025-06-16 23:59:59.999999 to 2025-06-17 23:59:59.999999",
+    "dashboard": "2025-06-16T23:59:59.999999 to 2025-06-17T23:59:59.999999"
+  },
+  {
+    "scenario": "2025-06-17 24h",
+    "list": "vessel_status_changes",
+    "label": "Supply moves",
+    "passed": true,
+    "expected": 9,
+    "dashboard": 9,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 24h",
+    "list": "new_vessels",
+    "label": "New vessels",
+    "passed": true,
+    "expected": 3,
+    "dashboard": 3,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-17 24h",
+    "list": "field_changes",
+    "label": "Field changes",
+    "passed": false,
+    "expected": 34,
+    "dashboard": 36,
+    "missing": [],
+    "extra": [
+      "VESSEL 0301 | 2025-06-17 05:49:08",
+      "VESSEL 0780 | 2025-06-17 05:49:08"
+    ]
+  },
+  {
+    "scenario": "2025-06-17 24h",
+    "list": "new_orders",
+    "label": "New orders",
+    "passed": true,
+    "expected": 7,
+    "dashboard": 7,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 dod",
+    "list": "window",
+    "label": "Window bounds",
+    "passed": true,
+    "expected": "2025-06-13 23:59:59.999999 to 2025-06-16 23:59:59.999999",
+    "dashboard": "2025-06-13T23:59:59.999999 to 2025-06-16T23:59:59.999999"
+  },
+  {
+    "scenario": "2025-06-16 dod",
+    "list": "vessel_status_changes",
+    "label": "Supply moves",
+    "passed": true,
+    "expected": 40,
+    "dashboard": 40,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 dod",
+    "list": "new_vessels",
+    "label": "New vessels",
+    "passed": true,
+    "expected": 19,
+    "dashboard": 19,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 dod",
+    "list": "field_changes",
+    "label": "Field changes",
+    "passed": true,
+    "expected": 47,
+    "dashboard": 47,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 dod",
+    "list": "new_orders",
+    "label": "New orders",
+    "passed": true,
+    "expected": 8,
+    "dashboard": 8,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 wow",
+    "list": "window",
+    "label": "Window bounds",
+    "passed": true,
+    "expected": "2025-06-09 00:00:00 to 2025-06-16 00:00:00",
+    "dashboard": "2025-06-09T00:00:00 to 2025-06-16T00:00:00"
+  },
+  {
+    "scenario": "2025-06-16 wow",
+    "list": "vessel_status_changes",
+    "label": "Supply moves",
+    "passed": true,
+    "expected": 93,
+    "dashboard": 93,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 wow",
+    "list": "new_vessels",
+    "label": "New vessels",
+    "passed": true,
+    "expected": 56,
+    "dashboard": 56,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 wow",
+    "list": "field_changes",
+    "label": "Field changes",
+    "passed": true,
+    "expected": 201,
+    "dashboard": 201,
+    "missing": [],
+    "extra": []
+  },
+  {
+    "scenario": "2025-06-16 wow",
+    "list": "new_orders",
+    "label": "New orders",
+    "passed": true,
+    "expected": 43,
+    "dashboard": 43,
+    "missing": [],
+    "extra": []
+  }
+]

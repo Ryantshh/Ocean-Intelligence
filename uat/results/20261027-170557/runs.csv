@@ -1,0 +1,3 @@
+case,story,run,prompt,expected_count,rows_returned,reported_count,passed,asked_ok,option_ok,rows_ok,count_ok,invented_ok,format_ok,seconds,error
+c05,US-1.1,1,Show me today's cargo list.,28,57,57,False,True,,False,False,True,True,7.9,
+v02,US-1.2,1,Show me the ECSA ballasters.,85,0,0,False,True,False,False,False,True,True,9.5,

@@ -405,6 +405,12 @@ Endpoints, all under `/api/dashboard/`:
 
 **Definition change log** (newest first; the code comment above `_STATUS_MOVES_CTE` and the docstring of `vessel_status_changes_sql` in `ai_platform/backend/dashboard_queries.py` carry the same record).
 
+- **27 Oct 2026: Change Feed "Field changes" compares each report with the vessel's previous batch.**
+  - *Before:* each report was compared with the one before it in `update_date` order alone. A broker list can carry one vessel in two positions, stamped with the same time, and those reports fell in arbitrary order and were compared with each other. On 17 Jun 2025 VESSEL 0301 was listed at Tubarao and Saldanha Bay, the same two positions as on 16 Jun, and the feed showed "Saldanha Bay -> Tubarao" and "Tubarao -> Saldanha Bay".
+  - *After:* a batch is every report of a vessel with the same `update_date`. A report is a change only when no report in the previous batch has the same open area, DWT, destination, ETA, region and ballast/laden. Reports in one batch are never compared with each other, and identical reports in one batch are listed once. The `prev_` values shown come from the previous-batch report matching the most fields.
+  - *Effect:* 17 Jun 2025 day-on-day went from 36 field changes to 33, all three removed rows being false changes. A batch of one report, the usual case, compares exactly as before.
+  - *Found by:* the Change Feed UAT (`uat/run_feed_uat.py`), which checks the feed against independently written SQL. The docstring of `vessel_field_changes_sql` carries the same record.
+
 - **26 Oct 2026: the map panel's "How to read this map" note became a "Last 24 hours" summary box.**
   - *Before:* a collapsible note explaining bubble size, colour and the Consistency figure. It was judged no longer needed; the colour legend under the map stays.
   - *Now:* a highlighted box above the map with four figures, from the Change Feed's own lists (`/api/dashboard/changes?window=24h`) over exactly the 24 hours before simulated "now":
