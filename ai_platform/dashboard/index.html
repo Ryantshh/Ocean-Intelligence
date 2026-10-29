@@ -342,7 +342,7 @@
       .modal-body li { border-bottom: 1px dashed var(--border); padding-bottom: 0.6rem; }
 
       .send-to-chat { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-size: 0.78rem; }
-      #ordersTable tfoot .send-row td { border-bottom: none; padding-top: 0.6rem; }
+      .send-row td { border-bottom: none; padding-top: 0.6rem; }
       .pick-col { width: 1.75rem; }
       .history-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .history-btn { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
@@ -611,9 +611,15 @@
     </header>
     <aside id="tab-chat" class="chat-panel hidden" aria-label="Ocean assistant">
       <div id="chatResize" class="chat-resize" role="separator" tabindex="0" aria-label="Resize assistant panel" aria-orientation="vertical" aria-valuemin="360" aria-valuemax="1600" aria-valuenow="900"></div>
-      <div class="chat-panel-head"><div><strong>Ocean assistant</strong><small>Your maritime intelligence partner</small></div><button type="button" id="chatClose" aria-label="Close assistant">×</button></div>
+      <div class="chat-controls">
+        <button type="button" id="chatMove" class="chat-move" aria-label="Move assistant" title="Drag to move">⠿</button>
+        <button type="button" id="chatMin" class="chat-min" aria-label="Minimise assistant" title="Minimise">–</button>
+        <button type="button" id="chatFloat" aria-label="Float assistant over the dashboard" aria-pressed="false" title="Float over the dashboard">⧉</button>
+        <button type="button" id="chatClose" aria-label="Close assistant" title="Close">×</button>
+      </div>
       <iframe id="chatFrame" src="/chat" title="Ocean Intelligence chat"></iframe>
     </aside>
+    <button type="button" id="chatPill" class="assistant-toggle chat-pill" hidden><svg class="assistant-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/><path d="M20 2v4M18 4h4"/></svg> <span>Ocean assistant</span></button>
 
     <div id="tab-voyage-defaults" class="tab-panel hidden defaults-page">
       <p class="eyebrow">VOYAGE PLANNING</p><h2 class="defaults-title">Set the course.</h2><p class="defaults-subtitle">Your voyage assumptions, in one place.</p>
@@ -770,10 +776,17 @@
         </div>
         <div class="table-wrap"><table id="vesselsTable">
           <thead><tr>
+            <th class="pick-col"><input type="checkbox" id="vesselsPickAll" aria-label="Select all vessels on this page" disabled /></th>
             <th>Vessel</th><th>Status</th><th>Region</th><th>DWT</th>
             <th>Open window</th><th>ETA</th><th>Updated</th>
           </tr></thead>
-          <tbody><tr><td colspan="7" class="muted">Loading&hellip;</td></tr></tbody>
+          <tbody><tr><td colspan="8" class="muted">Loading&hellip;</td></tr></tbody>
+          <tfoot><tr class="send-row"><td colspan="8">
+            <div class="send-to-chat">
+              <span class="muted" id="vesselsSendNotice"></span>
+              <button type="button" id="vesselsSendToChat" class="history-btn" disabled>Send to chat</button>
+            </div>
+          </td></tr></tfoot>
         </table></div>
         <div class="pager" id="vesselsPager"></div>
       </section>
@@ -1014,6 +1027,18 @@
                 column, only these two.
               </p>
 
+              <label>Assigned
+                <select id="ooAssigned">
+                  <option value="">No change</option>
+                  <option value="true">Assigned (T)</option>
+                  <option value="false">Not assigned (F)</option>
+                </select>
+              </label>
+              <p class="form-hint">
+                Whether this order has been assigned to a vessel
+                (order_test.assigned).
+              </p>
+
               <label>Customer name
                 <input id="ooCustomerName" type="text" maxlength="200" placeholder="e.g. Account 142" disabled />
               </label>
@@ -1072,9 +1097,9 @@
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
             <th>Order</th><th>Order seq</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
-            <th>Customer name</th><th>Entered by</th><th>Reason</th><th>When</th>
+            <th>Assigned</th><th>Customer name</th><th>Entered by</th><th>Reason</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="8"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="9"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -1135,23 +1160,17 @@
 
       // The embedded Chainlit theme provider owns inline tokens as well as its
       // root class. Override both without reloading or interrupting the session.
+      const chatFrame = document.getElementById("chatFrame");
       let chatThemeObserver;
       const chatPalette = fetch("/chat/public/theme.json")
         .then((response) => { if (!response.ok) throw new Error("Theme unavailable"); return response.json(); })
         .then((data) => data.variables)
         .catch(() => null);
       function syncChatTheme(theme) {
-        const frame = document.getElementById("chatFrame");
         try {
-          const doc = frame.contentDocument;
+          const doc = chatFrame.contentDocument;
           const root = doc?.documentElement;
           if (!root) return;
-          if (doc.head && !doc.getElementById("ocean-results-layout")) {
-            const script = doc.createElement("script");
-            script.id = "ocean-results-layout";
-            script.src = "/chat/public/results-layout.js";
-            doc.head.appendChild(script);
-          }
           root.dataset.oceanTheme = theme;
           if (!root.classList.contains(theme) || root.classList.contains(theme === "light" ? "dark" : "light")) {
             root.classList.remove("light", "dark"); root.classList.add(theme);
@@ -1176,13 +1195,13 @@
         chatThemeObserver?.disconnect();
         syncChatTheme(currentTheme());
         try {
-          const root = document.getElementById("chatFrame").contentDocument?.documentElement;
+          const root = chatFrame.contentDocument?.documentElement;
           if (!root) return;
           chatThemeObserver = new MutationObserver(() => syncChatTheme(currentTheme()));
           chatThemeObserver.observe(root, { attributes: true, attributeFilter: ["class", "style"] });
         } catch {}
       }
-      document.getElementById("chatFrame").addEventListener("load", bindChatTheme);
+      chatFrame.addEventListener("load", bindChatTheme);
       bindChatTheme();
       window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
         updateThemeButton(); syncChatTheme(currentTheme());
@@ -2149,9 +2168,116 @@
         window.scrollTo(0, 0);
       }
 
+      // Sent by a chat results table. Chat rows carry only the latest record per
+      // order_id, not its order_seq, so the highest cached seq stands in for it.
+      window.addEventListener("message", (event) => {
+        const { type, kind, id } = event.data || {};
+        if (event.origin !== location.origin || type !== "oi-open-override") return;
+        if (!ID_KINDS[kind] || typeof id !== "string" || !id) return;
+        const seqs = ordersCache.filter((o) => o.order_id === id).map((o) => Number(o.order_seq));
+        openOverrideFor(kind, id, seqs.length ? Math.max(...seqs) : 1);
+      });
+
+      // Writes into Chainlit's composer inside the chat frame. React ignores a
+      // plain .value assignment, so the prototype setter plus a bubbling input
+      // event is what makes the controlled textarea register the text.
+      function writeToChatComposer(text) {
+        const frameWindow = chatFrame.contentWindow;
+        const input = frameWindow && frameWindow.document.querySelector("#chat-input");
+        if (!input || input.tagName !== "TEXTAREA") return false;
+        const setter = Object.getOwnPropertyDescriptor(
+          frameWindow.HTMLTextAreaElement.prototype, "value",
+        )?.set;
+        if (!setter) return false;
+        setter.call(input, text);
+        input.dispatchEvent(new frameWindow.Event("input", { bubbles: true }));
+        input.focus();
+        return true;
+      }
+
+      // Tick-and-send for a tracker table. Ticks persist across pages and filters
+      // until sent; the header box covers the visible page only, since the server
+      // returns one page at a time. Rows sharing an id tick together because the
+      // chat looks records up by id (an order_id spans several order_seq rows).
+      function chatPicker({ table, kind, prompt }) {
+        const SELECTION_CAP = 25;
+        const selected = new Set();
+        const tableEl = document.getElementById(`${table}Table`);
+        const pickAll = document.getElementById(`${table}PickAll`);
+        const sendButton = document.getElementById(`${table}SendToChat`);
+        const notice = document.getElementById(`${table}SendNotice`);
+        const boxes = () => [...tableEl.querySelectorAll(".row-pick")];
+
+        function sync() {
+          const pageBoxes = boxes();
+          const tickedCount = pageBoxes.filter((box) => box.checked).length;
+          pickAll.disabled = pageBoxes.length === 0;
+          pickAll.checked = pageBoxes.length > 0 && tickedCount === pageBoxes.length;
+          pickAll.indeterminate = tickedCount > 0 && tickedCount < pageBoxes.length;
+          const count = selected.size;
+          const isOverCap = count > SELECTION_CAP;
+          sendButton.disabled = count === 0 || isOverCap;
+          sendButton.textContent = isOverCap
+            ? `Select ${SELECTION_CAP} or fewer`
+            : count ? `Send ${count} to chat` : "Send to chat";
+        }
+
+        function cell(id) {
+          return `<td class="pick-col"><input type="checkbox" class="row-pick" aria-label="Select ${kind} ${escapeHtml(id)}"
+            data-id="${escapeHtml(id)}" ${selected.has(String(id)) ? "checked" : ""} /></td>`;
+        }
+
+        function tick(id, isTicked) {
+          if (isTicked) selected.add(id); else selected.delete(id);
+          boxes().forEach((box) => { if (box.dataset.id === id) box.checked = isTicked; });
+        }
+
+        tableEl.querySelector("tbody").addEventListener("change", (event) => {
+          if (!event.target.classList.contains("row-pick")) return;
+          tick(event.target.dataset.id, event.target.checked);
+          notice.textContent = "";
+          sync();
+        });
+        pickAll.addEventListener("change", () => {
+          boxes().forEach((box) => tick(box.dataset.id, pickAll.checked));
+          notice.textContent = "";
+          sync();
+        });
+        sendButton.addEventListener("click", async () => {
+          const ids = [...selected];
+          if (!ids.length || ids.length > SELECTION_CAP) return;
+          const text = prompt(ids);
+          const chatToggle = document.getElementById("chatToggle");
+          if (chatToggle.getAttribute("aria-expanded") !== "true") chatToggle.click();
+          if (!writeToChatComposer(text)) {
+            try {
+              await navigator.clipboard.writeText(text);
+              notice.textContent = "Chat not ready — prompt copied, paste with Ctrl+V";
+            } catch {
+              notice.textContent = "Could not reach the chat or the clipboard";
+            }
+            return;
+          }
+          notice.textContent = "";
+          selected.clear();
+          boxes().forEach((box) => { box.checked = false; });
+          sync();
+        });
+        return { cell, sync };
+      }
+
+      const vesselPicker = chatPicker({
+        table: "vessels",
+        kind: "vessel",
+        prompt: (ids) => ids.length === 1
+          ? `Find vessel with vessel id: ${ids[0]} and provide details for it`
+          : `Find vessels with vessel ids: ${ids.join(", ")} and provide details for them`,
+      });
+
       function vesselRow(row) {
         return `
           <tr>
+            ${vesselPicker.cell(row.vessel_id)}
             <td>${idChip("vessel", row.vessel_id)}</td>
             <td>${statusBadge(row.dashboard_status)}</td>
             <td>${escapeHtml(row.parent_zone || "—")}</td>
@@ -2198,8 +2324,9 @@
         tbody.innerHTML = pageRows.length
           ? pageRows.map(vesselRow).join("")
           : hasActiveVesselFilter()
-            ? '<tr><td colspan="7" class="muted">No vessels match these filters.</td></tr>'
-            : '<tr><td colspan="7" class="muted">Choose a status or region filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
+            ? '<tr><td colspan="8" class="muted">No vessels match these filters.</td></tr>'
+            : '<tr><td colspan="8" class="muted">Choose a status or region filter above -- or click a Daily Trends bar -- to see vessels.</td></tr>';
+        vesselPicker.sync();
 
         const rangeLabel = total
           ? `${start + 1}–${Math.min(start + VESSELS_PAGE_SIZE, total)} of ${formatNumber(total)}`
@@ -2332,7 +2459,7 @@
         // nothing worth preserving, so it still shows "Loading...". A
         // background refresh of the same filter keeps the current table
         // on screen until new data actually arrives.
-        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading&hellip;</td></tr>';
+        if (!isRefresh) tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading&hellip;</td></tr>';
         let url;
         if (activeDayFilter) {
           const { metric, day, direction } = activeDayFilter;
@@ -2373,7 +2500,7 @@
           renderVesselsTable();
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="7" class="error">Could not load vessels: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load vessels: ${escapeHtml(error.message)}</td></tr>`;
           document.getElementById("vesselsPager").innerHTML = "";
         }
       }
@@ -2384,9 +2511,13 @@
       // and vessels have different columns and no shared identity, so
       // there's nothing real to factor out beyond a naming convention.
       const ORDERS_PAGE_SIZE = 25;
-      // Ticked orders, kept across pages and filter changes until sent.
-      const selectedOrderIds = new Set();
-      const ORDER_SELECTION_CAP = 25;
+      const orderPicker = chatPicker({
+        table: "orders",
+        kind: "order",
+        prompt: (ids) => ids.length === 1
+          ? `Find order with order id: ${ids[0]} and provide details for it`
+          : `Find orders with order ids: ${ids.join(", ")} and provide details for them`,
+      });
       let ordersFetched = [];
       let ordersPage = 0;
       let ordersTotal = 0;
@@ -2435,8 +2566,7 @@
       function orderRow(row) {
         return `
           <tr>
-            <td class="pick-col"><input type="checkbox" class="order-pick" aria-label="Select order ${escapeHtml(row.order_id)}"
-              data-order-id="${escapeHtml(row.order_id)}" ${selectedOrderIds.has(String(row.order_id)) ? "checked" : ""} /></td>
+            ${orderPicker.cell(row.order_id)}
             <td>${orderIdCell(row)}</td>
             <td>${escapeHtml(row.cargo_type || "—")}</td>
             <td>${escapeHtml(row.load_zone || "—")}</td>
@@ -2480,7 +2610,7 @@
           : hasActiveOrderFilter()
             ? '<tr><td colspan="8" class="muted">No orders match these filters.</td></tr>'
             : '<tr><td colspan="8" class="muted">Choose a region filter above -- or click the New Orders bar -- to see orders.</td></tr>';
-        syncOrdersPickAll();
+        orderPicker.sync();
 
         const rangeLabel = total
           ? `${start + 1}–${Math.min(start + ORDERS_PAGE_SIZE, total)} of ${formatNumber(total)}`
@@ -2503,95 +2633,6 @@
         });
       }
 
-      // Header box reflects the visible page only: checked when every row on it is
-      // ticked, mixed when some are, since the server returns one page at a time.
-      function syncOrdersPickAll() {
-        const pickAll = document.getElementById("ordersPickAll");
-        const boxes = [...document.querySelectorAll("#ordersTable .order-pick")];
-        const tickedCount = boxes.filter((box) => box.checked).length;
-        pickAll.disabled = boxes.length === 0;
-        pickAll.checked = boxes.length > 0 && tickedCount === boxes.length;
-        pickAll.indeterminate = tickedCount > 0 && tickedCount < boxes.length;
-      }
-
-      function updateOrdersSendButton() {
-        const btn = document.getElementById("ordersSendToChat");
-        const count = selectedOrderIds.size;
-        const overCap = count > ORDER_SELECTION_CAP;
-        btn.disabled = count === 0 || overCap;
-        btn.textContent = overCap
-          ? `Select ${ORDER_SELECTION_CAP} or fewer`
-          : count ? `Send ${count} to chat` : "Send to chat";
-      }
-
-      // Writes into Chainlit's composer inside the chat frame. React ignores a
-      // plain .value assignment, so the prototype setter plus a bubbling input
-      // event is what makes the controlled textarea register the text.
-      function writeToChatComposer(text) {
-        const frame = document.getElementById("chatFrame");
-        const frameWindow = frame && frame.contentWindow;
-        const input = frameWindow && frameWindow.document.querySelector("#chat-input");
-        if (!input || input.tagName !== "TEXTAREA") return false;
-        const setter = Object.getOwnPropertyDescriptor(
-          frameWindow.HTMLTextAreaElement.prototype, "value",
-        )?.set;
-        if (!setter) return false;
-        setter.call(input, text);
-        input.dispatchEvent(new frameWindow.Event("input", { bubbles: true }));
-        input.focus();
-        return true;
-      }
-
-      async function sendOrdersToChat() {
-        const ids = [...selectedOrderIds];
-        if (!ids.length || ids.length > ORDER_SELECTION_CAP) return;
-        const prompt = ids.length === 1
-          ? `Find order with order id: ${ids[0]} and provide details for it`
-          : `Find orders with order ids: ${ids.join(", ")} and provide details for them`;
-        const notice = document.getElementById("ordersSendNotice");
-        if (document.getElementById("chatToggle").getAttribute("aria-expanded") !== "true") document.getElementById("chatToggle").click();
-        if (writeToChatComposer(prompt)) {
-          notice.textContent = "";
-        } else {
-          try {
-            await navigator.clipboard.writeText(prompt);
-            notice.textContent = "Chat not ready — prompt copied, paste with Ctrl+V";
-          } catch {
-            notice.textContent = "Could not reach the chat or the clipboard";
-          }
-          return;
-        }
-        selectedOrderIds.clear();
-        updateOrdersSendButton();
-        document.querySelectorAll("#ordersTable .order-pick").forEach((box) => { box.checked = false; });
-        syncOrdersPickAll();
-      }
-
-      document.querySelector("#ordersTable tbody").addEventListener("change", (event) => {
-        const box = event.target;
-        if (!box.classList || !box.classList.contains("order-pick")) return;
-        const id = box.dataset.orderId;
-        if (box.checked) selectedOrderIds.add(id); else selectedOrderIds.delete(id);
-        // The chat looks orders up by order_id, so a pick covers every order_seq
-        // sharing it; tick its twins on this page to match.
-        document.querySelectorAll("#ordersTable .order-pick").forEach((other) => {
-          if (other.dataset.orderId === id) other.checked = box.checked;
-        });
-        document.getElementById("ordersSendNotice").textContent = "";
-        updateOrdersSendButton();
-        syncOrdersPickAll();
-      });
-      document.getElementById("ordersPickAll").addEventListener("change", (event) => {
-        const shouldTick = event.target.checked;
-        document.querySelectorAll("#ordersTable .order-pick").forEach((box) => {
-          box.checked = shouldTick;
-          if (shouldTick) selectedOrderIds.add(box.dataset.orderId); else selectedOrderIds.delete(box.dataset.orderId);
-        });
-        document.getElementById("ordersSendNotice").textContent = "";
-        updateOrdersSendButton();
-        syncOrdersPickAll();
-      });
-      document.getElementById("ordersSendToChat").addEventListener("click", sendOrdersToChat);
 
       async function loadOrders(isRefresh = false, isPageNav = false) {
         const tbody = document.querySelector("#ordersTable tbody");
@@ -3939,6 +3980,9 @@
         orderActiveIndex = -1;
       }
 
+      // order_test.assigned is boolean; the form select carries "true"/"false".
+      const formatAssigned = (v) => (v === true || v === "true" ? "T" : v === false || v === "false" ? "F" : null);
+
       const ORDER_RECORD_COLUMNS = [
         { key: "order_id", label: "order id" },
         { key: "order_seq", label: "order seq" },
@@ -3966,7 +4010,10 @@
           diffColor: "var(--diff-cargo-weight-max)" },
         { key: "date_received", label: "date received", fmt: formatDate },
         { key: "update_date", label: "update date", fmt: formatDate },
-        { key: "assigned", label: "assigned" },
+        { key: "assigned", label: "assigned", fmt: formatAssigned, overridable: true, inputId: "ooAssigned",
+          formValue: () => document.getElementById("ooAssigned").value || null,
+          normalize: (v) => (v === null || v === undefined ? "" : String(v)),
+          diffColor: "var(--diff-cargo-weight-max)" },
       ];
 
       function renderOrderTableHeaders() {
@@ -4134,7 +4181,7 @@
         }
       });
 
-      ["ooLaycanStart", "ooLaycanEnd", "ooCargoWeightMin", "ooCargoWeightMax"].forEach((id) => {
+      ["ooLaycanStart", "ooLaycanEnd", "ooCargoWeightMin", "ooCargoWeightMax", "ooAssigned"].forEach((id) => {
         document.getElementById(id).addEventListener("input", renderOrderRecordTables);
         document.getElementById(id).addEventListener("change", renderOrderRecordTables);
       });
@@ -4204,6 +4251,7 @@
             cargo_weight_min: cargoWeightMin,
             cargo_weight_max: cargoWeightMax,
             customer_name: document.getElementById("ooCustomerName").value.trim() || null,
+            assigned: { true: true, false: false }[document.getElementById("ooAssigned").value] ?? null,
           });
           showOrderFormMessage("success", `Updated the record for order ${orderId} (order_seq ${orderSeq}).`);
           document.getElementById("orderOverrideForm").reset();
@@ -4226,6 +4274,7 @@
             <td>${row.order_seq == null ? AUDIT_DASH : escapeHtml(row.order_seq)}</td>
             <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end", formatDate, row.action === "DELETE")}</td>
             <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber, row.action === "DELETE")}</td>
+            <td>${auditDiffText(formatAssigned(row.old_assigned), formatAssigned(row.assigned), row.action === "DELETE")}</td>
             <td>${row.action === "DELETE" ? AUDIT_DELETED : row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
             <td>${escapeHtml(row.entered_by)}</td>
             <td>${row.reason ? escapeHtml(row.reason) : AUDIT_DASH}</td>
@@ -4240,10 +4289,10 @@
           const rows = await getJson("/api/order-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(orderAuditRow).join("")
-            : '<tr><td colspan="8" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="9" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="9" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 

@@ -137,8 +137,9 @@ def update_order_sql(
     laycan_end: str | None,
     cargo_weight_min: float | None,
     cargo_weight_max: float | None,
+    assigned: bool | None = None,
 ) -> tuple[str, list]:
-    """Update one order's laycan window and cargo weight range in place.
+    """Update one order's laycan window, cargo weight range and assigned flag in place.
 
     A field left blank keeps the order's existing value via ``COALESCE``,
     same convention as :func:`trader_override_queries.override_tonnage_row_sql`
@@ -167,6 +168,9 @@ def update_order_sql(
         Already-parsed numbers (Pydantic validates the incoming JSON body
         at the API layer), or ``None`` to leave that side unchanged.
 
+    assigned : bool or None
+        The ``assigned`` boolean flag, or ``None`` to leave it unchanged.
+
     Returns
     -------
     tuple
@@ -181,14 +185,15 @@ def update_order_sql(
             "laycan_end = COALESCE($3::timestamp, laycan_end), "
             "cargo_weight_min = COALESCE($4::numeric, cargo_weight_min), "
             "cargo_weight_max = COALESCE($5::numeric, cargo_weight_max), "
+            "assigned = COALESCE($7::boolean, assigned), "
             "update_date = now() - interval '1 year' "
             "WHERE order_id = $1::text::bigint AND order_seq = $6 "
             "RETURNING order_id::text AS order_id, order_seq, cargo_type, load_port, discharge_port, "
-            "laycan_start, laycan_end, cargo_weight_min, cargo_weight_max, update_date"
+            "laycan_start, laycan_end, cargo_weight_min, cargo_weight_max, assigned, update_date"
         ),
         [
             order_id, _parse_date(laycan_start), _parse_date(laycan_end),
-            cargo_weight_min, cargo_weight_max, order_seq,
+            cargo_weight_min, cargo_weight_max, order_seq, assigned,
         ],
     )
 
@@ -204,7 +209,7 @@ def delete_order_sql(order_id: str, order_seq: int) -> tuple[str, list]:
         (
             "DELETE FROM public.order_test "
             "WHERE order_id = $1::text::bigint AND order_seq = $2 "
-            "RETURNING laycan_start, laycan_end, cargo_weight_min, cargo_weight_max"
+            "RETURNING laycan_start, laycan_end, cargo_weight_min, cargo_weight_max, assigned"
         ),
         [order_id, order_seq],
     )
@@ -218,6 +223,7 @@ _AUDIT_COLUMNS = (
     "old_cargo_weight_min", "cargo_weight_min",
     "old_cargo_weight_max", "cargo_weight_max",
     "customer_name", "entered_by", "created_at", "action", "reason",
+    "old_assigned", "assigned",
 )
 
 
@@ -237,6 +243,8 @@ def insert_audit_sql(
     old_cargo_weight_max: float | None = None,
     action: str = "UPDATE",
     reason: str | None = None,
+    old_assigned: bool | None = None,
+    assigned: bool | None = None,
 ) -> tuple[str, list]:
     """Log one trader submission to ``order_override_audit``, before and after.
 
@@ -278,6 +286,10 @@ def insert_audit_sql(
     reason : str or None
         Why the trader made (or deleted) this record, logged as typed.
 
+    old_assigned, assigned : bool or None
+        The order's ``assigned`` flag before and after the update
+        (``assigned`` is the effective value, like the other new-side fields).
+
     Returns
     -------
     tuple
@@ -288,14 +300,14 @@ def insert_audit_sql(
         "old_laycan_end, laycan_end, "
         "old_cargo_weight_min, cargo_weight_min, "
         "old_cargo_weight_max, cargo_weight_max, "
-        "customer_name, entered_by, action, reason"
+        "customer_name, entered_by, action, reason, old_assigned, assigned"
     )
     returning = ", ".join(_AUDIT_COLUMNS)
     return (
         (
             f"INSERT INTO public.order_override_audit ({columns}) "
             "VALUES ($1, $2, $3::timestamp, $4::timestamp, $5::timestamp, $6::timestamp, "
-            "$7::numeric, $8::numeric, $9::numeric, $10::numeric, $11, $12, $13, $14) "
+            "$7::numeric, $8::numeric, $9::numeric, $10::numeric, $11, $12, $13, $14, $15, $16) "
             f"RETURNING {returning}"
         ),
         [
@@ -303,7 +315,7 @@ def insert_audit_sql(
             old_laycan_end, laycan_end,
             old_cargo_weight_min, cargo_weight_min,
             old_cargo_weight_max, cargo_weight_max,
-            customer_name, entered_by, action, reason,
+            customer_name, entered_by, action, reason, old_assigned, assigned,
         ],
     )
 

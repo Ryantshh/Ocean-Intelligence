@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 const PAGE_SIZE = 12;
 const SELECTION_CAP = 25;
@@ -97,6 +97,7 @@ function Table({ columns, rows, noun }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const [sendMenuSide, setSendMenuSide] = useState("right");
   const sendMenuRef = useRef(null);
   const [openColumn, setOpenColumn] = useState(null);
   const [menuAt, setMenuAt] = useState(null);
@@ -300,6 +301,23 @@ ${toMarkdown(columns, chosen)}`);
     }
   };
 
+  // Only offered inside the dashboard, which owns the override forms and
+  // listens for this message; a standalone /chat has no parent to receive it.
+  const override = useMemo(() => {
+    const kind = noun === "cargoes" ? "order" : "vessel";
+    const at = columns.indexOf(`${kind}_id`);
+    if (window.parent === window || at < 0) return null;
+    const label = kind === "order" ? "Open in Order Status Override" : "Open in Tonnage Status Override";
+    return { kind, at, label };
+  }, [columns, noun]);
+
+  const openOverride = () => {
+    if (!override || selected.size !== 1) return;
+    const id = String(rows[[...selected][0]][override.at]);
+    window.parent.postMessage({ type: "oi-open-override", kind: override.kind, id }, window.location.origin);
+    setNotice(`Opened ${override.kind} ${id} in the override form`);
+  };
+
   const overCap = selected.size > SELECTION_CAP;
   const menuValues = openColumn
     ? (distinct.get(openColumn) ?? []).filter((value) =>
@@ -392,7 +410,6 @@ ${toMarkdown(columns, chosen)}`);
         .oi-t-sendwrap { position: relative; }
         .oi-t-sendmenu {
           position: absolute;
-          right: 0;
           top: calc(100% + 0.35rem);
           z-index: 60;
           width: 16rem;
@@ -718,30 +735,37 @@ ${toMarkdown(columns, chosen)}`);
         >
           {busy ? "Preparing…" : "Download Excel"}
         </button>
-        {noun === "cargoes" ? (
-          <div className="oi-t-sendwrap" ref={sendMenuRef}>
-            <button
-              className="oi-t-send"
-              disabled={!selected.size}
-              aria-haspopup="menu"
-              aria-expanded={sendMenuOpen}
-              onClick={() => setSendMenuOpen((open) => !open)}
-            >
-              {`Send ${selected.size || ""} to chat`} &#9662;
-            </button>
-            {sendMenuOpen && (
-              <div className="oi-t-sendmenu" role="menu">
-                <button
-                  role="menuitem"
-                  className="oi-t-sendopt"
-                  disabled={overCap}
-                  onClick={() => { setSendMenuOpen(false); sendSelected(); }}
-                >
-                  <span className="oi-t-sendopt-label">Add to message box</span>
-                  <span className="oi-t-sendopt-desc">
-                    {overCap ? `Select ${SELECTION_CAP} or fewer` : "Paste the rows, edit, then press enter"}
-                  </span>
-                </button>
+        <div className="oi-t-sendwrap" ref={sendMenuRef}>
+          <button
+            className="oi-t-send"
+            disabled={!selected.size}
+            aria-haspopup="menu"
+            aria-expanded={sendMenuOpen}
+            onClick={(event) => {
+              // Open toward the side with room: once the bar wraps, the button
+              // sits at the left edge and a right-aligned menu is clipped.
+              const root = rootRef.current?.getBoundingClientRect();
+              const button = event.currentTarget.getBoundingClientRect();
+              setSendMenuSide(root && button.right - root.left < 256 ? "left" : "right");
+              setSendMenuOpen((open) => !open);
+            }}
+          >
+            {`Send ${selected.size || ""}`} &#9662;
+          </button>
+          {sendMenuOpen && (
+            <div className="oi-t-sendmenu" role="menu" style={{ [sendMenuSide]: 0 }}>
+              <button
+                role="menuitem"
+                className="oi-t-sendopt"
+                disabled={overCap}
+                onClick={() => { setSendMenuOpen(false); sendSelected(); }}
+              >
+                <span className="oi-t-sendopt-label">Add to message box</span>
+                <span className="oi-t-sendopt-desc">
+                  {overCap ? `Select ${SELECTION_CAP} or fewer` : "Paste the rows, edit, then press enter"}
+                </span>
+              </button>
+              {noun === "cargoes" && (
                 <button
                   role="menuitem"
                   className="oi-t-sendopt"
@@ -755,23 +779,25 @@ ${toMarkdown(columns, chosen)}`);
                       : "Sends now: open vessels that can carry these orders"}
                   </span>
                 </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <button
-            className="oi-t-send"
-            disabled={!selected.size || overCap}
-            onClick={sendSelected}
-            title={
-              overCap
-                ? `Too many to paste into one message. Select ${SELECTION_CAP} or fewer.`
-                : "Add the selected rows to the message box"
-            }
-          >
-            {overCap ? `Select ${SELECTION_CAP} or fewer` : `Send ${selected.size || ""} to chat`}
-          </button>
-        )}
+              )}
+              {override && (
+                <button
+                  role="menuitem"
+                  className="oi-t-sendopt"
+                  disabled={selected.size !== 1}
+                  onClick={() => { setSendMenuOpen(false); openOverride(); }}
+                >
+                  <span className="oi-t-sendopt-label">{override.label}</span>
+                  <span className="oi-t-sendopt-desc">
+                    {selected.size === 1
+                      ? `Opens the dashboard form with this ${override.kind} filled in`
+                      : `Select exactly one ${override.kind}`}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {pageCount > 1 && (
@@ -856,6 +882,7 @@ function Voyages({ set }) {
   const fields = set.fields ?? [];
   const [drafts, setDrafts] = useState(set.voyages ?? []);
   const [vesselId, setVesselId] = useState(drafts[0]?.vessel_id ?? null);
+  const [openId, setOpenId] = useState(null);
   const [orderEdits, setOrderEdits] = useState({ ports: {}, values: {} });
   const [vesselEdits, setVesselEdits] = useState({});
   const [busy, setBusy] = useState(false);
@@ -1137,6 +1164,14 @@ function Voyages({ set }) {
 
   const ranked = drafts.filter((each) => each.result);
   const waiting = drafts.filter((each) => !each.result);
+  const columns = set.columns ?? [];
+  const vesselAt = columns.indexOf("vessel_id");
+  const factColumns = columns.filter((column) => column !== "order_id" && column !== "vessel_id");
+  const vesselRow = (id) => (set.rows ?? []).find((row) => String(row[vesselAt]) === String(id));
+  const toggleVessel = (id) => {
+    setVesselId(id);
+    setOpenId((open) => (open === id ? null : id));
+  };
 
   return (
     <div className="oi-v">
@@ -1156,6 +1191,13 @@ function Voyages({ set }) {
         .oi-v-rank tr { cursor: pointer; }
         .oi-v-rank tr:hover { background: hsl(var(--accent) / 0.5); }
         .oi-v-rank tr[data-on="true"] { background: hsl(var(--primary) / 0.12); }
+        .oi-v-rank tr.oi-v-detail-row { cursor: default; background: hsl(var(--muted) / 0.35); }
+        .oi-v-rank tr.oi-v-detail-row > td { white-space: normal; padding: 0.3rem 0.6rem 0.6rem 1.6rem; }
+        .oi-v-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.4rem 0.9rem; margin: 0; }
+        .oi-v-facts dt { font-size: 0.66rem; text-transform: capitalize; color: hsl(var(--muted-foreground)); }
+        .oi-v-facts dd { margin: 0; overflow-wrap: anywhere; }
+        .oi-v-chevron { display: inline-block; width: 1rem; color: hsl(var(--muted-foreground)); transition: transform 0.15s; }
+        .oi-v-chevron[data-open="true"] { transform: rotate(90deg); }
         .oi-v-rank td[data-num="true"] { text-align: right; font-variant-numeric: tabular-nums; }
         .oi-v-muted { color: hsl(var(--muted-foreground)); }
         .oi-v-group { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.35rem 0; }
@@ -1191,41 +1233,59 @@ function Voyages({ set }) {
         .oi-v-details > summary { cursor: pointer; color: hsl(var(--muted-foreground)); font-size: 0.74rem; margin-bottom: 0.5rem; }
       `}</style>
 
-      <div className="oi-v-report-head">
-        <span className="oi-v-kicker">VOYAGE ECONOMICS</span>
-        <h3>Compare the possibilities.</h3>
-        <p>{ranked.length} calculated · {waiting.length} awaiting calculation</p>
-      </div>
-      {draft.result && <section className="oi-v-summary" aria-label="Selected vessel voyage economics">
-        <div className="oi-v-summary-id"><span>SELECTED VESSEL</span><strong>{draft.vessel_id}</strong></div>
-        <div className="oi-v-metrics">
-          <div><span>Net revenue</span><strong>{money(draft.result.revenue)}</strong></div>
-          <div><span>Total costs</span><strong>{money(draft.result.revenue - draft.result.profit)}</strong></div>
-          <div data-loss={draft.result.profit < 0}><span>Voyage profit</span><strong>{money(draft.result.profit)}</strong></div>
-        </div>
-        <p>Estimated from current voyage inputs. Recalculate after editing assumptions.</p>
-      </section>}
-
       <div className="oi-v-card">
         <div className="oi-v-title">Vessel comparison <span className="oi-v-muted">· highest profit first</span></div>
         <div className="oi-v-rank-scroll" role="region" aria-label="Vessel ranking" tabIndex={0}><table className="oi-v-rank">
           <thead><tr><th scope="col">Rank</th><th scope="col">Vessel</th><th scope="col">Net revenue</th><th scope="col">Profit</th></tr></thead>
           <tbody>
-            {ranked.map((each, at) => (
-              <tr key={each.vessel_id} data-on={each.vessel_id === draft.vessel_id} onClick={() => setVesselId(each.vessel_id)}>
-                <td className="oi-v-muted">{at + 1}</td>
-                <td><button type="button" className="oi-v-pick" onClick={() => setVesselId(each.vessel_id)} aria-pressed={each.vessel_id === draft.vessel_id}>{each.vessel_id}</button></td>
-                <td data-num="true">{money(each.result.revenue)}</td>
-                <td data-num="true">{money(each.result.profit)}</td>
-              </tr>
-            ))}
-            {waiting.map((each) => (
-              <tr key={each.vessel_id} data-on={each.vessel_id === draft.vessel_id} onClick={() => setVesselId(each.vessel_id)}>
-                <td className="oi-v-muted">–</td>
-                <td><button type="button" className="oi-v-pick" onClick={() => setVesselId(each.vessel_id)} aria-pressed={each.vessel_id === draft.vessel_id}>{each.vessel_id}</button></td>
-                <td className="oi-v-muted" colSpan={2}>{statusText(each)}</td>
-              </tr>
-            ))}
+            {[...ranked, ...waiting].map((each) => {
+              const isOpen = each.vessel_id === openId;
+              return (
+                <Fragment key={each.vessel_id}>
+                  <tr data-on={each.vessel_id === draft.vessel_id} onClick={() => toggleVessel(each.vessel_id)}>
+                    <td className="oi-v-muted">{each.result ? ranked.indexOf(each) + 1 : "–"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="oi-v-pick"
+                        aria-expanded={isOpen}
+                        title={isOpen ? "Hide this vessel's data" : "Show this vessel's data"}
+                        onClick={(event) => { event.stopPropagation(); toggleVessel(each.vessel_id); }}
+                      >
+                        <span className="oi-v-chevron" data-open={isOpen} aria-hidden="true">▸</span>
+                        {each.vessel_id}
+                        {stillNeeded(each).length > 0 && <span className="oi-v-dot" title="Needs input" />}
+                      </button>
+                    </td>
+                    {each.result ? (
+                      <>
+                        <td data-num="true">{money(each.result.revenue)}</td>
+                        <td data-num="true">{money(each.result.profit)}</td>
+                      </>
+                    ) : (
+                      <td className="oi-v-muted" colSpan={2}>{statusText(each)}</td>
+                    )}
+                  </tr>
+                  {isOpen && (
+                    <tr className="oi-v-detail-row">
+                      <td colSpan={4}>
+                        <dl className="oi-v-facts">
+                          {factColumns.map((column) => {
+                            const value = vesselRow(each.vessel_id)?.[columns.indexOf(column)];
+                            return (
+                              <div key={column}>
+                                <dt>{column.replace(/_/g, " ")}</dt>
+                                <dd>{isBlank(value) ? "–" : String(value)}</dd>
+                              </div>
+                            );
+                          })}
+                        </dl>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table></div>
       </div>

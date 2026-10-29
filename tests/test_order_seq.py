@@ -73,7 +73,7 @@ class OrderOverrideApiTests(unittest.TestCase):
     def test_submit_updates_the_order_seq_given(self):
         snapshot = {
             "order_id": "5", "order_seq": 2, "laycan_start": None, "laycan_end": None,
-            "cargo_weight_min": None, "cargo_weight_max": None,
+            "cargo_weight_min": None, "cargo_weight_max": None, "assigned": None,
         }
         run = AsyncMock(side_effect=[[snapshot], [snapshot]])
         audit = AsyncMock(return_value=[{}])
@@ -91,6 +91,34 @@ class OrderOverrideApiTests(unittest.TestCase):
         self.assertIn("AND order_seq = $6", update_call.args[0])
         self.assertEqual(update_call.args[1][5], 2)
         self.assertEqual(audit.call_args.args[1][:2], ["5", 2])
+
+    def test_submit_assigned_is_written_and_audited(self):
+        snapshot = {
+            "order_id": "5", "order_seq": 2, "laycan_start": None, "laycan_end": None,
+            "cargo_weight_min": None, "cargo_weight_max": None, "assigned": False,
+        }
+        updated = {**snapshot, "assigned": True}
+        run = AsyncMock(side_effect=[[snapshot], [updated]])
+        audit = AsyncMock(return_value=[{}])
+        with patch.object(order_override, "_run", run), patch.object(order_override, "fetch_rows", audit):
+            response = self.client.post(
+                "/api/order-override",
+                json={"order_id": "5", "order_seq": 2, "entered_by": "trader",
+                      "reason": "vessel fixed", "assigned": True},
+            )
+        self.assertEqual(response.status_code, 201)
+        update_sql, update_params = run.call_args_list[1].args
+        self.assertIn("assigned = COALESCE($7::boolean, assigned)", update_sql)
+        self.assertEqual(update_params[6], True)
+        audit_params = audit.call_args.args[1]
+        self.assertEqual(audit_params[-2:], [False, True])  # old_assigned, assigned
+
+    def test_submit_rejects_invalid_assigned(self):
+        response = self.client.post(
+            "/api/order-override",
+            json={"order_id": "5", "order_seq": 2, "entered_by": "t", "reason": "r", "assigned": "maybe"},
+        )
+        self.assertEqual(response.status_code, 422)
 
 
 class DashboardOrderListTests(unittest.TestCase):
