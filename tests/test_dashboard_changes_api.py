@@ -51,6 +51,15 @@ class ChangeFeedApiTests(unittest.TestCase):
             (datetime(2025, 9, 12, 14, 30), datetime(2025, 9, 15, 14, 30)),
         )
 
+    def test_last_24_hours_route_on_a_monday_stays_24_hours(self):
+        self.check_window(
+            "24h",
+            "2025-09-15T14:30:00+00:00",
+            "2025-09-15T14:30:00+00:00",
+            (datetime(2025, 9, 14, 14, 30), datetime(2025, 9, 15, 14, 30)),
+            (datetime(2025, 9, 14, 14, 30), datetime(2025, 9, 15, 14, 30)),
+        )
+
     def test_weekly_route_keeps_independent_source_clocks(self):
         self.check_window(
             "wow",

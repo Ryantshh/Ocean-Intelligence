@@ -7,6 +7,7 @@ server.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -18,13 +19,17 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.types import Command
 
 from ai_platform.app.data_layer import get_data_layer
+from ai_platform.backend import guardrails
 from ai_platform.backend.agent import agent
+from ai_platform.backend.clock import working_date
 from ai_platform.backend.context import CONTEXT_WINDOW, PROMPT_TOKENS, message_tokens
+from ai_platform.backend.distances import PORT_NAMES
 from ai_platform.backend.llm import stream_chat
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.matching import MATCH_COLUMNS
 from ai_platform.backend.tables import OrderSearch, VesselSearch, resolve_table
 from ai_platform.backend.tracing import langfuse_handler
+from ai_platform.backend.voyage import VoyageDraft, apply_trader_edits, rank_voyages
 
 __all__ = ["get_data_layer"]
 
@@ -50,7 +55,9 @@ which lives in the reply prose and in the table's own footer instead.
 TOOL_STEPS = {
     "search_orders_and_tonnage": "Order and tonnage search",
     "match_orders": "Vessel matching",
+    "new_vessels": "New vessels",
     "ask_user": "Clarifying question",
+    "flag_for_dev_team": "Passed to the dev team",
 }
 """Progress step shown while each tool runs."""
 
@@ -60,6 +67,9 @@ STEP_OUTPUT_CAP = 500
 Caps ``ask_user`` forms and tool errors so a stray payload cannot push the
 transcript out of the viewport.
 """
+
+PLAIN_MODEL_DISCLAIMER = "\n\n_General knowledge only: not checked against the desk's data._"
+"""Appended to every plain model reply, which has no access to the book."""
 
 CUT_OFF_NOTICE = (
     "\n\n_My answer was cut short before I finished. The results panel has every "
@@ -261,6 +271,11 @@ async def run_agent(question: str) -> None:
     what was submitted. It runs more than twice only when the agent asks twice,
     and ``RUN_LIMIT`` bounds it.
 
+    Every tool call and result is also recorded as evidence, and the reply ends
+    with the sources and confidence lines ``guardrails.footer`` builds from it —
+    or a disclaimer when nothing was searched — so how far the answer can be
+    trusted is decided by what was found, not by what the model says.
+
     The table's name is appended to the reply on a line of its own, and that line
     is load-bearing. Chainlit builds a regex from the names of a message's
     elements and turns every match in the message text into the link that opens
@@ -276,14 +291,20 @@ async def run_agent(question: str) -> None:
     -------
     None
     """
+    user = cl.user_session.get("user")
     config = {
-        "configurable": {"thread_id": cl.context.session.id},
+        "configurable": {
+            "thread_id": cl.context.session.id,
+            "user_identifier": user.identifier if user else None,
+        },
         "callbacks": [langfuse_handler],
     }
     payload: Any = {"messages": [{"role": "user", "content": question}]}
     reply = root_message()
     results_element_name = ""
     was_cut_off = False
+    evidence = guardrails.Evidence()
+    cancelled = False
 
     while True:
         interrupt_value: dict[str, Any] | None = None
@@ -331,7 +352,7 @@ async def run_agent(question: str) -> None:
                             node == "model" and metadata.get("finish_reason") == "length"
                         )
                         name = await _render_node_message(
-                            message, node, open_steps, reply
+                            message, node, open_steps, reply, evidence
                         )
                         results_element_name = name or results_element_name
         except Exception as error:
@@ -352,11 +373,14 @@ async def run_agent(question: str) -> None:
             await reply.stream_token(
                 "\n\nNo problem — ask again whenever you have those details."
             )
+            cancelled = True
             break
         payload = Command(resume=submitted)
 
     if was_cut_off:
         await reply.stream_token(CUT_OFF_NOTICE)
+    if not cancelled and not failed:
+        await reply.stream_token(guardrails.footer(evidence, working_date(), was_cut_off))
     if results_element_name:
         await reply.stream_token(f"\n\n{results_element_name}")
     await reply.send()
@@ -364,7 +388,11 @@ async def run_agent(question: str) -> None:
 
 
 async def _render_node_message(
-    message: Any, node: str, open_steps: dict[str, cl.Step], reply: cl.Message
+    message: Any,
+    node: str,
+    open_steps: dict[str, cl.Step],
+    reply: cl.Message,
+    evidence: guardrails.Evidence,
 ) -> str:
     """Show one message from the agent as a progress step or a results panel.
 
@@ -386,6 +414,8 @@ async def _render_node_message(
         Steps opened for tool calls, keyed by tool call id, closed on result.
     reply : cl.Message
         The reply the results panel attaches to.
+    evidence : guardrails.Evidence
+        The run's evidence, which every tool call and result is recorded into.
 
     Returns
     -------
@@ -394,6 +424,7 @@ async def _render_node_message(
     """
     if node == "model":
         for call in getattr(message, "tool_calls", None) or []:
+            evidence.record_call(call["id"], call["name"], call.get("args", {}))
             step = cl.Step(
                 name=TOOL_STEPS.get(call["name"], call["name"]),
                 type="tool",
@@ -407,6 +438,11 @@ async def _render_node_message(
     if node != "tools":
         return ""
 
+    evidence.record_result(
+        getattr(message, "tool_call_id", ""),
+        getattr(message, "content", None),
+        getattr(message, "status", None),
+    )
     sets = _sets_from(message)
     step = open_steps.pop(getattr(message, "tool_call_id", ""), None)
     if step is not None:
@@ -480,8 +516,14 @@ async def _render_match_event(
         rows_by_order: dict[str, list[dict[str, Any]]] = {}
         for row in event.get("rows") or []:
             rows_by_order.setdefault(str(row.get("order_id")), []).append(row)
+        voyages = event.get("voyages") or {}
         sets = [
-            {**results_props("matches", rows), "label": f"Order {matched_order}"}
+            {
+                **results_props("matches", rows),
+                "label": f"Order {matched_order}",
+                "voyages": voyages.get(matched_order, []),
+                "fields": event.get("fields") or [],
+            }
             for matched_order, rows in rows_by_order.items()
         ]
         return await _show_panel(sets, reply, f"matches-{time.time()}")
@@ -778,6 +820,87 @@ async def _ask_user(payload: dict[str, Any]) -> dict[str, str] | None:
     }
 
 
+@cl.action_callback("calculate_voyages")
+async def calculate_voyages(action: cl.Action) -> dict[str, Any]:
+    """Recalculate one order's voyages from the trader's panel input.
+
+    Called by ``Results.jsx`` through ``callAction``; Chainlit hands the return
+    value straight back to the panel. No model is called.
+
+    Parameters
+    ----------
+    action : cl.Action
+        ``payload.vessels``: per vessel, ``draft`` as last sent to the panel,
+        ``ports`` (port box to name) and ``values`` (input name to number).
+
+    Returns
+    -------
+    dict
+        ``voyages``: the order's drafts with the edits applied, ranked.
+    """
+    vessels = action.payload.get("vessels") or []
+    ranked = await asyncio.to_thread(
+        lambda: rank_voyages(
+            [
+                apply_trader_edits(
+                    VoyageDraft.model_validate(vessel["draft"]),
+                    vessel.get("ports") or {},
+                    vessel.get("values") or {},
+                )
+                for vessel in vessels
+            ]
+        )
+    )
+    return {"voyages": [draft.model_dump(mode="json") for draft in ranked]}
+
+
+@cl.action_callback("refresh_ports")
+async def refresh_ports(action: cl.Action) -> dict[str, Any]:
+    """Apply the trader's port picks and recompute the sea distances, without calculating.
+
+    Called by ``Results.jsx`` as soon as a port box changes, so distances and
+    what is still needed show before the trader presses Calculate.
+
+    Parameters
+    ----------
+    action : cl.Action
+        ``payload.vessels``: per vessel, ``draft`` and ``ports`` (port box to name).
+
+    Returns
+    -------
+    dict
+        ``voyages``: the drafts with ports and distances updated, results cleared,
+        in the order sent.
+    """
+    vessels = action.payload.get("vessels") or []
+    updated = await asyncio.to_thread(
+        lambda: [
+            apply_trader_edits(VoyageDraft.model_validate(vessel["draft"]), vessel.get("ports") or {}, {}, is_calculating=False)
+            for vessel in vessels
+        ]
+    )
+    return {"voyages": [draft.model_dump(mode="json") for draft in updated]}
+
+
+@cl.action_callback("port_names")
+async def port_names(action: cl.Action) -> dict[str, Any]:
+    """Send the panel every port name a port box accepts.
+
+    Fetched once by ``Results.jsx`` rather than carried in each saved panel.
+
+    Parameters
+    ----------
+    action : cl.Action
+        Unused beyond its name.
+
+    Returns
+    -------
+    dict
+        ``names``: port names that resolve to exactly one port, sorted.
+    """
+    return {"names": PORT_NAMES}
+
+
 def root_message(content: str = "") -> cl.Message:
     """Build a message that is not nested under the current run step.
 
@@ -964,6 +1087,7 @@ async def handle_message(message: cl.Message) -> None:
         reply = root_message()
         async for token in stream_chat(cl.chat_context.to_openai()):
             await reply.stream_token(token)
+        await reply.stream_token(PLAIN_MODEL_DISCLAIMER)
         await reply.send()
         return
 

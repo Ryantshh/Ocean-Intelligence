@@ -405,6 +405,17 @@ Endpoints, all under `/api/dashboard/`:
 
 **Definition change log** (newest first; the code comment above `_STATUS_MOVES_CTE` and the docstring of `vessel_status_changes_sql` in `ai_platform/backend/dashboard_queries.py` carry the same record).
 
+- **26 Oct 2026: the map panel's "How to read this map" note became a "Last 24 hours" summary box.**
+  - *Before:* a collapsible note explaining bubble size, colour and the Consistency figure. It was judged no longer needed; the colour legend under the map stays.
+  - *Now:* a highlighted box above the map with four figures, from the Change Feed's own lists (`/api/dashboard/changes?window=24h`) over exactly the 24 hours before simulated "now":
+    - **Supply moves:** vessels back to Open from Fixed or On Subs (+) and leaving Open for them (−), with the net.
+    - **New vessels:** vessels declared open.
+    - **Field changes:** vessel reports that changed open area, DWT, destination, ETA, region or ballast/laden, with how many vessels and the most-changed fields.
+    - **New orders:** orders received, with the busiest load zones. Each `order_seq` counts as an order.
+  - *Dating:* Supply moves and New vessels are dated by whole day (the day the status takes effect or the vessel comes open), so the box counts the ones on simulated today. Field changes and New orders carry timestamps and cover the 24 hours exactly.
+  - *Map filter:* clicking a region on the map narrows the box the same way it narrows the Daily Trends charts. A row counts for a region when that region is one of its zones, so a row listing two zones counts under each. The zones are the ones the charts split by: for Supply moves, the record the move lands in; for New vessels, the vessel's current zones; for New orders, the load zone. Field changes have no chart and use the changed report's own zones. Checked in a browser against the charts for every region on the map, on 26 Oct and on a pinned Thursday 23 Oct 2025: all match.
+  - *Versus the Change Feed:* same definitions and, most days, the same window. The feed's day-on-day view is the last 24 hours except on a Monday, when at the client's request it reaches back to the same time on Friday; the code also does this on a Sunday. On those two days the feed covers more than this box; on every other day the two give the same counts (on Thursday 23 Oct 2025: 5 supply moves, 5 new vessels, 25 field changes, 10 new orders in both).
+
 - **19 Oct 2026: an order is `(order_id, order_seq)`, and order counts include every `order_seq`.**
   - *Why:* since #33, `order_id` is no longer unique. It is a hash of ten content fields, so orders identical in all ten share one, numbered apart by `order_seq` (1, 2, ...). Whether such twins are one order recorded twice or separate orders is the trader's call.
   - *Counts (unchanged formula, new consequence):* the Daily Trends "New orders" bars, the Change Feed's "New orders" list and regional demand all count `order_test` rows, so each `order_seq` counts as an order. Nothing is merged on the trader's behalf.

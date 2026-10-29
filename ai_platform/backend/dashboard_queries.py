@@ -66,7 +66,7 @@ _ORDER_SORT_COLUMNS: dict[OrderSortKey, str] = {
     "laycan_start": "laycan_start ASC NULLS LAST",
 }
 
-ChangeWindow = Literal["dod", "wow"]
+ChangeWindow = Literal["dod", "wow", "24h"]
 
 # public.order_test columns -- the core (non-embedding) columns it shares
 # with public."order" (see ai_platform/backend/tables/orders.py's
@@ -282,8 +282,8 @@ def window_start(window: ChangeWindow, *, now: datetime | None = None) -> dateti
 
     Parameters
     ----------
-    window : "dod" or "wow"
-        Day-on-day or week-on-week.
+    window : "dod", "wow" or "24h"
+        Day-on-day, week-on-week, or the 24 hours before ``now``.
     now : datetime, optional
         Reference instant. In production this should be one of
         :func:`reference_times_sql`'s two anchors, not the real clock --
@@ -303,10 +303,15 @@ def change_window_bounds(
 ) -> tuple[datetime, datetime]:
     """Return inclusive start and exclusive end as naive UTC timestamps.
 
-    DoD compares to the same time on the previous weekday (Monday to Friday).
-    Weekends also use Friday; public holidays are not modelled. WoW covers the
+    DoD compares to the same time on the previous weekday (Monday to Friday),
+    so it is the last 24 hours except on Monday, which reaches back to the
+    same time on Friday at the client's request. Sunday also reaches back to
+    Friday; public holidays are not modelled. WoW covers the
     seven completed UTC calendar days before the reference day, so Tuesday
     shows last Tuesday through Monday and excludes the current partial day.
+    24h is exactly the 24 hours before the reference instant, whatever the
+    weekday -- the map panel's "Last 24 hours" summary. Unlike DoD it never
+    reaches back over a weekend.
     """
     reference = now or datetime.now(UTC)
     if reference.tzinfo is not None:
@@ -315,6 +320,8 @@ def change_window_bounds(
     if window == "wow":
         until = datetime.combine(reference.date(), time.min)
         return until - timedelta(days=7), until
+    if window == "24h":
+        return reference - timedelta(hours=24), reference
     if window != "dod":
         raise ValueError(f"Unsupported change window: {window}")
     since = reference - timedelta(days=1)
@@ -1054,14 +1061,17 @@ def vessel_status_changes_sql(since: datetime, until: datetime) -> tuple[str, li
     -------
     tuple
         ``(sql, params)``; rows have ``vessel_id``, ``prev_status``,
-        ``status``, ``direction`` ('up' or 'down') and ``effective_date``
-        (a midnight timestamp), newest day first, returns-to-open first
-        within a day.
+        ``status``, ``direction`` ('up' or 'down'), ``effective_date``
+        (a midnight timestamp) and ``parent_zone`` (the zones on the segment
+        the move lands in -- the same zones
+        :func:`daily_status_changes_by_region_sql` splits the chart by, so the
+        map's region filter can narrow this list the same way), newest day
+        first, returns-to-open first within a day.
     """
     return (
         (
             f"WITH moves AS ({_STATUS_MOVES_CTE}) "
-            "SELECT vessel_id, prev_status, status, direction, day::timestamp AS effective_date "
+            "SELECT vessel_id, prev_status, status, direction, day::timestamp AS effective_date, parent_zone "
             "FROM moves "
             "WHERE day::timestamp >= $1 AND day::timestamp < $2 "
             "ORDER BY day DESC, direction DESC, vessel_id"

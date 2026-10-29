@@ -7,6 +7,20 @@ from ai_platform.backend import dashboard_queries as dq
 
 
 class ChangeWindowTests(unittest.TestCase):
+    def test_last_24_hours_is_exactly_24_hours_on_any_day(self):
+        # Monday 14:30: unlike day-on-day, this does not reach back to Friday.
+        now = datetime(2025, 9, 15, 14, 30, tzinfo=UTC)
+        self.assertEqual(
+            dq.change_window_bounds("24h", now=now),
+            (datetime(2025, 9, 14, 14, 30), datetime(2025, 9, 15, 14, 30)),
+        )
+
+    def test_last_24_hours_is_recorded_in_readme(self):
+        from pathlib import Path
+
+        readme = (Path(dq.__file__).resolve().parents[2] / "README.md").read_text(encoding="utf-8")
+        self.assertIn("the map panel's \"How to read this map\" note became a \"Last 24 hours\" summary box", readme)
+
     def test_monday_compares_to_friday_at_same_time(self):
         now = datetime(2025, 9, 15, 14, 30, tzinfo=UTC)
         self.assertEqual(
