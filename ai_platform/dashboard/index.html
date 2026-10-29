@@ -1022,19 +1022,14 @@
                   <input id="ooCargoWeightMax" type="number" min="0" step="1" placeholder="e.g. 180000" />
                 </label>
               </div>
-              <p class="form-hint">
-                Standing in for "quantity" -- order_test has no single quantity
-                column, only these two.
-              </p>
 
-              <label>Customer name
-                <input id="ooCustomerName" type="text" maxlength="200" placeholder="e.g. Account 142" disabled />
+              <label>Assigned
+                <select id="ooAssigned">
+                  <option value="">No change</option>
+                  <option value="true">Assigned (T)</option>
+                  <option value="false">Not assigned (F)</option>
+                </select>
               </label>
-              <p class="field-disabled-hint">
-                order_test has no customer_name column yet -- disabled until
-                that schema decision is made, so nothing typed here is silently
-                lost.
-              </p>
               </div>
 
               <p class="form-section-label">Attribution</p>
@@ -1085,9 +1080,9 @@
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
             <th>Order</th><th>Order seq</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
-            <th>Customer name</th><th>Entered by</th><th>Reason</th><th>When</th>
+            <th>Assigned</th><th>Customer name</th><th>Entered by</th><th>Reason</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="8"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="9"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -3968,6 +3963,9 @@
         orderActiveIndex = -1;
       }
 
+      // order_test.assigned is boolean; the form select carries "true"/"false".
+      const formatAssigned = (v) => (v === true || v === "true" ? "T" : v === false || v === "false" ? "F" : null);
+
       const ORDER_RECORD_COLUMNS = [
         { key: "order_id", label: "order id" },
         { key: "order_seq", label: "order seq" },
@@ -3995,7 +3993,10 @@
           diffColor: "var(--diff-cargo-weight-max)" },
         { key: "date_received", label: "date received", fmt: formatDate },
         { key: "update_date", label: "update date", fmt: formatDate },
-        { key: "assigned", label: "assigned" },
+        { key: "assigned", label: "assigned", fmt: formatAssigned, overridable: true, inputId: "ooAssigned",
+          formValue: () => document.getElementById("ooAssigned").value || null,
+          normalize: (v) => (v === null || v === undefined ? "" : String(v)),
+          diffColor: "var(--diff-cargo-weight-max)" },
       ];
 
       function renderOrderTableHeaders() {
@@ -4163,7 +4164,7 @@
         }
       });
 
-      ["ooLaycanStart", "ooLaycanEnd", "ooCargoWeightMin", "ooCargoWeightMax"].forEach((id) => {
+      ["ooLaycanStart", "ooLaycanEnd", "ooCargoWeightMin", "ooCargoWeightMax", "ooAssigned"].forEach((id) => {
         document.getElementById(id).addEventListener("input", renderOrderRecordTables);
         document.getElementById(id).addEventListener("change", renderOrderRecordTables);
       });
@@ -4232,7 +4233,7 @@
             laycan_end: toSimulatedDate(laycanEnd),
             cargo_weight_min: cargoWeightMin,
             cargo_weight_max: cargoWeightMax,
-            customer_name: document.getElementById("ooCustomerName").value.trim() || null,
+            assigned: { true: true, false: false }[document.getElementById("ooAssigned").value] ?? null,
           });
           showOrderFormMessage("success", `Updated the record for order ${orderId} (order_seq ${orderSeq}).`);
           document.getElementById("orderOverrideForm").reset();
@@ -4255,6 +4256,7 @@
             <td>${row.order_seq == null ? AUDIT_DASH : escapeHtml(row.order_seq)}</td>
             <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end", formatDate, row.action === "DELETE")}</td>
             <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber, row.action === "DELETE")}</td>
+            <td>${auditDiffText(formatAssigned(row.old_assigned), formatAssigned(row.assigned), row.action === "DELETE")}</td>
             <td>${row.action === "DELETE" ? AUDIT_DELETED : row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
             <td>${escapeHtml(row.entered_by)}</td>
             <td>${row.reason ? escapeHtml(row.reason) : AUDIT_DASH}</td>
@@ -4269,10 +4271,10 @@
           const rows = await getJson("/api/order-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(orderAuditRow).join("")
-            : '<tr><td colspan="8" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="9" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="9" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 

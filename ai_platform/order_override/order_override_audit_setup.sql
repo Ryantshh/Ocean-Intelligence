@@ -60,7 +60,15 @@ ALTER TABLE public.order_override_audit
     ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'UPDATE',
     -- Why the trader overrode or deleted the order (required by the form);
     -- null on rows logged before this column existed.
-    ADD COLUMN IF NOT EXISTS reason TEXT;
+    ADD COLUMN IF NOT EXISTS reason TEXT,
+    -- order_test.assigned (boolean) before and after the override.
+    ADD COLUMN IF NOT EXISTS old_assigned BOOLEAN,
+    ADD COLUMN IF NOT EXISTS assigned BOOLEAN;
+
+-- If an earlier run created these as TEXT, convert them (no-op when already boolean).
+ALTER TABLE public.order_override_audit
+    ALTER COLUMN old_assigned TYPE BOOLEAN USING (CASE WHEN old_assigned::text IN ('T','t','true') THEN true WHEN old_assigned::text IN ('F','f','false') THEN false END),
+    ALTER COLUMN assigned TYPE BOOLEAN USING (CASE WHEN assigned::text IN ('T','t','true') THEN true WHEN assigned::text IN ('F','f','false') THEN false END);
 
 -- Backs the audit trail's newest-first read and its optional per-order filter.
 CREATE INDEX IF NOT EXISTS order_override_audit_order_id_idx
