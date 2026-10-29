@@ -1022,10 +1022,6 @@
                   <input id="ooCargoWeightMax" type="number" min="0" step="1" placeholder="e.g. 180000" />
                 </label>
               </div>
-              <p class="form-hint">
-                Standing in for "quantity" -- order_test has no single quantity
-                column, only these two.
-              </p>
 
               <label>Assigned
                 <select id="ooAssigned">
@@ -1034,19 +1030,6 @@
                   <option value="false">Not assigned (F)</option>
                 </select>
               </label>
-              <p class="form-hint">
-                Whether this order has been assigned to a vessel
-                (order_test.assigned).
-              </p>
-
-              <label>Customer name
-                <input id="ooCustomerName" type="text" maxlength="200" placeholder="e.g. Account 142" disabled />
-              </label>
-              <p class="field-disabled-hint">
-                order_test has no customer_name column yet -- disabled until
-                that schema decision is made, so nothing typed here is silently
-                lost.
-              </p>
               </div>
 
               <p class="form-section-label">Attribution</p>
@@ -4250,7 +4233,6 @@
             laycan_end: toSimulatedDate(laycanEnd),
             cargo_weight_min: cargoWeightMin,
             cargo_weight_max: cargoWeightMax,
-            customer_name: document.getElementById("ooCustomerName").value.trim() || null,
             assigned: { true: true, false: false }[document.getElementById("ooAssigned").value] ?? null,
           });
           showOrderFormMessage("success", `Updated the record for order ${orderId} (order_seq ${orderSeq}).`);
