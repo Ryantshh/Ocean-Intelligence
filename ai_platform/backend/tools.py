@@ -53,14 +53,16 @@ async def _search(
         The table being searched.
     search : BaseModel or None
         That table's flat search model, or None to skip the table so both halves
-        can be gathered unconditionally.
+        can be gathered unconditionally. A model with no field set is skipped the
+        same way: the model sends ``{}`` for a table it did not mean to search,
+        and running it would return the whole table.
 
     Returns
     -------
     list of dict
-        Matching rows, JSON-friendly. Empty when ``search`` is None.
+        Matching rows, JSON-friendly. Empty when ``search`` is None or unfilled.
     """
-    if search is None:
+    if search is None or not search.model_dump(exclude_defaults=True):
         return []
 
     filled = search.model_dump(exclude_none=True)
