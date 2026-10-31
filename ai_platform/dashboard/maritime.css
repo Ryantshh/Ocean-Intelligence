@@ -1,0 +1,192 @@
+/* Maritime visual layer. Data/status colors remain semantically reserved. */
+:root { --bg:#edf3f4; --fg:#153440; --muted:#58717d; --card:#fcfefe; --border:#d6e3e7; --accent:#087d80; --on-accent:#fff; --header:#092732; --shadow:0 8px 28px #123e4c08; }
+:root[data-theme="dark"] { --bg:#081923; --fg:#e2eff3; --muted:#91adb9; --card:#102a36; --border:#24434f; --accent:#77d9cc; --on-accent:#082d32; --header:#071b25; --open:#77d9cc; --shadow:0 10px 32px #00000022; }
+@media(prefers-color-scheme:dark) { :root:not([data-theme="light"]) { --bg:#081923; --fg:#e2eff3; --muted:#91adb9; --card:#102a36; --border:#24434f; --accent:#77d9cc; --on-accent:#082d32; --header:#071b25; --open:#77d9cc; --shadow:0 10px 32px #00000022; } }
+body { background:radial-gradient(ellipse at 85% 0,color-mix(in srgb,var(--accent) 7%,transparent),transparent 42%),var(--bg); }
+.app-header { background:var(--header); border-bottom:1px solid #7ad9ce26; }
+.brand-mark { color:#a5e4ce!important; border-radius:12px; width:42px; height:42px; padding:3px; background:linear-gradient(145deg,#4bb3ac28,#ffffff03); }
+.brand small { color:#9cb9bf; letter-spacing:1.9px; }
+.primary-tabs .tab-btn.active { background:#77d9cc12; border-color:#77d9cc30; color:#bdf5e6; }
+.assistant-toggle,.assistant-toggle[aria-expanded="true"] { background:#b6e4ce!important; color:#10392f!important; }
+main,main.wide { max-width:1680px; }
+.workspace-heading { position:relative; isolation:isolate; padding:28px 34px; min-height:210px; overflow:hidden; border:1px solid #589caa35; border-radius:18px; background:radial-gradient(ellipse at 75% 25%,#1b5666 0,transparent 55%),linear-gradient(115deg,#0b2835,#102e3a); color:#edf9fa; box-shadow:0 14px 35px #08263112; margin-bottom:22px; }
+.workspace-heading::before { content:""; position:absolute; inset:0; z-index:-1; opacity:.12; background-image:linear-gradient(#88d4d314 1px,transparent 1px),linear-gradient(90deg,#88d4d314 1px,transparent 1px); background-size:32px 32px; mask-image:linear-gradient(90deg,transparent,#000); }
+.workspace-heading::after { width:380px; height:380px; top:-150px; right:0; background:radial-gradient(circle,#7ad9ce12,transparent 65%); }
+.workspace-heading h1,.defaults-heading .defaults-title { font-weight:520; font-size:clamp(30px,3vw,44px); letter-spacing:-1.8px; }
+.workspace-heading h1 span { color:#a6d8d6; }
+.workspace-heading .eyebrow { color:#a7dec9; font-size:10px; letter-spacing:2.8px; }
+.workspace-heading .workspace-description { color:#b6cdd4; font-size:13px; }
+.hero-chart { width:320px; height:180px; align-self:center; }
+.hero-chart > svg { display:none; }
+.hero-chart canvas { width:100%; height:180px; display:block; }
+.hero-chart span { position:absolute; bottom:0; left:0; right:0; text-align:center; color:#a7c9ce; font-size:7px; }
+.globe-motion { position:absolute; right:0; top:0; height:23px; border:1px solid #96d1d533; border-radius:6px; color:#b8d9df; background:#102e3a; padding:3px 7px; font-size:9px; cursor:pointer; }
+.status-tile { border-radius:13px; min-height:148px; background:linear-gradient(125deg,color-mix(in srgb,var(--accent) 4%,var(--card)),var(--card)); box-shadow:var(--shadow); }
+.status-tile .value { font-size:38px; font-variant-numeric:tabular-nums; letter-spacing:-1.5px; }
+.status-tile .label { font-size:10px; letter-spacing:1.6px; }
+.status-tile.active { border-color:var(--accent); box-shadow:inset 0 3px var(--accent),var(--shadow); }
+.tile-icon { border-radius:10px; width:36px; height:36px; }
+.summary-panel { background:var(--card); border-radius:16px; }
+.panel-eyebrow { color:var(--accent); font-size:9px; letter-spacing:2px; }
+.summary-panel h3 { font-size:16px; }
+.day-summary { background:color-mix(in srgb,var(--accent) 5%,var(--card)); border-left-width:2px; }
+.sub-tabs .tab-btn.active { border-bottom-width:3px; }
+.map-wrap { --map-water:#0c2533; --map-land:#284c5b; background:radial-gradient(ellipse at 50% 35%,#173e50,#091e2b); border:1px solid #345565!important; border-radius:12px; }
+.map-wrap > svg { background:radial-gradient(ellipse at 48% 32%,#22576a30,transparent 70%); }
+.map-land { fill:url(#oceanLand); stroke:#65909e; stroke-width:.55; }
+.map-grid { stroke:#75bbcd; opacity:.14; stroke-dasharray:2 5; }
+.map-grid-equator { opacity:.27; stroke-dasharray:none; }
+.map-wrap .ocean-labels { fill:#8ab2c1; opacity:.6; font-size:9px; letter-spacing:3px; }
+.map-wrap .map-bubble-label { fill:#e5f6fa; stroke:#102b38; stroke-width:3px; font-size:9px; }
+.map-bubble { filter:drop-shadow(0 2px 4px #0008); transition:fill-opacity .2s,stroke-width .2s; }
+.map-bubble-hit:focus-visible { outline:none; stroke:#fff; stroke-width:2; stroke-dasharray:3 2; }
+.map-wrap g[data-region]:hover .map-bubble { fill-opacity:1; stroke:#fff; stroke-width:2; }
+.map-instrument { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; color:#b7d4de; font-size:9px; letter-spacing:1.5px; border-bottom:1px solid #6baabc25; }
+.map-instrument span:first-child::before { content:""; display:inline-block; width:5px; height:5px; background:#a1d9d9; border-radius:50%; margin-right:8px; box-shadow:0 0 10px #7cdddd66; }
+.map-legend { background:#0d2633; color:#bed2da; border-color:#35515d; line-height:1.6; }
+.map-legend .map-credit { color:#9ec1cd; }
+.map-unmapped { color:#bed2da; border-color:#35515d; }
+.map-compass { fill:none; stroke:#98bfc9; stroke-width:1; opacity:.65; }
+.map-compass text { stroke:none; fill:#b3ced5; font-size:8px; }
+.table-wrap { border-radius:12px; }
+thead th { font-size:10px; padding:15px 14px; }
+tbody td { padding:14px; }
+.hover-tooltip { box-shadow:0 12px 32px #0003; border-radius:10px; }
+@media(min-width:1101px) { body:not(.chat-open) .summary-grid { grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); } }
+@media(max-width:1100px) { .workspace-heading { padding:26px; } .hero-chart { width:260px; } }
+@media(max-width:700px) { .workspace-heading { min-height:175px; padding:24px; } .workspace-heading h1,.defaults-heading .defaults-title { font-size:30px; } .hero-chart { display:none; } .map-instrument { font-size:8px; letter-spacing:.7px; padding:10px; } .map-instrument span:last-child { display:none; } }
+@media(max-width:520px) { .workspace-heading { padding:22px 18px; border-radius:13px; } .workspace-heading h1 span { display:block; } .status-tile { min-height:130px; padding:18px; } .status-tile .value { font-size:32px; } .brand-mark { width:34px; height:34px; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
+
+/* Daylight chartroom / midnight bridge: shared tokens keep every surface in sync. */
+:root { --hero-start:#e0eeea; --hero-end:#c6e1e6; --hero-glow:#fff9; --hero-ink:#143f4c; --hero-muted:#436c77; --atlas-water:#e2eff3; --atlas-deep:#c7e0e8; --atlas-land-top:#f6faf7; --atlas-land-bottom:#b7d1cc; --atlas-coast:#779fa5; --atlas-ink:#294d5a; --atlas-grid:#558c9e; }
+:root[data-theme="dark"] { --hero-start:#0b2835; --hero-end:#102e3a; --hero-glow:#27677a88; --hero-ink:#edf9fa; --hero-muted:#acd0d9; --atlas-water:#0c2533; --atlas-deep:#174456; --atlas-land-top:#416e7c; --atlas-land-bottom:#203f4d; --atlas-coast:#76a7b5; --atlas-ink:#c5e2ec; --atlas-grid:#75bbcd; }
+@media(prefers-color-scheme:dark) { :root:not([data-theme="light"]) { --hero-start:#0b2835; --hero-end:#102e3a; --hero-glow:#27677a88; --hero-ink:#edf9fa; --hero-muted:#acd0d9; --atlas-water:#0c2533; --atlas-deep:#174456; --atlas-land-top:#416e7c; --atlas-land-bottom:#203f4d; --atlas-coast:#76a7b5; --atlas-ink:#c5e2ec; --atlas-grid:#75bbcd; } }
+.workspace-heading { background:radial-gradient(ellipse at 75% 15%,var(--hero-glow),transparent 60%),linear-gradient(115deg,var(--hero-start),var(--hero-end)); color:var(--hero-ink); border-color:color-mix(in srgb,var(--accent) 22%,var(--border)); }
+.workspace-heading h1 span,.workspace-heading .workspace-description,.hero-chart span { color:var(--hero-muted); }
+.workspace-heading .eyebrow { color:var(--accent); }
+.globe-motion { color:var(--hero-ink); border-color:color-mix(in srgb,var(--accent) 25%,transparent); background:color-mix(in srgb,var(--hero-start) 80%,transparent); }
+.hero-chart.voyage-chart > svg { display:block; height:170px; color:var(--accent); overflow:visible; }
+.voyage-vessel { transform-origin:180px 90px; filter:drop-shadow(0 12px 8px #072d352b); }
+.hero-chart { perspective:700px; }
+.brand-mark { transition:transform .4s,box-shadow .4s; }
+.brand:hover .brand-mark { transform:rotate(-8deg); }
+.status-tile,.defaults-card { background:radial-gradient(ellipse at 100% 0,color-mix(in srgb,var(--accent) 9%,transparent),transparent 75%),var(--card); }
+.status-tile { transform-style:preserve-3d; }
+.status-tile .tile-icon { transition:transform .3s; }
+.status-tile:hover .tile-icon { transform:translateY(-3px) rotate(-8deg); }
+.map-wrap { --map-water:var(--atlas-water); background:radial-gradient(ellipse at 50% 45%,var(--atlas-deep),var(--atlas-water)); border-color:var(--border)!important; }
+.map-wrap > svg { cursor:grab; touch-action:pan-y; background:none; }
+.map-wrap > svg.is-zoomed { touch-action:none; }
+.map-wrap > svg.is-dragging { cursor:grabbing; }
+.map-land { stroke:var(--atlas-coast); filter:drop-shadow(0 2px 1px #0a334026); }
+#oceanLand stop:first-child { stop-color:var(--atlas-land-top); }
+#oceanLand stop:last-child { stop-color:var(--atlas-land-bottom); }
+.map-grid { stroke:var(--atlas-grid); opacity:.2; }
+.map-wrap .ocean-labels { fill:var(--atlas-ink); opacity:.65; }
+.map-wrap .map-bubble-label { fill:var(--atlas-ink); stroke:var(--atlas-water); }
+.map-bubble { fill-opacity:.72; stroke-width:1.5; filter:drop-shadow(0 3px 3px #052c4038); }
+.map-marker-core { fill:var(--atlas-ink); opacity:.7; pointer-events:none; }
+.map-marker-ring { fill:none; opacity:.4; pointer-events:none; stroke-width:1; }
+.map-instrument,.map-legend,.map-unmapped { color:var(--atlas-ink); background:color-mix(in srgb,var(--atlas-water) 82%,var(--card)); border-color:color-mix(in srgb,var(--atlas-coast) 28%,transparent); }
+.map-legend .map-credit { color:var(--atlas-ink); }
+.map-compass { stroke:var(--atlas-ink); }
+.map-compass text { fill:var(--atlas-ink); }
+.atlas-tools { display:flex; align-items:center; gap:5px; letter-spacing:0; }
+.atlas-tools button { display:grid; place-items:center; width:28px; height:27px; padding:0; border:1px solid color-mix(in srgb,var(--atlas-coast) 40%,transparent); border-radius:6px; background:color-mix(in srgb,var(--card) 70%,transparent); color:var(--atlas-ink); cursor:pointer; font-size:17px; }
+.atlas-tools button:disabled { opacity:.35; cursor:default; }
+.atlas-tools output { min-width:35px; font-size:10px; text-align:center; font-variant-numeric:tabular-nums; }
+.map-instrument .atlas-tools::before { display:none; }
+.atlas-caption { margin:0; padding:9px 14px; display:flex; justify-content:space-between; gap:10px; font-size:10px; color:var(--atlas-ink); border-top:1px solid color-mix(in srgb,var(--atlas-coast) 22%,transparent); }
+.atlas-caption svg { width:12px; height:12px; vertical-align:-2px; margin-right:5px; }
+.map-bubble-hit:focus-visible { stroke:var(--atlas-ink); }
+@media(prefers-reduced-motion:no-preference) {
+ .voyage-vessel { animation:vessel-float 7s ease-in-out infinite; }
+ .voyage-water { stroke-dasharray:12 7; animation:water-drift 8s linear infinite; }
+ .workspace-heading::after { animation:hero-light 10s ease-in-out infinite alternate; }
+ .status-tile:hover { transform:perspective(700px) rotateX(2deg) translateY(-3px); }
+ @keyframes vessel-float { 0%,100% { transform:translateY(0) rotate(-1deg); } 50% { transform:translateY(-5px) rotate(1deg); } }
+ @keyframes water-drift { to { stroke-dashoffset:-76; } }
+ @keyframes hero-light { to { transform:translateX(-90px); opacity:.4; } }
+}
+@media(max-width:700px) { .map-instrument .atlas-tools { display:flex; } .atlas-caption { font-size:9px; } }
+.motion-paused .voyage-vessel,.motion-paused .voyage-water { animation-play-state:paused; }
+/* Ambient light settles after its entrance, leaving data views still. */
+.workspace-heading::after { animation-iteration-count:1; animation-duration:4s; }
+.atlas-caption svg { display:inline-block; }
+.map-wrap > svg:focus-visible { outline-offset:-3px; }
+
+/* One shared page measure across market tools and voyage planning. */
+main,main.wide,.defaults-page { max-width:1680px; width:100%; }
+html { scrollbar-gutter:stable; }
+.hero-chart > span { font-family:Georgia,'Times New Roman',serif; font-size:12px; font-style:italic; letter-spacing:1px; bottom:-2px; }
+.hero-chart > span::before,.hero-chart > span::after { content:""; display:inline-block; width:20px; height:1px; vertical-align:middle; margin:0 10px; background:currentColor; opacity:.4; }
+.workspace-heading { box-shadow:inset 0 1px 0 color-mix(in srgb,var(--card) 65%,transparent),0 18px 42px #0826310c; }
+.workspace-heading::before { opacity:.24; background:radial-gradient(ellipse at var(--light-x,72%) var(--light-y,30%),color-mix(in srgb,var(--accent) 18%,transparent),transparent 52%),repeating-radial-gradient(ellipse at 95% 120%,transparent 0 38px,color-mix(in srgb,var(--accent) 20%,transparent) 39px,transparent 40px 62px); mask-image:linear-gradient(90deg,transparent 28%,#000); }
+.workspace-heading::after { border:1px solid color-mix(in srgb,var(--accent) 12%,transparent); border-radius:50%; width:430px; height:430px; top:-260px; right:70px; background:none; box-shadow:0 0 0 28px color-mix(in srgb,var(--accent) 3%,transparent),0 0 0 68px color-mix(in srgb,var(--accent) 2%,transparent); }
+.primary-tabs,.sub-tabs { position:relative; isolation:isolate; }
+.nav-glider { position:absolute; pointer-events:none; z-index:-1; left:0; top:0; border-radius:9px; background:#77d9cc12; border:1px solid #77d9cc30; transition:transform .36s cubic-bezier(.22,1,.36,1),width .36s cubic-bezier(.22,1,.36,1),height .2s; }
+.primary-tabs.has-glider .tab-btn.active { background:transparent; border-color:transparent; }
+.sub-tabs .nav-glider { z-index:1; top:auto; bottom:-1px; height:3px!important; border:0; border-radius:4px; background:var(--accent); box-shadow:0 -3px 12px color-mix(in srgb,var(--accent) 14%,transparent); }
+.sub-tabs.has-glider .tab-btn.active { border-bottom-color:transparent; }
+.sub-tabs .tab-btn { transition:color .2s,background .2s; }
+.sub-tabs .tab-btn:hover { color:var(--accent); }
+.primary-tabs .ui-icon,.sub-tabs .ui-icon { transition:transform .3s; }
+.tab-btn:hover .ui-icon { transform:translateY(-2px); }
+.defaults-card { box-shadow:inset 0 1px 0 color-mix(in srgb,var(--card) 80%,transparent),var(--shadow); }
+.defaults-section-icon,.section-symbol { box-shadow:inset 0 1px 0 color-mix(in srgb,var(--card) 75%,transparent); }
+.override-layout { border-radius:16px; background:radial-gradient(ellipse at top right,color-mix(in srgb,var(--accent) 5%,transparent),transparent 50%),var(--card); border-color:var(--border); }
+.override-form input:focus,.override-form select:focus,.override-form textarea:focus { box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent); border-color:var(--accent); outline:none; }
+button:not(:disabled):active { translate:0 1px; }
+@media(prefers-reduced-motion:reduce) { .nav-glider,.primary-tabs .ui-icon,.sub-tabs .ui-icon { transition:none; } .tab-btn:hover .ui-icon { transform:none; } }
+/* Relative positioning anchors the glider, without legacy centered-tab offsets. */
+.primary-tabs,.sub-tabs { inset:auto; }
+
+/* Docked assistant: retain generous inner edges and natural heading spacing. */
+body.chat-open .workspace-heading { padding:24px; min-height:180px; }
+body.chat-open .workspace-heading > div:first-child { min-width:0; width:100%; }
+body.chat-open .workspace-heading h1,body.chat-open .defaults-heading .defaults-title { font-size:clamp(25px,2.1vw,34px); letter-spacing:-.6px; line-height:1.25; }
+body.chat-open .workspace-heading h1 span { display:block; margin-top:3px; }
+body.chat-open .workspace-description { line-height:1.7; max-width:55ch; }
+body.chat-open .eyebrow { letter-spacing:2px; line-height:1.6; }
+body.chat-open .status-tile .label { letter-spacing:.9px; line-height:1.5; }
+body.chat-open .sub-tabs { gap:16px; flex-wrap:wrap; }
+body.chat-open .sub-tabs .tab-btn { white-space:normal; text-align:left; }
+body.chat-open .override-form label { min-width:0; }
+body.chat-open .override-form input,body.chat-open .override-form select { max-width:100%; min-width:0; }
+.chat-panel { background:var(--bg); border-color:var(--border); box-shadow:-12px 0 36px #041b2610; }
+@media(max-width:520px) { body.chat-open .workspace-heading { padding:20px; } }
+/* Keep the active underline attached to its tab in a narrow docked workspace. */
+body.chat-open .sub-tabs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:thin; }
+body.chat-open .sub-tabs .tab-btn { flex-shrink:0; white-space:nowrap; }
+
+/* Ocean signatures: engraved wave contours, luminous glass, and tactile instruments. */
+.hero-seascape { position:absolute; inset:auto 0 0; height:115px; z-index:-1; pointer-events:none; background:var(--accent); mask:url('/static/ocean-contours.svg') center bottom / cover no-repeat; opacity:.13; }
+.workspace-heading { border-top-color:color-mix(in srgb,var(--accent) 35%,var(--border)); }
+.hero-chart { transform:perspective(800px) rotateX(var(--art-x,0deg)) rotateY(var(--art-y,0deg)); transition:transform .45s cubic-bezier(.22,1,.36,1); }
+.hero-chart canvas { filter:drop-shadow(0 14px 14px color-mix(in srgb,var(--accent) 14%,transparent)); }
+.globe-motion { min-width:42px; backdrop-filter:blur(8px); border-radius:20px; font-size:9px; }
+.status-tile-open { --tile-tint:var(--open); }
+.status-tile-watchlist { --tile-tint:var(--watchlist); }
+.status-tile-fixed { --tile-tint:var(--fixed); }
+.status-tile-likely-fixed { --tile-tint:var(--likely-fixed); }
+.status-tile { position:relative; overflow:hidden; background:radial-gradient(ellipse at 100% 0,color-mix(in srgb,var(--tile-tint) 11%,transparent),transparent 68%),var(--card); border-top:2px solid color-mix(in srgb,var(--tile-tint) 45%,var(--border)); }
+.status-tile .tile-icon { color:var(--tile-tint); border-color:color-mix(in srgb,var(--tile-tint) 22%,transparent); background:linear-gradient(140deg,color-mix(in srgb,var(--tile-tint) 12%,var(--card)),var(--card)); box-shadow:0 4px 10px color-mix(in srgb,var(--tile-tint) 8%,transparent),inset 0 1px 0 color-mix(in srgb,var(--card) 80%,transparent); }
+.status-tile::before { content:""; position:absolute; pointer-events:none; inset:0; background:linear-gradient(115deg,transparent 25%,color-mix(in srgb,var(--tile-tint) 7%,transparent) 48%,transparent 70%); opacity:0; transform:translateX(-30%); transition:opacity .4s,transform .6s; }
+.status-tile:hover::before,.status-tile:focus-visible::before { opacity:1; transform:translateX(25%); }
+.summary-panel .panel-eyebrow { display:flex; align-items:center; gap:8px; }
+.summary-panel .panel-eyebrow::before { content:""; width:16px; height:1px; background:var(--accent); opacity:.65; }
+.map-instrument { background:linear-gradient(110deg,color-mix(in srgb,var(--accent) 8%,var(--atlas-water)),var(--atlas-water)); }
+.atlas-tools button:hover:not(:disabled) { background:var(--card); border-color:var(--accent); box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 12%,transparent); }
+.map-wrap { box-shadow:inset 0 1px 0 color-mix(in srgb,var(--card) 40%,transparent),0 6px 20px #062b3506; }
+.defaults-card legend { color:var(--fg); }
+.defaults-section-icon { border-radius:11px; background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 13%,var(--card)),var(--card)); box-shadow:0 4px 10px color-mix(in srgb,var(--accent) 7%,transparent); }
+.table-wrap { border-top-color:color-mix(in srgb,var(--accent) 30%,var(--border)); }
+@media(prefers-reduced-motion:reduce) { .hero-chart { transform:none; transition:none; } .status-tile::before { display:none; } }
+
+/* Favor inexpensive compositing over filters on scrolling and resized surfaces. */
+.app-header { backdrop-filter:none; -webkit-backdrop-filter:none; }
+.hero-chart canvas,.hero-chart svg,.map-land,.map-bubble { filter:none; }
+.hero-chart { transform:none; transition:none; }
+body.chat-resizing .status-tile,body.chat-moving .status-tile { transition:none; }
+body.chat-resizing .hero-chart,body.chat-moving .hero-chart { visibility:hidden; }

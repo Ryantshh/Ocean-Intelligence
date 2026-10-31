@@ -150,3 +150,115 @@ html, body { overscroll-behavior-y:contain; }
 .oi-artifact-body tbody tr:hover { background:hsl(var(--primary) / .07); }
 [data-step-type="assistant_message"] .ai-message { line-height:1.7; }
 @media(prefers-reduced-motion:reduce) { #message-composer,.oi-artifact-toggle,.oi-artifact-body tbody tr { transition:none; } }
+
+/* Shared dashboard palette, including standalone chat and provider inline tokens. */
+:root:not(.dark):not([data-ocean-theme="dark"]) {
+  --background: 188.571 24.138% 94.314% !important;
+  --foreground: 196.744 50.588% 16.667% !important;
+  --primary: 181.500 88.235% 26.667% !important;
+  --primary-foreground: 0.000 0.000% 100.000% !important;
+  --ring: 181.500 88.235% 26.667% !important;
+  --card: 180.000 50.000% 99.216% !important;
+  --card-foreground: 196.744 50.588% 16.667% !important;
+  --popover: 180.000 50.000% 99.216% !important;
+  --popover-foreground: 196.744 50.588% 16.667% !important;
+  --muted: 189.231 28.889% 91.176% !important;
+  --muted-foreground: 199.459 17.371% 41.765% !important;
+  --border: 194.118 26.154% 87.255% !important;
+  --input: 194.118 26.154% 87.255% !important;
+  --accent: 189.231 28.889% 91.176% !important;
+  --accent-foreground: 196.744 50.588% 16.667% !important;
+  --secondary: 189.231 28.889% 91.176% !important;
+  --secondary-foreground: 196.744 50.588% 16.667% !important;
+  --sidebar-background: 180.000 50.000% 99.216% !important;
+  --sidebar-foreground: 196.744 50.588% 16.667% !important;
+  --sidebar-primary: 181.500 88.235% 26.667% !important;
+  --sidebar-primary-foreground: 0.000 0.000% 100.000% !important;
+  --sidebar-accent: 189.231 28.889% 91.176% !important;
+  --sidebar-accent-foreground: 196.744 50.588% 16.667% !important;
+  --sidebar-border: 194.118 26.154% 87.255% !important;
+  --sidebar-ring: 181.500 88.235% 26.667% !important;
+}
+:root.dark, :root[data-ocean-theme="dark"] {
+  --background: 202.222 62.791% 8.431% !important;
+  --foreground: 194.118 41.463% 91.961% !important;
+  --primary: 172.041 56.322% 65.882% !important;
+  --primary-foreground: 187.143 72.414% 11.373% !important;
+  --ring: 172.041 56.322% 65.882% !important;
+  --card: 198.947 54.286% 13.725% !important;
+  --card-foreground: 194.118 41.463% 91.961% !important;
+  --popover: 198.947 54.286% 13.725% !important;
+  --popover-foreground: 194.118 41.463% 91.961% !important;
+  --muted: 197.143 48.837% 16.863% !important;
+  --muted-foreground: 198.000 22.222% 64.706% !important;
+  --border: 196.744 37.391% 22.549% !important;
+  --input: 196.744 37.391% 22.549% !important;
+  --accent: 197.143 48.837% 16.863% !important;
+  --accent-foreground: 194.118 41.463% 91.961% !important;
+  --secondary: 197.143 48.837% 16.863% !important;
+  --secondary-foreground: 194.118 41.463% 91.961% !important;
+  --sidebar-background: 198.947 54.286% 13.725% !important;
+  --sidebar-foreground: 194.118 41.463% 91.961% !important;
+  --sidebar-primary: 172.041 56.322% 65.882% !important;
+  --sidebar-primary-foreground: 187.143 72.414% 11.373% !important;
+  --sidebar-accent: 197.143 48.837% 16.863% !important;
+  --sidebar-accent-foreground: 194.118 41.463% 91.961% !important;
+  --sidebar-border: 196.744 37.391% 22.549% !important;
+  --sidebar-ring: 172.041 56.322% 65.882% !important;
+}
+
+/* Ocean assistant: decorative depth outside the reading surface. */
+body { background:radial-gradient(ellipse at 80% 0,hsl(var(--primary) / .07),transparent 48%),hsl(var(--background)); color:hsl(var(--foreground)); }
+#welcome-screen { position:relative; isolation:isolate; }
+#welcome-screen::before { content:""; position:absolute; z-index:-1; pointer-events:none; width:min(440px,80vw); height:260px; top:50%; left:50%; transform:translate(-50%,-70%); border-radius:50%; background:repeating-radial-gradient(ellipse at center,transparent 0 38px,hsl(var(--primary) / .08) 39px,transparent 40px 58px); mask-image:radial-gradient(ellipse,#000,transparent 72%); }
+#welcome-screen .logo { width:155px; height:auto; object-fit:contain; padding:12px 0; filter:drop-shadow(0 8px 18px hsl(var(--primary) / .12)); }
+#message-composer { background:hsl(var(--card)); border-radius:18px; border:1px solid hsl(var(--primary) / .25); box-shadow:0 12px 32px hsl(var(--foreground) / .05),inset 0 1px 0 hsl(var(--foreground) / .03); }
+#message-composer:focus-within { border-color:hsl(var(--primary) / .65); box-shadow:0 0 0 3px hsl(var(--primary) / .09),0 12px 32px hsl(var(--foreground) / .06); }
+#chat-input { color:hsl(var(--foreground)); line-height:1.75; font-size:14px; }
+#chat-input::placeholder { color:hsl(var(--muted-foreground)); }
+#starters { gap:9px; }
+button[id^="starter-"] { background:hsl(var(--card)); color:hsl(var(--foreground)); border:1px solid hsl(var(--border)); border-radius:12px; padding:10px 14px; box-shadow:0 3px 10px hsl(var(--foreground) / .025); transition:transform .2s,border-color .2s,box-shadow .2s; }
+button[id^="starter-"]:hover { transform:translateY(-2px); border-color:hsl(var(--primary) / .5); box-shadow:0 6px 16px hsl(var(--primary) / .08); }
+[data-step-type="assistant_message"] .ai-message { color:hsl(var(--foreground)); line-height:1.75; }
+[data-step-type="assistant_message"] .prose { max-width:78ch; }
+[data-step-type] p { line-height:1.75; }
+[data-step-type] pre { border:1px solid hsl(var(--border)); border-radius:12px; }
+[data-step-type] a { text-underline-offset:3px; }
+[data-step-type] blockquote { border-left-color:hsl(var(--primary)); background:hsl(var(--primary) / .04); padding:10px 16px; border-radius:0 8px 8px 0; }
+@media(prefers-reduced-motion:reduce) { button[id^="starter-"] { transition:none; } button[id^="starter-"]:hover { transform:none; } }
+
+/* A calm chartroom welcome, with the Cargill mark remaining the focal point. */
+#welcome-screen::before { height:330px; width:min(560px,90vw); background:radial-gradient(ellipse,hsl(var(--primary) / .1),transparent 65%),repeating-radial-gradient(ellipse at center,transparent 0 38px,hsl(var(--primary) / .12) 39px,transparent 40px 58px); }
+#welcome-screen .logo { filter:drop-shadow(0 10px 20px hsl(var(--primary) / .16)); }
+#message-composer { background:linear-gradient(145deg,hsl(var(--primary) / .035),transparent 55%),hsl(var(--card)); border-top-color:hsl(var(--primary) / .4); }
+button[id^="starter-"]::before { content:"↗"; display:inline-block; margin-right:7px; color:hsl(var(--primary)); font-size:13px; opacity:.8; }
+button[id^="starter-"]:hover::before { transform:translate(1px,-1px); }
+button[id^="starter-"]::before { transition:transform .2s; }
+.oi-artifact-dock { border-top:2px solid hsl(var(--primary) / .4); }
+@media(prefers-reduced-motion:reduce) { button[id^="starter-"]::before { transition:none; transform:none; } }
+
+/* The iframe viewport follows both dock resizing and the floating chat window. */
+[data-step-type="assistant_message"] .prose { max-width:none; width:100%; }
+[data-step-type="assistant_message"] .ai-message { min-width:0; line-height:1.5; }
+[data-step-type] p { line-height:1.5; margin-block:.45em; }
+[data-step-type] :is(ul,ol) { margin-block:.5em; padding-left:1.35em; }
+[data-step-type] li { margin-block:.25em; line-height:1.5; }
+[data-step-type] li > p { margin-block:.2em; }
+.oi-artifact-slot { margin-bottom:12px; }
+.oi-artifact-body { max-height:clamp(100px,32dvh,360px); padding:0 10px 8px; }
+.oi-artifact-body .oi-t-scroll { max-height:clamp(64px,calc(32dvh - 62px),298px); }
+.oi-artifact-toggle { padding:8px 12px; }
+.oi-artifact-body .oi-t { gap:6px; }
+.oi-artifact-body .oi-t th,.oi-artifact-body .oi-t td { padding:6px 8px; }
+#message-composer { min-height:72px; }
+@media(max-height:650px) {
+ .oi-artifact-slot { margin-bottom:8px; }
+ .oi-artifact-body { max-height:26dvh; }
+ .oi-artifact-body .oi-t-scroll { max-height:calc(26dvh - 48px); }
+ #message-composer { min-height:64px; }
+}
+@media(max-width:600px) {
+ [data-step-type] p,[data-step-type] li { font-size:13px; line-height:1.5; }
+ .oi-artifact-body .oi-t th,.oi-artifact-body .oi-t td { padding:5px 7px; }
+ .oi-artifact-toggle { font-size:11px; }
+}
