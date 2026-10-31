@@ -79,8 +79,8 @@ button[id^="starter-"]:hover { background:hsl(var(--primary) / .07); border-colo
 .oi-v .oi-v-group-name { padding:10px 0 5px; color:hsl(var(--primary)); }
 .oi-v-pick:focus-visible { outline:2px solid hsl(var(--primary)); outline-offset:3px; border-radius:3px; }
 
-/* The app header already identifies the assistant. Keep the workspace for content. */
-#header { display:none !important; }
+/* Keep native history and new-chat controls available inside the assistant. */
+#header { background:hsl(var(--background)); flex-shrink:0; }
 .oi-artifact-slot { flex:none; min-width:0; width:100%; margin:0 0 28px; }
 .oi-artifact-dock { border:1px solid hsl(var(--border)); border-radius:12px; background:hsl(var(--background)); }
 .oi-artifact-toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:10px 14px; text-align:left; font-size:12px; font-weight:600; color:hsl(var(--foreground)); border-radius:12px; }
@@ -262,3 +262,8 @@ button[id^="starter-"]::before { transition:transform .2s; }
  .oi-artifact-body .oi-t th,.oi-artifact-body .oi-t td { padding:5px 7px; }
  .oi-artifact-toggle { font-size:11px; }
 }
+
+/* Contain sticky table layers below composer menus; reserve a lane for context. */
+.oi-artifact-slot { position:relative; isolation:isolate; z-index:0; margin-bottom:48px; }
+.oi-results-link { display:inline-flex; margin:8px 0; padding:8px 12px; border:1px solid hsl(var(--border)); border-radius:10px; color:hsl(var(--primary)); background:hsl(var(--card)); font:inherit; font-size:13px; cursor:pointer; }
+.oi-results-link:hover,.oi-results-link[aria-pressed="true"] { background:hsl(var(--primary) / .1); border-color:hsl(var(--primary) / .5); }

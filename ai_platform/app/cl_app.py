@@ -301,7 +301,6 @@ async def run_agent(question: str) -> None:
     }
     payload: Any = {"messages": [{"role": "user", "content": question}]}
     reply = root_message()
-    results_element_name = ""
     was_cut_off = False
     evidence = guardrails.Evidence()
     cancelled = False
@@ -321,10 +320,9 @@ async def run_agent(question: str) -> None:
         try:
             async for namespace, mode, event in stream:
                 if mode == "custom":
-                    name = await _render_match_event(
+                    await _render_match_event(
                         cast("dict[str, Any]", event), open_steps, order_steps, reply
                     )
-                    results_element_name = name or results_element_name
                     continue
                 if namespace:
                     continue
@@ -351,10 +349,9 @@ async def run_agent(question: str) -> None:
                         was_cut_off = was_cut_off or (
                             node == "model" and metadata.get("finish_reason") == "length"
                         )
-                        name = await _render_node_message(
+                        await _render_node_message(
                             message, node, open_steps, reply, evidence
                         )
-                        results_element_name = name or results_element_name
         except Exception as error:
             _logger.exception("agent run failed")
             failed = True
@@ -381,8 +378,7 @@ async def run_agent(question: str) -> None:
         await reply.stream_token(CUT_OFF_NOTICE)
     if not cancelled and not failed:
         await reply.stream_token(guardrails.footer(evidence, working_date(), was_cut_off))
-    if results_element_name:
-        await reply.stream_token(f"\n\n{results_element_name}")
+    # Inline results render in the artifact dock; no textual link is needed.
     await reply.send()
     await refresh_gauge(await agent_context_tokens(), anchor=reply.id)
 
@@ -469,7 +465,7 @@ async def _show_panel(sets: list[dict[str, Any]], reply: cl.Message, key: str) -
     Returns
     -------
     str
-        ``RESULTS_ELEMENT``, for the reply's link line.
+        ``RESULTS_ELEMENT``, indicating that a panel was attached.
     """
     shown_at_ms = int(time.time() * 1000)
     panel = cl.CustomElement(
@@ -1050,9 +1046,17 @@ async def resume_chat(thread: ThreadDict) -> None:
     None
     """
     # Legacy result elements also use the composer dock when replayed.
+    result_messages = set()
     for element in thread.get("elements") or []:
         if element.get("name") == RESULTS_ELEMENT:
             element["display"] = "inline"
+            result_messages.add(element.get("forId"))
+    # The inline component supplies a per-reply button now. Only remove the
+    # old exact suffix on messages that actually own a results element.
+    for step in thread.get("steps") or []:
+        output = step.get("output") or ""
+        if step.get("id") in result_messages and output.endswith("\n\nResults"):
+            step["output"] = output.removesuffix("\n\nResults")
     anchors = [
         str(step_id)
         for step in thread.get("steps") or []
