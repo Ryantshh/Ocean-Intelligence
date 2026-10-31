@@ -1200,3 +1200,170 @@ def new_orders_sql(since: datetime, until: datetime) -> tuple[str, list]:
         ),
         [since, until],
     )
+
+
+# ---- Updated information (overrides) -------------------------------------
+#
+# DEFINITION (the Change Feed's fifth box, "Updated information (overrides)";
+# added 31 Oct 2026, see README's definition change log):
+#
+# Every submission made through the Tonnage Status Override and Order Status
+# Override forms -- updates and deletes -- read from their audit tables,
+# ``trader_override_audit`` and ``order_override_audit``. Never from
+# ``tonnage_test``/``order_test``: an override rewrites its row in place, so
+# those tables keep only the post-override values and cannot say what the
+# trader changed. The audit tables record both sides, who, and why.
+#
+# DATING. ``created_at`` is real wall-clock time, but every Change Feed
+# window runs on the simulated clock (real time minus one year, or the
+# pinned OI_WORKING_DATE). Each submission is moved onto that clock by the
+# same offset the clock itself is behind -- ``created_at - (now() -
+# tonnage_reference_now())`` -- and returned as ``simulated_at``. An override
+# made a minute ago therefore sits a minute before simulated "now", in
+# today's day-on-day window; one made three real days ago sits three days
+# back. With the clock unpinned that is the same instant the override stamped
+# on the row's ``update_date``. With OI_WORKING_DATE pinned it is not: the
+# tonnage override stamps the pinned date at the current time of day, while
+# this places the submission by how long ago it really happened. Vessel
+# overrides use the tonnage clock and order overrides the orders clock, like
+# the other lists.
+#
+# What this list is not: a replacement for Field changes. That list still
+# diffs tonnage reports, and an overridden row can appear there too, re-dated
+# to the override (see vessel_field_changes_sql) -- only this list reports
+# what the trader actually changed.
+
+# The row shape both queries return, so the API can merge them into one
+# list: each column with the type its NULL stand-in takes on the side that
+# lacks it.
+_OVERRIDE_FEED_COLUMNS = (
+    ("vessel_id", "text"),
+    ("order_id", "text"),
+    ("order_seq", "smallint"),
+    ("order_seq_count", "bigint"),
+    ("old_status", "text"),
+    ("status", "text"),
+    ("old_open_area", "text"),
+    ("open_area", "text"),
+    ("old_open_date_start", "timestamp"),
+    ("open_date_start", "timestamp"),
+    ("old_open_date_end", "timestamp"),
+    ("open_date_end", "timestamp"),
+    ("old_laycan_start", "timestamp"),
+    ("laycan_start", "timestamp"),
+    ("old_laycan_end", "timestamp"),
+    ("laycan_end", "timestamp"),
+    ("old_cargo_weight_min", "numeric"),
+    ("cargo_weight_min", "numeric"),
+    ("old_cargo_weight_max", "numeric"),
+    ("cargo_weight_max", "numeric"),
+    ("old_assigned", "boolean"),
+    ("assigned", "boolean"),
+    ("customer_name", "text"),
+)
+
+
+def _overrides_sql(
+    kind: str, table: str, clock: str, action: str, columns: dict[str, str],
+    since: datetime, until: datetime,
+) -> tuple[str, list]:
+    """One audit table's submissions in the window, in the shared row shape."""
+    selected = ", ".join(
+        f"{columns.get(name, f'NULL::{sql_type}')} AS {name}"
+        for name, sql_type in _OVERRIDE_FEED_COLUMNS
+    )
+    return (
+        (
+            "SELECT * FROM ("
+            f"  SELECT '{kind}'::text AS kind, a.id, {action} AS action, "
+            f"  a.created_at - (now() - {clock}()) AS simulated_at, "
+            f"  a.entered_by, a.reason, {selected} "
+            f"  FROM public.{table} a"
+            ") s "
+            # The bounds are naive UTC (see change_window_bounds);
+            # simulated_at is timestamptz, so they are read as UTC explicitly.
+            "WHERE simulated_at >= ($1::timestamp AT TIME ZONE 'UTC') "
+            "AND simulated_at < ($2::timestamp AT TIME ZONE 'UTC') "
+            "ORDER BY simulated_at DESC, id DESC"
+        ),
+        [since, until],
+    )
+
+
+def vessel_overrides_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Tonnage Status Override submissions in the window, newest first.
+
+    See the DEFINITION comment above :data:`_OVERRIDE_FEED_COLUMNS`. A
+    delete is logged with ``override_status = 'DELETED'`` and the removed
+    row's values on the ``old_*`` side; it is returned as ``action``
+    ``DELETE`` with ``status`` null, the same shape as an order delete.
+    ``old_*`` null on an update means the before-value is unknown (logged
+    before those columns existed), not that it was unchanged.
+
+    Parameters
+    ----------
+    since, until : datetime
+        Tonnage-clock window bounds, from :func:`change_window_bounds`.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``.
+    """
+    return _overrides_sql(
+        "vessel", "trader_override_audit", "tonnage_reference_now",
+        "CASE WHEN a.override_status = 'DELETED' THEN 'DELETE' ELSE 'UPDATE' END",
+        {
+            "vessel_id": "a.vessel_id",
+            "old_status": "a.old_override_status",
+            "status": "NULLIF(a.override_status, 'DELETED')",
+            "old_open_area": "a.old_open_area",
+            "open_area": "a.open_area",
+            "old_open_date_start": "a.old_open_date_start",
+            "open_date_start": "a.open_date_start",
+            "old_open_date_end": "a.old_open_date_end",
+            "open_date_end": "a.open_date_end",
+        },
+        since, until,
+    )
+
+
+def order_overrides_sql(since: datetime, until: datetime) -> tuple[str, list]:
+    """Order Status Override submissions in the window, newest first.
+
+    See the DEFINITION comment above :data:`_OVERRIDE_FEED_COLUMNS`.
+    ``order_seq_count`` counts the orders currently in ``order_test`` that
+    share the ``order_id``, so the feed can say when an overridden order has
+    twins, as the other order lists do; it is 0 once every one is deleted.
+
+    Parameters
+    ----------
+    since, until : datetime
+        Orders-clock window bounds, from :func:`change_window_bounds`.
+
+    Returns
+    -------
+    tuple
+        ``(sql, params)``.
+    """
+    return _overrides_sql(
+        "order", "order_override_audit", "orders_reference_now", "a.action",
+        {
+            "order_id": "a.order_id",
+            "order_seq": "a.order_seq",
+            "order_seq_count": (
+                "(SELECT count(*) FROM public.order_test t "
+                "WHERE t.order_id::text = a.order_id)"
+            ),
+            **{
+                f"{prefix}{field}": f"a.{prefix}{field}"
+                for field in (
+                    "laycan_start", "laycan_end", "cargo_weight_min",
+                    "cargo_weight_max", "assigned",
+                )
+                for prefix in ("old_", "")
+            },
+            "customer_name": "a.customer_name",
+        },
+        since, until,
+    )
