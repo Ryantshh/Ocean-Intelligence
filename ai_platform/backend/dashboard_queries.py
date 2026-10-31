@@ -1092,15 +1092,31 @@ def vessel_field_changes_sql(since: datetime, until: datetime) -> tuple[str, lis
     """Per-vessel field-level changes within the window (not just status).
 
     For each vessel report in the window, compares it against that same
-    vessel's immediately preceding (non-future) report and returns rows
-    where at least one of :data:`_FIELD_CHANGE_COLUMNS` differs -- both the
-    old and new value of every tracked column, so the caller can work out
-    exactly which field(s) changed and show a field-level diff, per the
-    product spec's "changed fields within an existing record are
-    highlighted at the field level" acceptance criterion. A vessel's
-    first-ever report is excluded (``prev_update_date IS NOT NULL``) --
-    that's a new arrival, reported separately by :func:`new_vessels_sql`,
-    not a change.
+    vessel's previous *batch* and returns rows where at least one of
+    :data:`_FIELD_CHANGE_COLUMNS` differs -- both the old and new value of
+    every tracked column, so the caller can work out exactly which field(s)
+    changed and show a field-level diff, per the product spec's "changed
+    fields within an existing record are highlighted at the field level"
+    acceptance criterion. A vessel's first batch is excluded -- that's a new
+    arrival, reported separately by :func:`new_vessels_sql`, not a change.
+
+    A batch is every report of one vessel stamped with the same
+    ``update_date``: a broker list can carry a vessel in two positions at
+    once, and those reports arrive together. A report is unchanged when any
+    report in the previous batch has the same tracked values; reports in the
+    same batch are never compared with each other, and identical reports in
+    one batch (one position sent twice) are listed once. The ``prev_``
+    columns come from the previous-batch report matching the most tracked
+    values, so the diff shown is the smallest real one.
+
+    DEFINITION CHANGE, 27 Oct 2026. Each report used to be compared with the
+    one before it in ``update_date`` order alone. Reports sharing a timestamp
+    then fell in arbitrary order and were compared with each other: on 17 Jun
+    2025 VESSEL 0301 was listed in the same two positions (Tubarao, Saldanha
+    Bay) as on 16 Jun, yet the feed showed two field changes, "Saldanha Bay
+    -> Tubarao" and "Tubarao -> Saldanha Bay". Under the batch rule it shows
+    none. Found by the Change Feed UAT (``uat/run_feed_uat.py``). A batch of
+    one report, the usual case, compares exactly as before.
 
     Parameters
     ----------
@@ -1116,25 +1132,40 @@ def vessel_field_changes_sql(since: datetime, until: datetime) -> tuple[str, lis
     tuple
         ``(sql, params)``.
     """
+    columns = ", ".join(_FIELD_CHANGE_COLUMNS)
     tracked = ", ".join(
-        f"{col}, LAG({col}) OVER w AS prev_{col}" for col in _FIELD_CHANGE_COLUMNS
+        f"r.{col}, p.{col} AS prev_{col}" for col in _FIELD_CHANGE_COLUMNS
+    )
+    matches = " + ".join(
+        f"(q.{col} IS NOT DISTINCT FROM r.{col})::int" for col in _FIELD_CHANGE_COLUMNS
     )
     diff_clause = " OR ".join(
-        f"{col} IS DISTINCT FROM prev_{col}" for col in _FIELD_CHANGE_COLUMNS
+        f"r.{col} IS DISTINCT FROM p.{col}" for col in _FIELD_CHANGE_COLUMNS
     )
     sql = (
-        "WITH windowed AS ("
-        f"  SELECT vessel_id, update_date, {tracked}, "
-        "    LAG(update_date) OVER w AS prev_update_date "
+        "WITH reports AS ("
+        f"  SELECT DISTINCT ON (vessel_id, update_date, {columns}) "
+        f"    vessel_id, update_date, first_date_received, tonnage_row_key, {columns} "
         "  FROM public.tonnage_test "
         "  WHERE update_date IS NOT NULL AND update_date < $2 "
-        "  WINDOW w AS (PARTITION BY vessel_id ORDER BY update_date)"
+        f"  ORDER BY vessel_id, update_date, {columns}, first_date_received DESC NULLS LAST, tonnage_row_key"
+        "), batches AS ("
+        "  SELECT vessel_id, update_date, "
+        "    LAG(update_date) OVER (PARTITION BY vessel_id ORDER BY update_date) AS prev_update_date "
+        "  FROM (SELECT DISTINCT vessel_id, update_date FROM reports) AS distinct_batches"
         ") "
-        "SELECT * FROM windowed "
-        "WHERE update_date >= $1 "
-        "AND prev_update_date IS NOT NULL "
+        f"SELECT r.vessel_id, r.update_date, {tracked}, b.prev_update_date "
+        "FROM reports r "
+        "JOIN batches b ON b.vessel_id = r.vessel_id AND b.update_date = r.update_date "
+        "CROSS JOIN LATERAL ("
+        "  SELECT q.* FROM reports q "
+        "  WHERE q.vessel_id = r.vessel_id AND q.update_date = b.prev_update_date "
+        f"  ORDER BY {matches} DESC, q.first_date_received DESC NULLS LAST, q.tonnage_row_key "
+        "  LIMIT 1"
+        ") p "
+        "WHERE r.update_date >= $1 "
         f"AND ({diff_clause}) "
-        "ORDER BY update_date DESC"
+        "ORDER BY r.update_date DESC, r.vessel_id"
     )
     return sql, [since, until]
 
