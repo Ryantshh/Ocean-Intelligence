@@ -186,8 +186,10 @@ def write_report(out: Path, checks: list[dict[str, Any]]) -> None:
     lines = [
         f"# Change Feed UAT results — {datetime.now():%Y-%m-%d %H:%M}",
         "",
-        f"Lists matching exactly: {sum(c['passed'] for c in lists)}/{len(lists)}. "
-        f"Window bounds correct: {sum(c['passed'] for c in windows)}/{len(windows)}.",
+        (
+            f"Lists matching exactly: {sum(c['passed'] for c in lists)}/{len(lists)}. "
+            f"Window bounds correct: {sum(c['passed'] for c in windows)}/{len(windows)}."
+        ),
         "",
         "| Scenario | Check | Expected | Dashboard | Result |",
         "|---|---|---|---|---|",
