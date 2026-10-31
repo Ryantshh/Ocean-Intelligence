@@ -78,3 +78,75 @@ button[id^="starter-"]:hover { background:hsl(var(--primary) / .07); border-colo
 .oi-v-pick[aria-pressed="true"] { color:hsl(var(--primary)); font-weight:650; }
 .oi-v .oi-v-group-name { padding:10px 0 5px; color:hsl(var(--primary)); }
 .oi-v-pick:focus-visible { outline:2px solid hsl(var(--primary)); outline-offset:3px; border-radius:3px; }
+
+/* The app header already identifies the assistant. Keep the workspace for content. */
+#header { display:none !important; }
+.oi-artifact-slot { flex:none; min-width:0; width:100%; margin:0 0 28px; }
+.oi-artifact-dock { border:1px solid hsl(var(--border)); border-radius:12px; background:hsl(var(--background)); }
+.oi-artifact-toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:10px 14px; text-align:left; font-size:12px; font-weight:600; color:hsl(var(--foreground)); border-radius:12px; }
+.oi-artifact-toggle:hover { background:hsl(var(--muted)); }
+.oi-artifact-toggle span:last-child { color:hsl(var(--primary)); white-space:nowrap; }
+.oi-artifact-body { height:auto; max-height:38dvh; overflow:auto; padding:0 12px 10px; min-width:0; }
+.oi-artifact-body[hidden] { display:none; }
+.oi-artifact-body .oi-t-tabwrap { display:flex; flex-direction:column; }
+.oi-artifact-body .oi-t { min-height:0; }
+.oi-artifact-body .oi-t-scroll { max-height:calc(38dvh - 88px); min-height:0; }
+.oi-artifact-body .oi-t-bar { position:sticky; bottom:0; background:hsl(var(--background)); z-index:5; padding:8px 0; flex-shrink:0; }
+.oi-t-sendmenu:popover-open { max-width:calc(100vw - 16px); max-height: min(300px, 65dvh); overflow:auto; }
+@media (max-height:600px) {
+  .oi-artifact-body { max-height:28dvh; }
+  .oi-artifact-body .oi-t-scroll { max-height:15dvh; }
+}
+
+/* Use the same generous content edges for messages, results, and composer. */
+.flex.flex-col.mx-auto.w-full[style*="max-width"] { max-width:none !important; padding-left:24px; padding-right:24px; }
+/* Chainlit reserves a viewport-sized tail to pin the last prompt at the top.
+   With docked results this becomes a large, empty scroll region. */
+.flex.flex-col.flex-grow.overflow-y-auto > .flex-shrink-0:last-child:empty { height:0 !important; }
+.inline-custom:empty { display:none; }
+.oi-artifact-body .oi-t-bar { margin:0; padding:6px 0 0; }
+#message-composer { min-height:84px; border-radius:14px; }
+@media (max-width:600px) {
+  .flex.flex-col.mx-auto.w-full[style*="max-width"] { padding-left:12px; padding-right:12px; }
+}
+
+/* Each step has its own inline width cap in addition to the transcript cap. */
+[data-step-type] > .flex.flex-col { width:100%; max-width:none !important; }
+[data-step-type="user_message"] .group { justify-content:flex-end; }
+[data-step-type="assistant_message"] .ai-message { justify-content:flex-start; margin-left:0; }
+
+/* Keep wheel/touch scrolling inside the embedded assistant, including at the
+   beginning/end of the transcript. The composer remains outside this region. */
+html, body { overscroll-behavior-y:contain; }
+.relative.flex.flex-col.flex-grow.overflow-y-auto {
+  min-height:0;
+  overflow:hidden;
+}
+.relative.flex.flex-col.flex-grow.overflow-y-auto > .flex.flex-col.flex-grow.overflow-y-auto {
+  min-height:0;
+  overflow-y:scroll;
+  overscroll-behavior-y:contain;
+  scrollbar-gutter:stable;
+  scrollbar-width:auto;
+  scrollbar-color:hsl(var(--muted-foreground) / .65) hsl(var(--muted));
+}
+.relative.flex.flex-col.flex-grow.overflow-y-auto > .overflow-y-auto::-webkit-scrollbar { width:12px; }
+.relative.flex.flex-col.flex-grow.overflow-y-auto > .overflow-y-auto::-webkit-scrollbar-track { background:hsl(var(--muted)); border-radius:8px; }
+.relative.flex.flex-col.flex-grow.overflow-y-auto > .overflow-y-auto::-webkit-scrollbar-thumb { background:hsl(var(--muted-foreground) / .65); border:3px solid hsl(var(--muted)); border-radius:8px; }
+.relative.flex.flex-col.flex-grow.overflow-y-auto > .overflow-y-auto::-webkit-scrollbar-thumb:hover { background:hsl(var(--primary)); }
+/* Results and long drafts retain their own scroll, without moving the page. */
+.oi-artifact-body, .oi-t-scroll, #chat-input { overscroll-behavior:contain; }
+
+/* Quiet maritime detailing: preserve transcript width and dock behaviour. */
+#message-composer { border:1px solid hsl(var(--border)); box-shadow:0 4px 18px hsl(var(--foreground) / .04); transition:border-color .18s,box-shadow .18s; }
+#message-composer:focus-within { border-color:hsl(var(--primary) / .55); box-shadow:0 0 0 3px hsl(var(--primary) / .08),0 6px 20px hsl(var(--foreground) / .04); }
+.oi-artifact-dock { box-shadow:0 4px 18px hsl(var(--foreground) / .04); border-color:hsl(var(--primary) / .22); }
+.oi-artifact-toggle { background:linear-gradient(110deg,hsl(var(--primary) / .08),transparent); transition:background .18s; }
+.oi-artifact-label { display:inline-flex; align-items:center; gap:8px; min-width:0; }
+.oi-artifact-label svg { width:20px; height:20px; flex-shrink:0; color:hsl(var(--primary)); }
+.oi-artifact-toggle:focus-visible { outline:2px solid hsl(var(--primary)); outline-offset:3px; }
+.oi-artifact-body .oi-t-bar { border-top:1px solid hsl(var(--border)); }
+.oi-artifact-body tbody tr { transition:background .15s; }
+.oi-artifact-body tbody tr:hover { background:hsl(var(--primary) / .07); }
+[data-step-type="assistant_message"] .ai-message { line-height:1.7; }
+@media(prefers-reduced-motion:reduce) { #message-composer,.oi-artifact-toggle,.oi-artifact-body tbody tr { transition:none; } }

@@ -455,7 +455,7 @@ async def _render_node_message(
 
 
 async def _show_panel(sets: list[dict[str, Any]], reply: cl.Message, key: str) -> str:
-    """Attach a results panel to the reply and open it in the sidebar.
+    """Attach a persisted results panel rendered in the composer artifact dock.
 
     Parameters
     ----------
@@ -464,7 +464,7 @@ async def _show_panel(sets: list[dict[str, Any]], reply: cl.Message, key: str) -
     reply : cl.Message
         The reply the panel persists with.
     key : str
-        Sidebar key; a fresh one makes the sidebar swap to these rows.
+        Tool-call identifier retained for compatibility with callers.
 
     Returns
     -------
@@ -473,11 +473,9 @@ async def _show_panel(sets: list[dict[str, Any]], reply: cl.Message, key: str) -
     """
     shown_at_ms = int(time.time() * 1000)
     panel = cl.CustomElement(
-        name=RESULTS_ELEMENT, props={"sets": sets, "seq": shown_at_ms}, display="side"
+        name=RESULTS_ELEMENT, props={"sets": sets, "seq": shown_at_ms}, display="inline"
     )
     reply.elements = cast("list[Any]", [panel])
-    await cl.ElementSidebar.set_title(RESULTS_ELEMENT)
-    await cl.ElementSidebar.set_elements([panel], key=key or panel.id)
     return RESULTS_ELEMENT
 
 
@@ -1051,6 +1049,10 @@ async def resume_chat(thread: ThreadDict) -> None:
     -------
     None
     """
+    # Legacy result elements also use the composer dock when replayed.
+    for element in thread.get("elements") or []:
+        if element.get("name") == RESULTS_ELEMENT:
+            element["display"] = "inline"
     anchors = [
         str(step_id)
         for step in thread.get("steps") or []
