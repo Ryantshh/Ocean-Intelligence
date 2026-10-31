@@ -106,10 +106,20 @@
     handle.setPointerCapture(event.pointerId);
     document.body.classList.add('chat-resizing');
   });
+  let dockResizeFrame = 0, pendingDockWidth = null;
   handle.addEventListener('pointermove', (event) => {
-    if (handle.hasPointerCapture(event.pointerId)) resize(innerWidth - event.clientX);
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    pendingDockWidth = innerWidth - event.clientX;
+    if (!dockResizeFrame) dockResizeFrame = requestAnimationFrame(() => {
+      dockResizeFrame = 0;
+      resize(pendingDockWidth, false);
+    });
   });
-  const stop = () => document.body.classList.remove('chat-resizing');
+  const stop = () => {
+    cancelAnimationFrame(dockResizeFrame); dockResizeFrame = 0;
+    if (pendingDockWidth !== null) { resize(pendingDockWidth); pendingDockWidth = null; }
+    document.body.classList.remove('chat-resizing');
+  };
   handle.addEventListener('pointerup', stop);
   handle.addEventListener('pointercancel', stop);
   handle.addEventListener('lostpointercapture', stop);
