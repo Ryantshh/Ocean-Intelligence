@@ -108,3 +108,8 @@ app.include_router(voyage_defaults_router)
 app.mount("/static", StaticFiles(directory=str(DASHBOARD_DIR)), name="static")
 
 mount_chainlit(app=app, target=CHAINLIT_TARGET, path="/chat")
+
+# Preserve submissions during overlapping Chainlit profile/socket handovers.
+from ai_platform.app.chat_connection import install_connection_recovery
+
+install_connection_recovery()
