@@ -1,0 +1,1454 @@
+[
+  {
+    "case": "c04",
+    "story": "US-1.1",
+    "run": 1,
+    "prompt": "Show me orders from PDM to North China.",
+    "thread_id": "uat-c04-1-21e1c733",
+    "seconds": 6.3,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "discharge_port": [
+              "North China"
+            ],
+            "load_port": [
+              "Ponta da Madeira"
+            ]
+          },
+          "vessels": null
+        }
+      },
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "discharge_port": [
+              "North China"
+            ],
+            "load_port": [
+              "Madeira"
+            ]
+          },
+          "vessels": null
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "cargoes",
+        "sql": "SELECT \"order_id\"::text AS \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM (SELECT DISTINCT ON (\"order_id\") \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM public.order_test WHERE date_received < $1 ORDER BY \"order_id\", update_date DESC NULLS LAST, date_received DESC NULLS LAST, order_seq DESC) AS latest WHERE EXISTS (SELECT 1 FROM unnest(string_to_array(\"load_port\", ', ')) AS element WHERE element ILIKE ANY($2)) AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"discharge_port\", ', ')) AS element WHERE element ILIKE ANY($3)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['%Madeira%']",
+          "['%North China%']"
+        ],
+        "row_count": 0
+      }
+    ],
+    "final_rows": {
+      "cargoes": []
+    },
+    "all_ids": [],
+    "reply": "0 orders match load port Madeira and discharge port North China.  \n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each cargo as stored in the book; no additional filters applied.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 0,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": true,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "c04",
+    "story": "US-1.1",
+    "run": 2,
+    "prompt": "Show me orders from PDM to North China.",
+    "thread_id": "uat-c04-2-8b5d79bb",
+    "seconds": 3.9,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "discharge_port": [
+              "North China"
+            ],
+            "load_port": [
+              "Madeira"
+            ]
+          },
+          "vessels": null
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "cargoes",
+        "sql": "SELECT \"order_id\"::text AS \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM (SELECT DISTINCT ON (\"order_id\") \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM public.order_test WHERE date_received < $1 ORDER BY \"order_id\", update_date DESC NULLS LAST, date_received DESC NULLS LAST, order_seq DESC) AS latest WHERE EXISTS (SELECT 1 FROM unnest(string_to_array(\"load_port\", ', ')) AS element WHERE element ILIKE ANY($2)) AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"discharge_port\", ', ')) AS element WHERE element ILIKE ANY($3)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['%Madeira%']",
+          "['%North China%']"
+        ],
+        "row_count": 0
+      }
+    ],
+    "final_rows": {
+      "cargoes": []
+    },
+    "all_ids": [],
+    "reply": "0 orders from Madeira (PDM) to North\u202fChina.\n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; only cargoes matching the exact load port \u201cMadeira\u201d and discharge port \u201cNorth China\u201d are considered.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 0,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": true,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "c04",
+    "story": "US-1.1",
+    "run": 3,
+    "prompt": "Show me orders from PDM to North China.",
+    "thread_id": "uat-c04-3-4227fc23",
+    "seconds": 4.2,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "discharge_port": [
+              "North China"
+            ],
+            "load_port": [
+              "Ponta da Madeira"
+            ]
+          },
+          "vessels": null
+        }
+      },
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "discharge_port": [
+              "North China"
+            ],
+            "load_port": [
+              "Madeira"
+            ]
+          },
+          "vessels": null
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "cargoes",
+        "sql": "SELECT \"order_id\"::text AS \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM (SELECT DISTINCT ON (\"order_id\") \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM public.order_test WHERE date_received < $1 ORDER BY \"order_id\", update_date DESC NULLS LAST, date_received DESC NULLS LAST, order_seq DESC) AS latest WHERE EXISTS (SELECT 1 FROM unnest(string_to_array(\"load_port\", ', ')) AS element WHERE element ILIKE ANY($2)) AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"discharge_port\", ', ')) AS element WHERE element ILIKE ANY($3)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['%Madeira%']",
+          "['%North China%']"
+        ],
+        "row_count": 0
+      }
+    ],
+    "final_rows": {
+      "cargoes": []
+    },
+    "all_ids": [],
+    "reply": "0 orders match load port\u202fMadeira and discharge port\u202fNorth\u202fChina.  \n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each cargo as stored in the book; no additional filters applied.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 0,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": true,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v02",
+    "story": "US-1.2",
+    "run": 1,
+    "prompt": "Show me the ECSA ballasters.",
+    "thread_id": "uat-v02-1-736450ac",
+    "seconds": 6.2,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "ballast_laden": "BALLAST",
+            "parent_zone": [
+              "East Coast South America"
+            ]
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE ballast_laden = $2 AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"parent_zone\", ', ')) AS element WHERE element = ANY($3)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "BALLAST",
+          "['East Coast South America']"
+        ],
+        "row_count": 85
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0301",
+        "VESSEL 0780",
+        "VESSEL 0063",
+        "VESSEL 0500",
+        "VESSEL 0671",
+        "VESSEL 0721",
+        "VESSEL 1008",
+        "VESSEL 0244",
+        "VESSEL 0833",
+        "VESSEL 0923",
+        "VESSEL 0725",
+        "VESSEL 0886",
+        "VESSEL 0289",
+        "VESSEL 0753",
+        "VESSEL 0044",
+        "VESSEL 0800",
+        "VESSEL 0210",
+        "VESSEL 0520",
+        "VESSEL 0246",
+        "VESSEL 0821",
+        "VESSEL 0706",
+        "VESSEL 0106",
+        "VESSEL 1010",
+        "VESSEL 0913",
+        "VESSEL 0714",
+        "VESSEL 0494",
+        "VESSEL 0651",
+        "VESSEL 0509",
+        "VESSEL 0468",
+        "VESSEL 0633",
+        "VESSEL 0179",
+        "VESSEL 0173",
+        "VESSEL 0852",
+        "VESSEL 0065",
+        "VESSEL 0215",
+        "VESSEL 1006",
+        "VESSEL 0287",
+        "VESSEL 0007",
+        "VESSEL 0975",
+        "VESSEL 0166",
+        "VESSEL 0248",
+        "VESSEL 0845",
+        "VESSEL 0470",
+        "VESSEL 0826",
+        "VESSEL 0332",
+        "VESSEL 0429",
+        "VESSEL 0170",
+        "VESSEL 0386",
+        "VESSEL 0550",
+        "VESSEL 0518",
+        "VESSEL 0989",
+        "VESSEL 0413",
+        "VESSEL 0497",
+        "VESSEL 0545",
+        "VESSEL 0439",
+        "VESSEL 0867",
+        "VESSEL 0253",
+        "VESSEL 1016",
+        "VESSEL 0526",
+        "VESSEL 0019",
+        "VESSEL 0127",
+        "VESSEL 0699",
+        "VESSEL 0438",
+        "VESSEL 0385",
+        "VESSEL 0638",
+        "VESSEL 0891",
+        "VESSEL 0380",
+        "VESSEL 1003",
+        "VESSEL 0873",
+        "VESSEL 0997",
+        "VESSEL 0264",
+        "VESSEL 0290",
+        "VESSEL 0057",
+        "VESSEL 0809",
+        "VESSEL 0312",
+        "VESSEL 0232",
+        "VESSEL 0850",
+        "VESSEL 0620",
+        "VESSEL 0857",
+        "VESSEL 0387",
+        "VESSEL 0350",
+        "VESSEL 0370",
+        "VESSEL 0279",
+        "VESSEL 0932",
+        "VESSEL 0208"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0007",
+      "VESSEL 0019",
+      "VESSEL 0044",
+      "VESSEL 0057",
+      "VESSEL 0063",
+      "VESSEL 0065",
+      "VESSEL 0106",
+      "VESSEL 0127",
+      "VESSEL 0166",
+      "VESSEL 0170",
+      "VESSEL 0173",
+      "VESSEL 0179",
+      "VESSEL 0208",
+      "VESSEL 0210",
+      "VESSEL 0215",
+      "VESSEL 0232",
+      "VESSEL 0244",
+      "VESSEL 0246",
+      "VESSEL 0248",
+      "VESSEL 0253",
+      "VESSEL 0264",
+      "VESSEL 0279",
+      "VESSEL 0287",
+      "VESSEL 0289",
+      "VESSEL 0290",
+      "VESSEL 0301",
+      "VESSEL 0312",
+      "VESSEL 0332",
+      "VESSEL 0350",
+      "VESSEL 0370",
+      "VESSEL 0380",
+      "VESSEL 0385",
+      "VESSEL 0386",
+      "VESSEL 0387",
+      "VESSEL 0413",
+      "VESSEL 0429",
+      "VESSEL 0438",
+      "VESSEL 0439",
+      "VESSEL 0468",
+      "VESSEL 0470",
+      "VESSEL 0494",
+      "VESSEL 0497",
+      "VESSEL 0500",
+      "VESSEL 0509",
+      "VESSEL 0518",
+      "VESSEL 0520",
+      "VESSEL 0526",
+      "VESSEL 0545",
+      "VESSEL 0550",
+      "VESSEL 0620",
+      "VESSEL 0633",
+      "VESSEL 0638",
+      "VESSEL 0651",
+      "VESSEL 0671",
+      "VESSEL 0699",
+      "VESSEL 0706",
+      "VESSEL 0714",
+      "VESSEL 0721",
+      "VESSEL 0725",
+      "VESSEL 0753",
+      "VESSEL 0780",
+      "VESSEL 0800",
+      "VESSEL 0809",
+      "VESSEL 0821",
+      "VESSEL 0826",
+      "VESSEL 0833",
+      "VESSEL 0845",
+      "VESSEL 0850",
+      "VESSEL 0852",
+      "VESSEL 0857",
+      "VESSEL 0867",
+      "VESSEL 0873",
+      "VESSEL 0886",
+      "VESSEL 0891",
+      "VESSEL 0913",
+      "VESSEL 0923",
+      "VESSEL 0932",
+      "VESSEL 0975",
+      "VESSEL 0989",
+      "VESSEL 0997",
+      "VESSEL 1003",
+      "VESSEL 1006",
+      "VESSEL 1008",
+      "VESSEL 1010",
+      "VESSEL 1016"
+    ],
+    "reply": "85\u202fballasting vessels open in East\u202fCoast\u202fSouth\u202fAmerica (ECSA).\n\n- VESSEL\u202f0301 \u2013\u202f176\u202fkt\u202fdwt, open\u202f13\u202fJul\u202f2025, at\u202fTubarao.  \n- VESSEL\u202f0780 \u2013\u202f175\u202fkt\u202fdwt, open\u202f13\u202fJul\u202f2025, at\u202fTubarao.  \n- VESSEL\u202f0063 \u2013\u202f178\u202fkt\u202fdwt, open\u202f23\u202fJun\u202f2025, at\u202fItaqui.  \n- VESSEL\u202f0500 \u2013\u202f175\u202fkt\u202fdwt, open\u202f09\u202fJul\u202f2025, at\u202fTubarao.  \n- VESSEL\u202f0671 \u2013\u202f179\u202fkt\u202fdwt, open\u202f27\u201128\u202fJun\u202f2025, at\u202fTubarao.  \n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel shown at its latest position report; commercial status taken as OPEN.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 85,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": true,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v02",
+    "story": "US-1.2",
+    "run": 2,
+    "prompt": "Show me the ECSA ballasters.",
+    "thread_id": "uat-v02-2-380f9441",
+    "seconds": 5.8,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "ballast_laden": "BALLAST",
+            "parent_zone": [
+              "East Coast South America"
+            ]
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE ballast_laden = $2 AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"parent_zone\", ', ')) AS element WHERE element = ANY($3)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "BALLAST",
+          "['East Coast South America']"
+        ],
+        "row_count": 85
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0301",
+        "VESSEL 0780",
+        "VESSEL 0063",
+        "VESSEL 0500",
+        "VESSEL 0671",
+        "VESSEL 0721",
+        "VESSEL 1008",
+        "VESSEL 0244",
+        "VESSEL 0833",
+        "VESSEL 0923",
+        "VESSEL 0725",
+        "VESSEL 0886",
+        "VESSEL 0289",
+        "VESSEL 0753",
+        "VESSEL 0044",
+        "VESSEL 0800",
+        "VESSEL 0210",
+        "VESSEL 0520",
+        "VESSEL 0246",
+        "VESSEL 0821",
+        "VESSEL 0706",
+        "VESSEL 0106",
+        "VESSEL 1010",
+        "VESSEL 0913",
+        "VESSEL 0714",
+        "VESSEL 0494",
+        "VESSEL 0651",
+        "VESSEL 0509",
+        "VESSEL 0468",
+        "VESSEL 0633",
+        "VESSEL 0179",
+        "VESSEL 0173",
+        "VESSEL 0852",
+        "VESSEL 0065",
+        "VESSEL 0215",
+        "VESSEL 1006",
+        "VESSEL 0287",
+        "VESSEL 0007",
+        "VESSEL 0975",
+        "VESSEL 0166",
+        "VESSEL 0248",
+        "VESSEL 0845",
+        "VESSEL 0470",
+        "VESSEL 0826",
+        "VESSEL 0332",
+        "VESSEL 0429",
+        "VESSEL 0170",
+        "VESSEL 0386",
+        "VESSEL 0550",
+        "VESSEL 0518",
+        "VESSEL 0989",
+        "VESSEL 0413",
+        "VESSEL 0497",
+        "VESSEL 0545",
+        "VESSEL 0439",
+        "VESSEL 0867",
+        "VESSEL 0253",
+        "VESSEL 1016",
+        "VESSEL 0526",
+        "VESSEL 0019",
+        "VESSEL 0127",
+        "VESSEL 0699",
+        "VESSEL 0438",
+        "VESSEL 0385",
+        "VESSEL 0638",
+        "VESSEL 0891",
+        "VESSEL 0380",
+        "VESSEL 1003",
+        "VESSEL 0873",
+        "VESSEL 0997",
+        "VESSEL 0264",
+        "VESSEL 0290",
+        "VESSEL 0057",
+        "VESSEL 0809",
+        "VESSEL 0312",
+        "VESSEL 0232",
+        "VESSEL 0850",
+        "VESSEL 0620",
+        "VESSEL 0857",
+        "VESSEL 0387",
+        "VESSEL 0350",
+        "VESSEL 0370",
+        "VESSEL 0279",
+        "VESSEL 0932",
+        "VESSEL 0208"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0007",
+      "VESSEL 0019",
+      "VESSEL 0044",
+      "VESSEL 0057",
+      "VESSEL 0063",
+      "VESSEL 0065",
+      "VESSEL 0106",
+      "VESSEL 0127",
+      "VESSEL 0166",
+      "VESSEL 0170",
+      "VESSEL 0173",
+      "VESSEL 0179",
+      "VESSEL 0208",
+      "VESSEL 0210",
+      "VESSEL 0215",
+      "VESSEL 0232",
+      "VESSEL 0244",
+      "VESSEL 0246",
+      "VESSEL 0248",
+      "VESSEL 0253",
+      "VESSEL 0264",
+      "VESSEL 0279",
+      "VESSEL 0287",
+      "VESSEL 0289",
+      "VESSEL 0290",
+      "VESSEL 0301",
+      "VESSEL 0312",
+      "VESSEL 0332",
+      "VESSEL 0350",
+      "VESSEL 0370",
+      "VESSEL 0380",
+      "VESSEL 0385",
+      "VESSEL 0386",
+      "VESSEL 0387",
+      "VESSEL 0413",
+      "VESSEL 0429",
+      "VESSEL 0438",
+      "VESSEL 0439",
+      "VESSEL 0468",
+      "VESSEL 0470",
+      "VESSEL 0494",
+      "VESSEL 0497",
+      "VESSEL 0500",
+      "VESSEL 0509",
+      "VESSEL 0518",
+      "VESSEL 0520",
+      "VESSEL 0526",
+      "VESSEL 0545",
+      "VESSEL 0550",
+      "VESSEL 0620",
+      "VESSEL 0633",
+      "VESSEL 0638",
+      "VESSEL 0651",
+      "VESSEL 0671",
+      "VESSEL 0699",
+      "VESSEL 0706",
+      "VESSEL 0714",
+      "VESSEL 0721",
+      "VESSEL 0725",
+      "VESSEL 0753",
+      "VESSEL 0780",
+      "VESSEL 0800",
+      "VESSEL 0809",
+      "VESSEL 0821",
+      "VESSEL 0826",
+      "VESSEL 0833",
+      "VESSEL 0845",
+      "VESSEL 0850",
+      "VESSEL 0852",
+      "VESSEL 0857",
+      "VESSEL 0867",
+      "VESSEL 0873",
+      "VESSEL 0886",
+      "VESSEL 0891",
+      "VESSEL 0913",
+      "VESSEL 0923",
+      "VESSEL 0932",
+      "VESSEL 0975",
+      "VESSEL 0989",
+      "VESSEL 0997",
+      "VESSEL 1003",
+      "VESSEL 1006",
+      "VESSEL 1008",
+      "VESSEL 1010",
+      "VESSEL 1016"
+    ],
+    "reply": "85 vessels open in East\u202fCoast\u202fSouth\u202fAmerica (ECSA) are currently ballasting.\n\n- VESSEL\u202f0301 \u2013\u202f176\u202fkt\u202fdwt  \n- VESSEL\u202f0780 \u2013\u202f175\u202fkt\u202fdwt  \n- VESSEL\u202f0063 \u2013\u202f178\u202fkt\u202fdwt  \n- VESSEL\u202f0500 \u2013\u202f176\u202fkt\u202fdwt  \n- VESSEL\u202f0671 \u2013\u202f179\u202fkt\u202fdwt  \n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel shown at its latest position report; commercial status taken as\u2011is (OPEN unless otherwise noted).*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 85,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": true,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v02",
+    "story": "US-1.2",
+    "run": 3,
+    "prompt": "Show me the ECSA ballasters.",
+    "thread_id": "uat-v02-3-89e6f336",
+    "seconds": 6.2,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "ballast_laden": "BALLAST",
+            "parent_zone": [
+              "East Coast South America"
+            ]
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE ballast_laden = $2 AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"parent_zone\", ', ')) AS element WHERE element = ANY($3)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "BALLAST",
+          "['East Coast South America']"
+        ],
+        "row_count": 85
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0301",
+        "VESSEL 0780",
+        "VESSEL 0063",
+        "VESSEL 0500",
+        "VESSEL 0671",
+        "VESSEL 0721",
+        "VESSEL 1008",
+        "VESSEL 0244",
+        "VESSEL 0833",
+        "VESSEL 0923",
+        "VESSEL 0725",
+        "VESSEL 0886",
+        "VESSEL 0289",
+        "VESSEL 0753",
+        "VESSEL 0044",
+        "VESSEL 0800",
+        "VESSEL 0210",
+        "VESSEL 0520",
+        "VESSEL 0246",
+        "VESSEL 0821",
+        "VESSEL 0706",
+        "VESSEL 0106",
+        "VESSEL 1010",
+        "VESSEL 0913",
+        "VESSEL 0714",
+        "VESSEL 0494",
+        "VESSEL 0651",
+        "VESSEL 0509",
+        "VESSEL 0468",
+        "VESSEL 0633",
+        "VESSEL 0179",
+        "VESSEL 0173",
+        "VESSEL 0852",
+        "VESSEL 0065",
+        "VESSEL 0215",
+        "VESSEL 1006",
+        "VESSEL 0287",
+        "VESSEL 0007",
+        "VESSEL 0975",
+        "VESSEL 0166",
+        "VESSEL 0248",
+        "VESSEL 0845",
+        "VESSEL 0470",
+        "VESSEL 0826",
+        "VESSEL 0332",
+        "VESSEL 0429",
+        "VESSEL 0170",
+        "VESSEL 0386",
+        "VESSEL 0550",
+        "VESSEL 0518",
+        "VESSEL 0989",
+        "VESSEL 0413",
+        "VESSEL 0497",
+        "VESSEL 0545",
+        "VESSEL 0439",
+        "VESSEL 0867",
+        "VESSEL 0253",
+        "VESSEL 1016",
+        "VESSEL 0526",
+        "VESSEL 0019",
+        "VESSEL 0127",
+        "VESSEL 0699",
+        "VESSEL 0438",
+        "VESSEL 0385",
+        "VESSEL 0638",
+        "VESSEL 0891",
+        "VESSEL 0380",
+        "VESSEL 1003",
+        "VESSEL 0873",
+        "VESSEL 0997",
+        "VESSEL 0264",
+        "VESSEL 0290",
+        "VESSEL 0057",
+        "VESSEL 0809",
+        "VESSEL 0312",
+        "VESSEL 0232",
+        "VESSEL 0850",
+        "VESSEL 0620",
+        "VESSEL 0857",
+        "VESSEL 0387",
+        "VESSEL 0350",
+        "VESSEL 0370",
+        "VESSEL 0279",
+        "VESSEL 0932",
+        "VESSEL 0208"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0007",
+      "VESSEL 0019",
+      "VESSEL 0044",
+      "VESSEL 0057",
+      "VESSEL 0063",
+      "VESSEL 0065",
+      "VESSEL 0106",
+      "VESSEL 0127",
+      "VESSEL 0166",
+      "VESSEL 0170",
+      "VESSEL 0173",
+      "VESSEL 0179",
+      "VESSEL 0208",
+      "VESSEL 0210",
+      "VESSEL 0215",
+      "VESSEL 0232",
+      "VESSEL 0244",
+      "VESSEL 0246",
+      "VESSEL 0248",
+      "VESSEL 0253",
+      "VESSEL 0264",
+      "VESSEL 0279",
+      "VESSEL 0287",
+      "VESSEL 0289",
+      "VESSEL 0290",
+      "VESSEL 0301",
+      "VESSEL 0312",
+      "VESSEL 0332",
+      "VESSEL 0350",
+      "VESSEL 0370",
+      "VESSEL 0380",
+      "VESSEL 0385",
+      "VESSEL 0386",
+      "VESSEL 0387",
+      "VESSEL 0413",
+      "VESSEL 0429",
+      "VESSEL 0438",
+      "VESSEL 0439",
+      "VESSEL 0468",
+      "VESSEL 0470",
+      "VESSEL 0494",
+      "VESSEL 0497",
+      "VESSEL 0500",
+      "VESSEL 0509",
+      "VESSEL 0518",
+      "VESSEL 0520",
+      "VESSEL 0526",
+      "VESSEL 0545",
+      "VESSEL 0550",
+      "VESSEL 0620",
+      "VESSEL 0633",
+      "VESSEL 0638",
+      "VESSEL 0651",
+      "VESSEL 0671",
+      "VESSEL 0699",
+      "VESSEL 0706",
+      "VESSEL 0714",
+      "VESSEL 0721",
+      "VESSEL 0725",
+      "VESSEL 0753",
+      "VESSEL 0780",
+      "VESSEL 0800",
+      "VESSEL 0809",
+      "VESSEL 0821",
+      "VESSEL 0826",
+      "VESSEL 0833",
+      "VESSEL 0845",
+      "VESSEL 0850",
+      "VESSEL 0852",
+      "VESSEL 0857",
+      "VESSEL 0867",
+      "VESSEL 0873",
+      "VESSEL 0886",
+      "VESSEL 0891",
+      "VESSEL 0913",
+      "VESSEL 0923",
+      "VESSEL 0932",
+      "VESSEL 0975",
+      "VESSEL 0989",
+      "VESSEL 0997",
+      "VESSEL 1003",
+      "VESSEL 1006",
+      "VESSEL 1008",
+      "VESSEL 1010",
+      "VESSEL 1016"
+    ],
+    "reply": "85 ballast vessels open in East\u202fCoast\u202fSouth\u202fAmerica (ECSA).\n\n- VESSEL\u202f0301 \u2013 176\u202fkt\u202fdwt, open\u202f13\u202fJul\u202f2025, currently under way, ballast.  \n- VESSEL\u202f0780 \u2013 175\u202fkt\u202fdwt, open\u202f13\u202fJul\u202f2025, under way, ballast.  \n- VESSEL\u202f0063 \u2013 178\u202fkt\u202fdwt, open\u202f23\u202fJun\u202f2025, under way, ballast.  \n- VESSEL\u202f0500 \u2013 176\u202fkt\u202fdwt, open\u202f09\u202fJul\u202f2025, under way, ballast.  \n- VESSEL\u202f0671 \u2013 179\u202fkt\u202fdwt, open\u202f27\u201128\u202fJun\u202f2025, anchored, ballast.  \n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel shown at its latest position; commercial status\u202fOPEN.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 85,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": true,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v05",
+    "story": "US-1.2",
+    "run": 1,
+    "prompt": "Which vessels are fixed?",
+    "thread_id": "uat-v05-1-40f4b613",
+    "seconds": 4.6,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "commercial_status": "FIXED"
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE CASE WHEN commercial_status IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN commercial_status ELSE 'OPEN' END = $2 ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "FIXED"
+        ],
+        "row_count": 8
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0879",
+        "VESSEL 0204",
+        "VESSEL 0114",
+        "VESSEL 0739",
+        "VESSEL 0424",
+        "VESSEL 0157",
+        "VESSEL 0820",
+        "VESSEL 0215"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0114",
+      "VESSEL 0157",
+      "VESSEL 0204",
+      "VESSEL 0215",
+      "VESSEL 0424",
+      "VESSEL 0739",
+      "VESSEL 0820",
+      "VESSEL 0879"
+    ],
+    "reply": "8 vessels are currently **FIXED**.\n\n- VESSEL\u202f0879 \u2013 Singapore (South\u202fEast\u202fAsia)  \n- VESSEL\u202f0204 \u2013 Mundra (West\u202fCoast\u202fIndia)  \n- VESSEL\u202f0114 \u2013 Changjiangkou (Far\u202fEast)  \n- VESSEL\u202f0739 \u2013 Jingtang\u202f(Tangshan) (Far\u202fEast)  \n- VESSEL\u202f0424 \u2013 Zhoushan (Far\u202fEast) \u2026and 3 more vessels.\n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel shown at its latest position; commercial status\u202fFIXED as of today.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 8,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v05",
+    "story": "US-1.2",
+    "run": 2,
+    "prompt": "Which vessels are fixed?",
+    "thread_id": "uat-v05-2-3fe9b0ed",
+    "seconds": 4.7,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "commercial_status": "FIXED"
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE CASE WHEN commercial_status IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN commercial_status ELSE 'OPEN' END = $2 ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "FIXED"
+        ],
+        "row_count": 8
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0879",
+        "VESSEL 0204",
+        "VESSEL 0114",
+        "VESSEL 0739",
+        "VESSEL 0424",
+        "VESSEL 0157",
+        "VESSEL 0820",
+        "VESSEL 0215"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0114",
+      "VESSEL 0157",
+      "VESSEL 0204",
+      "VESSEL 0215",
+      "VESSEL 0424",
+      "VESSEL 0739",
+      "VESSEL 0820",
+      "VESSEL 0879"
+    ],
+    "reply": "8 vessels are currently FIXED.\n\n- VESSEL\u202f0879 \u2013 open in Singapore (South\u202fEast\u202fAsia)  \n- VESSEL\u202f0204 \u2013 open in Mundra (West\u202fCoast\u202fIndia)  \n- VESSEL\u202f0114 \u2013 open in Changjiangkou (Far\u202fEast)  \n- VESSEL\u202f0739 \u2013 open in Jingtang\u202f(Tangshan) (Far\u202fEast)  \n- VESSEL\u202f0424 \u2013 open in Zhoushan (Far\u202fEast)  \n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel shown at its latest position; commercial status\u202fFIXED as of today.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 8,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v05",
+    "story": "US-1.2",
+    "run": 3,
+    "prompt": "Which vessels are fixed?",
+    "thread_id": "uat-v05-3-1628471c",
+    "seconds": 3.6,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "vessels": {
+            "commercial_status": "FIXED"
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE CASE WHEN commercial_status IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN commercial_status ELSE 'OPEN' END = $2 ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "FIXED"
+        ],
+        "row_count": 8
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0879",
+        "VESSEL 0204",
+        "VESSEL 0114",
+        "VESSEL 0739",
+        "VESSEL 0424",
+        "VESSEL 0157",
+        "VESSEL 0820",
+        "VESSEL 0215"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0114",
+      "VESSEL 0157",
+      "VESSEL 0204",
+      "VESSEL 0215",
+      "VESSEL 0424",
+      "VESSEL 0739",
+      "VESSEL 0820",
+      "VESSEL 0879"
+    ],
+    "reply": "8 vessels are FIXED:\n\n- VESSEL\u202f0879 \u2013 open area\u202fSingapore, parent zone\u202fSouth\u202fEast\u202fAsia, under way, LADEN.  \n- VESSEL\u202f0204 \u2013 open area\u202fMundra, parent zone\u202fWest\u202fCoast\u202fIndia, moored, LADEN.  \n- VESSEL\u202f0114 \u2013 open area\u202fChangjiangkou, parent zone\u202fFar\u202fEast, anchored, LADEN.  \n- VESSEL\u202f0739 \u2013 open area\u202fJingtang\u202f(Tangshan), parent zone\u202fFar\u202fEast, under way, BALLAST.  \n- VESSEL\u202f0424 \u2013 open area\u202fZhoushan, parent zone\u202fFar\u202fEast, under way, LADEN.  \n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel at its latest position; FIXED status as of today.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 8,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "m01",
+    "story": "Matching (demo)",
+    "run": 1,
+    "prompt": "Which open vessels can carry order 760048718644701974?",
+    "thread_id": "uat-m01-1-0ba52a05",
+    "seconds": 10.5,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "order_ids": [
+              "760048718644701974"
+            ]
+          },
+          "vessels": {}
+        }
+      },
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "order_ids": [
+              "760048718644701974"
+            ]
+          }
+        }
+      },
+      {
+        "name": "match_orders",
+        "args": {
+          "order_ids": [
+            "760048718644701974"
+          ]
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "cargoes",
+        "sql": "SELECT \"order_id\"::text AS \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM (SELECT DISTINCT ON (\"order_id\") \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM public.order_test WHERE date_received < $1 ORDER BY \"order_id\", update_date DESC NULLS LAST, date_received DESC NULLS LAST, order_seq DESC) AS latest WHERE order_id::text = ANY($2) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['760048718644701974']"
+        ],
+        "row_count": 1
+      },
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE open_date_start < $2 AND open_date_end >= $3 AND dwt >= $4 AND CASE WHEN commercial_status IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN commercial_status ELSE 'OPEN' END = $5 AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"parent_zone\", ', ')) AS element WHERE element = ANY($6)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "2025-07-08",
+          "2025-07-01",
+          "153000.0",
+          "OPEN",
+          "['East Coast South America']"
+        ],
+        "row_count": 13
+      }
+    ],
+    "final_rows": {
+      "cargoes": [
+        "760048718644701974"
+      ],
+      "vessels": [
+        "VESSEL 0142",
+        "VESSEL 0238",
+        "VESSEL 0517",
+        "VESSEL 0625",
+        "VESSEL 0244",
+        "VESSEL 0893",
+        "VESSEL 0923",
+        "VESSEL 0087",
+        "VESSEL 0546",
+        "VESSEL 0824",
+        "VESSEL 0976",
+        "VESSEL 0520",
+        "VESSEL 0222"
+      ]
+    },
+    "all_ids": [
+      "760048718644701974",
+      "VESSEL 0087",
+      "VESSEL 0142",
+      "VESSEL 0222",
+      "VESSEL 0238",
+      "VESSEL 0244",
+      "VESSEL 0517",
+      "VESSEL 0520",
+      "VESSEL 0546",
+      "VESSEL 0625",
+      "VESSEL 0824",
+      "VESSEL 0893",
+      "VESSEL 0923",
+      "VESSEL 0976"
+    ],
+    "reply": "13 open vessels match order\u202f760048718644701974 (IRON\u202fORE, 153\u2011187\u202fkt, loading at Tubarao, lay\u2011can\u202f1\u20117\u202fJuly\u202f2025).\n\n- VESSEL\u202f0824\u202f\u00b7\u202frevenue\u202f3,231,344\u202f\u00b7\u202fprofit\u202f1,914,332\u202f\u00b7\u202f185\u202fkt\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fopen\u202f3\u20113\u202fJul\u202f2025  \n- VESSEL\u202f0976\u202f\u00b7\u202frevenue\u202f3,173,547\u202f\u00b7\u202fprofit\u202f1,864,927\u202f\u00b7\u202f180\u202fkt\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fopen\u202f29\u202fJun\u20112\u202fJul\u202f2025  \n- VESSEL\u202f0087\u202f\u00b7\u202frevenue\u202f3,162,390\u202f\u00b7\u202fprofit\u202f1,855,390\u202f\u00b7\u202f181\u202fkt\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fopen\u202f1\u202fJul\u202f2025  \n- VESSEL\u202f0238\u202f\u00b7\u202frevenue\u202f3,162,390\u202f\u00b7\u202fprofit\u202f1,855,390\u202f\u00b7\u202f181\u202fkt\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fopen\u202f7\u201111\u202fJul\u202f2025  \n- VESSEL\u202f0520\u202f\u00b7\u202frevenue\u202f3,145,466\u202f\u00b7\u202fprofit\u202f1,840,923\u202f\u00b7\u202f179\u202fkt\u202fdwt\u202f\u00b7\u202fballast\u202f\u00b7\u202fopen\u202f6\u202fJul\u202f2025  \n\nAll 13 vessels are already ranked; no further input is required.\n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel at its latest position; OPEN status today; matching vessels have an open window overlapping the lay\u2011can, are in the load zone (East\u202fCoast\u202fSouth\u202fAmerica), and meet the cargo\u2019s minimum tonnage.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 13,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": null,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "m01",
+    "story": "Matching (demo)",
+    "run": 2,
+    "prompt": "Which open vessels can carry order 760048718644701974?",
+    "thread_id": "uat-m01-2-64ae2def",
+    "seconds": 8.4,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "order_ids": [
+              "760048718644701974"
+            ]
+          },
+          "vessels": null
+        }
+      },
+      {
+        "name": "match_orders",
+        "args": {
+          "order_ids": [
+            "760048718644701974"
+          ],
+          "vessel_conditions": null
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "cargoes",
+        "sql": "SELECT \"order_id\"::text AS \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM (SELECT DISTINCT ON (\"order_id\") \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM public.order_test WHERE date_received < $1 ORDER BY \"order_id\", update_date DESC NULLS LAST, date_received DESC NULLS LAST, order_seq DESC) AS latest WHERE order_id::text = ANY($2) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['760048718644701974']"
+        ],
+        "row_count": 1
+      },
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE open_date_start < $2 AND open_date_end >= $3 AND dwt >= $4 AND CASE WHEN commercial_status IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN commercial_status ELSE 'OPEN' END = $5 AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"parent_zone\", ', ')) AS element WHERE element = ANY($6)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "2025-07-08",
+          "2025-07-01",
+          "153000.0",
+          "OPEN",
+          "['East Coast South America']"
+        ],
+        "row_count": 13
+      }
+    ],
+    "final_rows": {
+      "cargoes": [
+        "760048718644701974"
+      ],
+      "vessels": [
+        "VESSEL 0142",
+        "VESSEL 0238",
+        "VESSEL 0517",
+        "VESSEL 0625",
+        "VESSEL 0244",
+        "VESSEL 0893",
+        "VESSEL 0923",
+        "VESSEL 0087",
+        "VESSEL 0546",
+        "VESSEL 0824",
+        "VESSEL 0976",
+        "VESSEL 0520",
+        "VESSEL 0222"
+      ]
+    },
+    "all_ids": [
+      "760048718644701974",
+      "VESSEL 0087",
+      "VESSEL 0142",
+      "VESSEL 0222",
+      "VESSEL 0238",
+      "VESSEL 0244",
+      "VESSEL 0517",
+      "VESSEL 0520",
+      "VESSEL 0546",
+      "VESSEL 0625",
+      "VESSEL 0824",
+      "VESSEL 0893",
+      "VESSEL 0923",
+      "VESSEL 0976"
+    ],
+    "reply": "13 vessels match order\u202f760048718644701974, ranked by estimated voyage profit:\n\n- VESSEL\u202f0824\u202f\u00b7\u202frevenue\u202f3,231,344\u202f\u00b7\u202fprofit\u202f1,914,332\u202f\u00b7\u202f185\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201103\u202f\u2192\u202f2025\u201107\u201103  \n- VESSEL\u202f0976\u202f\u00b7\u202frevenue\u202f3,173,547\u202f\u00b7\u202fprofit\u202f1,864,927\u202f\u00b7\u202f180\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201106\u201129\u202f\u2192\u202f2025\u201107\u201102  \n- VESSEL\u202f0087\u202f\u00b7\u202frevenue\u202f3,162,390\u202f\u00b7\u202fprofit\u202f1,855,390\u202f\u00b7\u202f181\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201101\u202f\u2192\u202f2025\u201107\u201101  \n- VESSEL\u202f0238\u202f\u00b7\u202frevenue\u202f3,162,390\u202f\u00b7\u202fprofit\u202f1,855,390\u202f\u00b7\u202f181\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201107\u202f\u2192\u202f2025\u201107\u201111  \n- VESSEL\u202f0520\u202f\u00b7\u202frevenue\u202f3,145,466\u202f\u00b7\u202fprofit\u202f1,840,923\u202f\u00b7\u202f179\u202fk\u202fdwt\u202f\u00b7\u202fballast\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201106\u202f\u2192\u202f2025\u201107\u201106  \n- VESSEL\u202f0244\u202f\u00b7\u202frevenue\u202f3,138,520\u202f\u00b7\u202fprofit\u202f1,834,986\u202f\u00b7\u202f180\u202fk\u202fdwt\u202f\u00b7\u202fballast\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201106\u201130\u202f\u2192\u202f2025\u201107\u201101  \n- VESSEL\u202f0893\u202f\u00b7\u202frevenue\u202f3,135,000\u202f\u00b7\u202fprofit\u202f1,831,977\u202f\u00b7\u202f179\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201102\u202f\u2192\u202f2025\u201107\u201102  \n- VESSEL\u202f0517\u202f\u00b7\u202frevenue\u202f3,126,577\u202f\u00b7\u202fprofit\u202f1,824,777\u202f\u00b7\u202f177\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201107\u202f\u2192\u202f2025\u201107\u201108  \n- VESSEL\u202f0142\u202f\u00b7\u202frevenue\u202f3,124,943\u202f\u00b7\u202fprofit\u202f1,823,380\u202f\u00b7\u202f180\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201102\u202f\u2192\u202f2025\u201107\u201103  \n- VESSEL\u202f0625\u202f\u00b7\u202frevenue\u202f3,110,219\u202f\u00b7\u202fprofit\u202f1,810,794\u202f\u00b7\u202f179\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201105\u202f\u2192\u202f2025\u201107\u201106  \n- VESSEL\u202f0923\u202f\u00b7\u202frevenue\u202f3,068,859\u202f\u00b7\u202fprofit\u202f1,775,439\u202f\u00b7\u202f182\u202fk\u202fdwt\u202f\u00b7\u202fballast\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201102\u202f\u2192\u202f2025\u201107\u201102  \n- VESSEL\u202f0222\u202f\u00b7\u202frevenue\u202f3,019,799\u202f\u00b7\u202fprofit\u202f1,733,502\u202f\u00b7\u202f169\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201106\u201128\u202f\u2192\u202f2025\u201107\u201101  \n- VESSEL\u202f0546\u202f\u00b7\u202frevenue\u202f2,933,449\u202f\u00b7\u202fprofit\u202f1,659,690\u202f\u00b7\u202f170\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201107\u202f\u2192\u202f2025\u201107\u201107  \n\n*Assumed: matching vessels must overlap the lay\u2011can (2025\u201107\u201101\u202fto\u202f2025\u201107\u201107), be in the load zone East\u202fCoast\u202fSouth\u202fAmerica, be OPEN today, and meet the cargo\u2019s minimum tonnage.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 13,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": null,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": false,
+      "passed": true
+    }
+  },
+  {
+    "case": "m01",
+    "story": "Matching (demo)",
+    "run": 3,
+    "prompt": "Which open vessels can carry order 760048718644701974?",
+    "thread_id": "uat-m01-3-41246fdb",
+    "seconds": 7.9,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": {
+            "order_ids": [
+              "760048718644701974"
+            ]
+          },
+          "vessels": null
+        }
+      },
+      {
+        "name": "match_orders",
+        "args": {
+          "order_ids": [
+            "760048718644701974"
+          ],
+          "vessel_conditions": null
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "cargoes",
+        "sql": "SELECT \"order_id\"::text AS \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM (SELECT DISTINCT ON (\"order_id\") \"order_id\", \"cargo_type\", \"cargo_weight_min\", \"cargo_weight_max\", \"load_port\", \"load_zone\", \"discharge_port\", \"discharge_parent_zone\", \"laycan_start\", \"laycan_end\", \"date_received\", \"update_date\", \"cargo_description\" FROM public.order_test WHERE date_received < $1 ORDER BY \"order_id\", update_date DESC NULLS LAST, date_received DESC NULLS LAST, order_seq DESC) AS latest WHERE order_id::text = ANY($2) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['760048718644701974']"
+        ],
+        "row_count": 1
+      },
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM (SELECT DISTINCT ON (\"vessel_id\") \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE update_date < $1 ORDER BY \"vessel_id\", update_date DESC NULLS LAST, first_date_received DESC NULLS LAST) AS latest WHERE open_date_start < $2 AND open_date_end >= $3 AND dwt >= $4 AND CASE WHEN commercial_status IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN commercial_status ELSE 'OPEN' END = $5 AND EXISTS (SELECT 1 FROM unnest(string_to_array(\"parent_zone\", ', ')) AS element WHERE element = ANY($6)) ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "2025-07-08",
+          "2025-07-01",
+          "153000.0",
+          "OPEN",
+          "['East Coast South America']"
+        ],
+        "row_count": 13
+      }
+    ],
+    "final_rows": {
+      "cargoes": [
+        "760048718644701974"
+      ],
+      "vessels": [
+        "VESSEL 0142",
+        "VESSEL 0238",
+        "VESSEL 0517",
+        "VESSEL 0625",
+        "VESSEL 0244",
+        "VESSEL 0893",
+        "VESSEL 0923",
+        "VESSEL 0087",
+        "VESSEL 0546",
+        "VESSEL 0824",
+        "VESSEL 0976",
+        "VESSEL 0520",
+        "VESSEL 0222"
+      ]
+    },
+    "all_ids": [
+      "760048718644701974",
+      "VESSEL 0087",
+      "VESSEL 0142",
+      "VESSEL 0222",
+      "VESSEL 0238",
+      "VESSEL 0244",
+      "VESSEL 0517",
+      "VESSEL 0520",
+      "VESSEL 0546",
+      "VESSEL 0625",
+      "VESSEL 0824",
+      "VESSEL 0893",
+      "VESSEL 0923",
+      "VESSEL 0976"
+    ],
+    "reply": "13 vessels match order\u202f760048718644701974, ranked by estimated voyage profit:\n\n- VESSEL\u202f0824\u202f\u00b7\u202frevenue\u202f3,231,344\u202f\u00b7\u202fprofit\u202f1,914,332\u202f\u00b7\u202f185\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201103\u202f\u2192\u202f2025\u201107\u201103  \n- VESSEL\u202f0976\u202f\u00b7\u202frevenue\u202f3,173,547\u202f\u00b7\u202fprofit\u202f1,864,927\u202f\u00b7\u202f180\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201106\u201129\u202f\u2192\u202f2025\u201107\u201102  \n- VESSEL\u202f0087\u202f\u00b7\u202frevenue\u202f3,162,390\u202f\u00b7\u202fprofit\u202f1,855,390\u202f\u00b7\u202f181\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201101\u202f\u2192\u202f2025\u201107\u201101  \n- VESSEL\u202f0238\u202f\u00b7\u202frevenue\u202f3,162,390\u202f\u00b7\u202fprofit\u202f1,855,390\u202f\u00b7\u202f181\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201107\u202f\u2192\u202f2025\u201107\u201111  \n- VESSEL\u202f0520\u202f\u00b7\u202frevenue\u202f3,145,466\u202f\u00b7\u202fprofit\u202f1,840,923\u202f\u00b7\u202f179\u202fk\u202fdwt\u202f\u00b7\u202fballast\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201106\u202f\u2192\u202f2025\u201107\u201106  \n- VESSEL\u202f0244\u202f\u00b7\u202frevenue\u202f3,138,520\u202f\u00b7\u202fprofit\u202f1,834,986\u202f\u00b7\u202f180\u202fk\u202fdwt\u202f\u00b7\u202fballast\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201106\u201130\u202f\u2192\u202f2025\u201107\u201101  \n- VESSEL\u202f0893\u202f\u00b7\u202frevenue\u202f3,135,000\u202f\u00b7\u202fprofit\u202f1,831,977\u202f\u00b7\u202f179\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201102\u202f\u2192\u202f2025\u201107\u201102  \n- VESSEL\u202f0517\u202f\u00b7\u202frevenue\u202f3,126,577\u202f\u00b7\u202fprofit\u202f1,824,777\u202f\u00b7\u202f177\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201107\u202f\u2192\u202f2025\u201107\u201108  \n- VESSEL\u202f0142\u202f\u00b7\u202frevenue\u202f3,124,943\u202f\u00b7\u202fprofit\u202f1,823,380\u202f\u00b7\u202f180\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201102\u202f\u2192\u202f2025\u201107\u201103  \n- VESSEL\u202f0625\u202f\u00b7\u202frevenue\u202f3,110,219\u202f\u00b7\u202fprofit\u202f1,810,794\u202f\u00b7\u202f179\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201105\u202f\u2192\u202f2025\u201107\u201106  \n- VESSEL\u202f0923\u202f\u00b7\u202frevenue\u202f3,068,859\u202f\u00b7\u202fprofit\u202f1,775,439\u202f\u00b7\u202f182\u202fk\u202fdwt\u202f\u00b7\u202fballast\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201102\u202f\u2192\u202f2025\u201107\u201102  \n- VESSEL\u202f0222\u202f\u00b7\u202frevenue\u202f3,019,799\u202f\u00b7\u202fprofit\u202f1,733,502\u202f\u00b7\u202f169\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201106\u201128\u202f\u2192\u202f2025\u201107\u201101  \n- VESSEL\u202f0546\u202f\u00b7\u202frevenue\u202f2,933,449\u202f\u00b7\u202fprofit\u202f1,659,690\u202f\u00b7\u202f170\u202fk\u202fdwt\u202f\u00b7\u202fladen\u202f\u00b7\u202fTubarao\u202f\u00b7\u202fopen\u202f2025\u201107\u201107\u202f\u2192\u202f2025\u201107\u201107  \n\n*Assumed: matching vessels must overlap the lay\u2011can (2025\u201107\u201101\u202fto\u202f2025\u201107\u201107), be in the load zone East\u202fCoast\u202fSouth\u202fAmerica, be OPEN today, and meet the cargo\u2019s minimum tonnage.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 13,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": null,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": false,
+      "passed": true
+    }
+  }
+]

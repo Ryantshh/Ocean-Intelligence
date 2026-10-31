@@ -29,12 +29,13 @@ outside the first two.
 
 from __future__ import annotations
 
+import calendar
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_platform.backend.clock import working_date
 from ai_platform.backend.sql import EqualitySpec, MatchSpec, RangeSpec, StatementBuilder
@@ -54,6 +55,27 @@ A fixture counts only while its open window covers now: the dashboard's
 follows ``OI_WORKING_DATE`` through ``fetch_rows``. The extra day makes a window
 stored at midnight cover its whole last day.
 """
+
+MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+"""A month as the search models take it: YYYY-MM."""
+
+
+def month_bounds(month: str) -> tuple[date, date]:
+    """Return the first and last day of a YYYY-MM month.
+
+    Parameters
+    ----------
+    month : str
+        The month, e.g. "2025-03".
+
+    Returns
+    -------
+    tuple of date
+        Its first day and its last day.
+    """
+    year, number = (int(part) for part in month.split("-"))
+    return date(year, number, 1), date(year, number, calendar.monthrange(year, number)[1])
+
 
 ORDER_ID_AS_TEXT = '"order_id"::text'
 """Selects ``order_id`` as text: 18-digit ids lose their last digits in a browser's JSON."""
@@ -92,6 +114,11 @@ class OrderSearch(BaseModel):
     laycan_end_to: date | None = Field(
         default=None, description="laycan cancelling on or before"
     )
+    laycan_month: str | None = Field(
+        default=None,
+        pattern=MONTH_PATTERN,
+        description="a month, YYYY-MM: the laycan overlaps it; replaces every other laycan bound",
+    )
     received_from: date | None = Field(
         default=None, description="order received on or after"
     )
@@ -100,6 +127,12 @@ class OrderSearch(BaseModel):
     )
     updated_from: date | None = Field(default=None, description="last updated on or after")
     updated_to: date | None = Field(default=None, description="last updated on or before")
+    updated_within_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=366,
+        description="updated in the last N days, counted back from today; replaces updated_from",
+    )
     weight_min: float | None = Field(
         default=None, description="whole stem at or above this, in tonnes"
     )
@@ -134,6 +167,27 @@ class OrderSearch(BaseModel):
         description="one or more discharge zones from the zone list, stored spelling; any of them matches",
     )
 
+    @model_validator(mode="after")
+    def _month_as_overlap(self) -> OrderSearch:
+        """Turn ``laycan_month`` into the overlap a month asks for.
+
+        The laycan cancels on or after the month's first day and opens by its
+        last. Done here rather than asked of the model, which sometimes put both
+        bounds on the start and so dropped laycans that opened the month before.
+        The month replaces every other laycan bound. ``updated_within_days`` is
+        turned into ``updated_from`` the same way, counted back from the working
+        date, because the model sometimes miscounted "the last 30 days".
+        """
+        if self.updated_within_days:
+            self.updated_from = working_date() - timedelta(days=self.updated_within_days)
+        if self.laycan_month:
+            first, last = month_bounds(self.laycan_month)
+            self.laycan_start_from = None
+            self.laycan_end_to = None
+            self.laycan_end_from = first
+            self.laycan_start_to = last
+        return self
+
 
 class VesselSearch(BaseModel):
     """Every field a vessel search can set.
@@ -162,11 +216,22 @@ class VesselSearch(BaseModel):
     open_end_to: date | None = Field(
         default=None, description="open window closes on or before"
     )
+    open_month: str | None = Field(
+        default=None,
+        pattern=MONTH_PATTERN,
+        description="a month, YYYY-MM: the open window overlaps it; replaces every other open bound",
+    )
     updated_from: date | None = Field(
         default=None, description="position last updated on or after"
     )
     updated_to: date | None = Field(
         default=None, description="position last updated on or before"
+    )
+    updated_within_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=366,
+        description="position updated in the last N days, counted back from today; replaces updated_from",
     )
     received_from: date | None = Field(
         default=None, description="position first reported on or after"
@@ -207,6 +272,24 @@ class VesselSearch(BaseModel):
         default=None,
         description="one or more open ports or areas from the port list, stored spelling; a vessel at any of them matches",
     )
+
+    @model_validator(mode="after")
+    def _month_as_overlap(self) -> VesselSearch:
+        """Turn ``open_month`` into the overlap a month asks for, as for cargoes.
+
+        The open window closes on or after the month's first day and opens by
+        its last. The month replaces every other open bound. ``updated_within_days``
+        is turned into ``updated_from`` as for cargoes.
+        """
+        if self.updated_within_days:
+            self.updated_from = working_date() - timedelta(days=self.updated_within_days)
+        if self.open_month:
+            first, last = month_bounds(self.open_month)
+            self.open_start_from = None
+            self.open_end_to = None
+            self.open_end_from = first
+            self.open_start_to = last
+        return self
 
 
 @dataclass(frozen=True)

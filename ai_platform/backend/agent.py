@@ -18,6 +18,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import (
     AgentMiddleware,
     ModelCallLimitMiddleware,
+    ModelRetryMiddleware,
     SummarizationMiddleware,
     ToolErrorMiddleware,
 )
@@ -28,6 +29,7 @@ from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.matching import match_orders
 from ai_platform.backend.prompts import AGENT_SYSTEM
 from ai_platform.backend.tools import (
+    SearchRejected,
     ask_user,
     flag_for_dev_team,
     new_vessels,
@@ -58,7 +60,8 @@ def _describe_tool_failure(error: Exception, request: object) -> str:
 
     Groq reports a context overflow as "reduce the length of the messages" with
     no numbers in it, so the row count is the only figure worth surfacing — and
-    the model can respond by narrowing rather than giving up.
+    the model can respond by narrowing rather than giving up. A search refused
+    before it ran already says what to change, so it gets no narrowing advice.
 
     Parameters
     ----------
@@ -73,10 +76,38 @@ def _describe_tool_failure(error: Exception, request: object) -> str:
         Message handed back to the model in place of the tool result.
     """
     _logger.warning("tool failed: %s", error)
+    if isinstance(error, SearchRejected):
+        return f"That search failed: {error} Nothing was searched; fix it and search again."
     return (
         f"That search failed: {error}. Narrow it with a tighter date range, a "
         "size bound or an id, then try again."
     )
+
+
+MALFORMED_CALL_RETRIES = 2
+"""Fresh attempts at a model call the provider rejected as a malformed tool call."""
+
+
+def is_malformed_tool_call(error: Exception) -> bool:
+    """Whether the provider refused the model's own output as an invalid tool call.
+
+    Groq rejects a generation whose tool call does not parse or names a tool
+    that does not exist, e.g. ``search_orders_and_tonnatarequest``, with a 400
+    whose code is ``tool_use_failed``. That is a sampling slip, not a bad
+    request, and a fresh attempt nearly always produces a valid call; without
+    one the trader gets no reply. Every other error propagates as before.
+
+    Parameters
+    ----------
+    error : Exception
+        Whatever the model call raised.
+
+    Returns
+    -------
+    bool
+        True only for the ``tool_use_failed`` rejection.
+    """
+    return "tool_use_failed" in str(error)
 
 
 model = get_chat_model()
@@ -91,6 +122,12 @@ _middleware: list[AgentMiddleware[Any, Any, Any]] = [
     ),
     ToolErrorMiddleware(on_error=_describe_tool_failure),
     ModelCallLimitMiddleware(run_limit=RUN_LIMIT, exit_behavior="end"),
+    ModelRetryMiddleware(
+        max_retries=MALFORMED_CALL_RETRIES,
+        retry_on=is_malformed_tool_call,
+        on_failure="error",
+        initial_delay=0.5,
+    ),
 ]
 
 agent = create_agent(
