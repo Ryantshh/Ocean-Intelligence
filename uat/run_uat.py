@@ -25,6 +25,7 @@ import json
 import re
 import statistics
 import time
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -203,6 +204,17 @@ async def run_once(agent: Any, case: dict[str, Any], run_no: int, callbacks: lis
     }
 
 
+def _crashed_run(case: dict[str, Any], run_no: int, trace: str) -> dict[str, Any]:
+    """A run that crashed outside the agent, recorded as a failure with its traceback."""
+    checks = dict.fromkeys(("asked_ok", "option_ok", "names_ok", "rows_ok", "count_ok", "invented_ok", "reply_ok", "format_ok"))
+    return {
+        "case": case["id"], "story": case["story"], "run": run_no, "prompt": case["prompt"],
+        "thread_id": "", "seconds": 0.0, "forms": [], "tool_calls": [], "searches": [],
+        "final_rows": {}, "all_ids": [], "reply": "", "error": f"harness crash:\n{trace}",
+        "checks": {**checks, "passed": False},
+    }
+
+
 def _row_id(table: str, row: dict[str, Any]) -> str:
     return str(row.get("order_id" if table == "cargoes" else "vessel_id", ""))
 
@@ -251,6 +263,11 @@ NAME_FIELDS = {
 REQUIRED_CHECKS = ("asked_ok", "option_ok", "names_ok", "rows_ok", "count_ok", "invented_ok", "reply_ok")
 
 
+def _table(case: dict[str, Any]) -> str:
+    """Which table's rows a case compares: its ``table``, else its id prefix."""
+    return case.get("table") or ("vessels" if case["id"].startswith("v") else "cargoes")
+
+
 def unknown_names(run: dict[str, Any], names: dict[str, list[str]]) -> list[str]:
     """Names in the agent's last search that are stored nowhere in the data.
 
@@ -262,7 +279,11 @@ def unknown_names(run: dict[str, Any], names: dict[str, list[str]]) -> list[str]
         return []
     unknown = []
     for table_args in searches[-1].values():
-        for field, value in (table_args or {}).items():
+        # the model's raw arguments: a table may come as null, or as something
+        # other than an object, which no name check applies to
+        if not isinstance(table_args, dict):
+            continue
+        for field, value in table_args.items():
             kind = NAME_FIELDS.get(field)
             if kind is None or not value:
                 continue
@@ -301,8 +322,15 @@ def score(
 
     checks["asked_ok"] = True if expect_ask == "either" else asked == expect_ask
 
-    if case.get("expect_option") and asked:
-        offered = [o.get("label", "") for f in run["forms"] for q in f["questions"] for o in q.get("options", [])]
+    # option_for narrows the check to the questions about that place: an agent
+    # asking only about some other word has not offered the wrong options
+    questions = [
+        q for f in run["forms"] for q in f["questions"]
+        if not case.get("option_for")
+        or re.search(case["option_for"], f"{q.get('question', '')} {q.get('header', '')}", re.IGNORECASE)
+    ]
+    if case.get("expect_option") and questions:
+        offered = [o.get("label", "") for q in questions for o in q.get("options", [])]
         checks["option_ok"] = any(case["expect_option"].lower() == label.lower() for label in offered)
     else:
         checks["option_ok"] = None
@@ -312,8 +340,7 @@ def score(
         checks["rows_ok"] = None
         checks["count_ok"] = None
     else:
-        table = "vessels" if case["id"].startswith("v") else "cargoes"
-        got = run["final_rows"].get(table, [])
+        got = run["final_rows"].get(_table(case), [])
         if case.get("compare") == "count":
             checks["rows_ok"] = len(got) == expected["count"]
         else:
@@ -321,7 +348,9 @@ def score(
         run["missing"] = sorted(set(expected["ids"]) - set(got))
         run["extra"] = sorted(set(got) - set(expected["ids"]))
         run["reported_count"] = reported_count(reply)
-        checks["count_ok"] = run["reported_count"] == expected["count"]
+        checks["count_ok"] = (
+            run["reported_count"] == expected["count"] if case.get("check_count", True) else None
+        )
 
     run["unknown_names"] = unknown_names(run, names)
     checks["names_ok"] = not run["unknown_names"] if any(
@@ -366,7 +395,13 @@ def write_report(out: Path, cases: list[dict[str, Any]], runs: list[dict[str, An
     for run in runs:
         by_case.setdefault(run["case"], []).append(run)
 
-    case_passed = {case_id: all(r["checks"]["passed"] for r in rs) for case_id, rs in by_case.items()}
+    unscored = {case["id"] for case in cases if case.get("scored") is False}
+    case_passed = {
+        case_id: all(r["checks"]["passed"] for r in rs)
+        for case_id, rs in by_case.items()
+        if case_id not in unscored
+    }
+    scored_runs = [r for r in runs if r["case"] not in unscored]
     lines = [
         f"# Chatbot UAT results — {datetime.now():%Y-%m-%d %H:%M}",
         "",
@@ -374,7 +409,11 @@ def write_report(out: Path, cases: list[dict[str, Any]], runs: list[dict[str, An
         "",
         (
             f"**Cases passed: {sum(case_passed.values())}/{len(case_passed)}** (a case passes only when every one of its runs passes). "
-            f"Runs passed: {sum(r['checks']['passed'] for r in runs)}/{len(runs)}."
+            f"Runs passed: {sum(r['checks']['passed'] for r in scored_runs)}/{len(scored_runs)}."
+        ),
+        *(
+            [f"Not in the score: {', '.join(sorted(unscored))}, reported by case below.", ""]
+            if unscored else []
         ),
         "",
         "## By user story",
@@ -440,13 +479,14 @@ def write_report(out: Path, cases: list[dict[str, Any]], runs: list[dict[str, An
 
     (out / "summary.md").write_text("\n".join(lines), encoding="utf-8")
 
+    cases_by_id = {case["id"]: case for case in cases}
     with (out / "runs.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         checks = ["passed", "asked_ok", "option_ok", "names_ok", "rows_ok", "count_ok", "invented_ok", "reply_ok", "format_ok"]
         writer.writerow(["case", "story", "run", "prompt", "expected_count", "rows_returned", "reported_count", *checks, "seconds", "error"])
         for r in runs:
             exp = expected.get(r["case"])
-            table = "vessels" if r["case"].startswith("v") else "cargoes"
+            table = _table(cases_by_id[r["case"]])
             writer.writerow([
                 r["case"], r["story"], r["run"], r["prompt"],
                 exp["count"] if exp else "", len(r["final_rows"].get(table, [])) if r["final_rows"] else "",
@@ -491,13 +531,20 @@ async def main() -> None:
     runs: list[dict[str, Any]] = []
     for case in cases:
         for run_no in range(1, args.runs + 1):
-            for attempt in range(RATE_LIMIT_RETRIES + 1):
-                run = await run_once(agent, case, run_no, callbacks)
-                if "RateLimit" not in run["error"] or attempt == RATE_LIMIT_RETRIES:
-                    break
-                print(f"  rate limited, waiting {RATE_LIMIT_WAIT_SECONDS}s")
-                await asyncio.sleep(RATE_LIMIT_WAIT_SECONDS)
-            run["checks"] = score(case, run, expected.get(case["id"]), names)
+            try:
+                for attempt in range(RATE_LIMIT_RETRIES + 1):
+                    run = await run_once(agent, case, run_no, callbacks)
+                    if "RateLimit" not in run["error"] or attempt == RATE_LIMIT_RETRIES:
+                        break
+                    print(f"  rate limited, waiting {RATE_LIMIT_WAIT_SECONDS}s")
+                    await asyncio.sleep(RATE_LIMIT_WAIT_SECONDS)
+                run["checks"] = score(case, run, expected.get(case["id"]), names)
+            except (Exception, asyncio.CancelledError):  # noqa: BLE001 -- one bad run must not end the suite
+                # a crash outside the agent (scoring, a cancelled request) is
+                # recorded as this run's failure, traceback and all
+                trace = traceback.format_exc()
+                print(trace)
+                run = _crashed_run(case, run_no, trace)
             runs.append(run)
             print(f"{case['id']} run {run_no}: {'PASS' if run['checks']['passed'] else 'FAIL'} ({run['seconds']}s)")
             (out / "runs.json").write_text(json.dumps(runs, indent=2, default=str), encoding="utf-8")

@@ -291,6 +291,9 @@ reads correct and is not. Ask for:
 - Check every list before asking. A name that is in the port list is a port, no
   matter how much it sounds like a region; only a name in none of the lists is
   unknown.
+- A port label that names a region, such as North China, South China or South
+  Brazil, is searched as written in the port field. Never ask the user to pick a
+  port inside it.
 - If you can infer nothing on the book that corresponds, say so in the reply, in
   the desk's words, rather than asking the same question again.
 - The user never sees these lists and must not learn they exist. Never say a
@@ -364,9 +367,11 @@ drops a vessel that is open now with a window running past the horizon.
 ## Desk shorthand
 
 The desk writes these places short. Each is settled: search the stored name
-directly, in the field its kind names, without asking. Name the place in the
-reply with its shorthand the first time: "East Coast South America (ECSA)". Any
-abbreviation not in this table is still unknown and is asked about.
+directly, in the field its kind names, without asking. The reply names the
+place by its stored name, with the user's shorthand after it in brackets:
+"East Coast South America (ECSA)", "West Australia (West Aussie)", never the
+shorthand alone. Any abbreviation not in this table is still unknown and is
+asked about.
 
 | shorthand | stored name | kind |
 |---|---|---|

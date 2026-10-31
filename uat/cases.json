@@ -1,5 +1,5 @@
 {
-  "about": "Chatbot UAT cases. expect_ask: true = must ask before searching, false = must not ask, \"either\" = both acceptable. expect_option: when the agent asks, this stored name must be among the options. reply_must_match: a regex the reply must match, for an assumption it has to state. answers: when the agent asks, the first rule whose 'when' regex matches the question (text, header and options) supplies the typed answer; with no match the agent's own first option is taken and the run is flagged. expected: the hand-written query in expected/ the reply is checked against; compare 'ids' checks the exact set of rows, 'count' only the number. Cases with no expected query are scored on behaviour only.",
+  "about": "Chatbot UAT cases. expect_ask: true = must ask before searching, false = must not ask, \"either\" = both acceptable. expect_option: when the agent asks, this stored name must be among the options. reply_must_match: a regex the reply must match, for an assumption it has to state. option_for: a regex choosing which of the agent's questions the expect_option check applies to; without it, every question. table: which table's rows are compared, when the id prefix does not say. check_count: false skips the count check. scored: false keeps a case out of the headline score. answers: when the agent asks, the first rule whose 'when' regex matches the question (text, header and options) supplies the typed answer; with no match the agent's own first option is taken and the run is flagged. expected: the hand-written query in expected/ the reply is checked against; compare 'ids' checks the exact set of rows, 'count' only the number. Cases with no expected query are scored on behaviour only.",
   "cases": [
     {
       "id": "c01", "story": "US-1.1",
@@ -29,7 +29,7 @@
     {
       "id": "c04", "story": "US-1.1",
       "prompt": "Show me orders from PDM to North China.",
-      "expect_ask": "either", "expect_option": "Madeira",
+      "expect_ask": "either", "expect_option": "Madeira", "option_for": "PDM|Madeira|load",
       "reply_must_match": "Madeira",
       "answers": [
         {"when": "north china", "say": "North China"},
@@ -97,9 +97,12 @@
     {
       "id": "v03", "story": "US-1.2",
       "prompt": "Show me the WAF openers.",
-      "expect_ask": "either", "expect_option": "West Africa",
+      "expect_ask": "either", "expect_option": "West Africa", "option_for": "WAF|zone|region",
       "reply_must_match": "West Africa",
-      "answers": [{"when": ".", "say": "West Africa"}],
+      "answers": [
+        {"when": "window|date|today|period|status|opener|open", "say": "All vessels that come open in West Africa, any date"},
+        {"when": ".", "say": "West Africa"}
+      ],
       "expected": "v03_waf_openers.sql", "compare": "ids",
       "review": "Expected answer reads 'openers' as where the vessel opens, with no fixture-status filter. Confirm with the sponsor."
     },
@@ -144,6 +147,13 @@
       "prompt": "Where will VESSEL 0743 be next week?",
       "expect_ask": "either", "stop_at_ask": true,
       "review": "Negative case: the AIS destination and ETA must not be presented as where the vessel will be or comes open."
+    },
+    {
+      "id": "m01", "story": "Matching (demo)", "scored": false, "table": "vessels",
+      "prompt": "Which open vessels can carry order 760048718644701974?",
+      "expect_ask": false,
+      "expected": "m01_match_order_760048718644701974.sql", "compare": "ids", "check_count": false,
+      "review": "Protects the demo's matching step. Not in the 20-case score. The reply's count is per order, so only the matched vessels are compared."
     }
   ]
 }

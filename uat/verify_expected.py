@@ -49,6 +49,24 @@ def _within(day: date | None, first: date, last: date) -> bool:
     return day is not None and first <= day <= last
 
 
+def _status_today(v: dict[str, Any], today: date) -> str:
+    """FIXED or ON SUBS only while that fixture's open window covers today, else OPEN."""
+    covers = _within(today, _day(v["open_date_start"]) or date.max, _day(v["open_date_end"]) or date.min)
+    return v["commercial_status"] if v["commercial_status"] in ("FIXED", "ON SUBS") and covers else "OPEN"
+
+
+def _matches(cargo: dict[str, Any], v: dict[str, Any], today: date) -> bool:
+    """The matching rule: same load zone, open window overlapping the laycan, big enough, OPEN today."""
+    start, end = _day(v["open_date_start"]), _day(v["open_date_end"])
+    return (
+        bool(set(_zones(cargo["load_zone"])) & set(_zones(v["parent_zone"])))
+        and end is not None and end >= _day(cargo["laycan_start"])
+        and start is not None and start <= _day(cargo["laycan_end"])
+        and v["dwt"] is not None and v["dwt"] >= cargo["cargo_weight_min"]
+        and _status_today(v, today) == "OPEN"
+    )
+
+
 def build_checks(today: date) -> dict[str, Callable[[dict[str, Any]], bool]]:
     """Each case's definition as a test on one order, or on one vessel's latest report."""
     month_start, month_end = date(2025, 3, 1), date(2025, 3, 31)
@@ -68,8 +86,7 @@ def build_checks(today: date) -> dict[str, Callable[[dict[str, Any]], bool]]:
                 and start <= today + timedelta(days=30) and updated >= today - timedelta(days=5))
 
     def status_today(v: dict[str, Any]) -> str:
-        covers = _within(today, _day(v["open_date_start"]) or date.max, _day(v["open_date_end"]) or date.min)
-        return v["commercial_status"] if v["commercial_status"] in ("FIXED", "ON SUBS") and covers else "OPEN"
+        return _status_today(v, today)
 
     def iron_ore(o: dict[str, Any]) -> bool:
         return _has(o["cargo_type"], "IRON ORE")
@@ -133,6 +150,8 @@ async def main() -> None:
         else:
             python_answers[case_id] = sorted(v["vessel_id"] for v in latest.values() if check(v))
     python_answers["v07"] = sorted(r["vessel_id"] for r in known if r["vessel_id"] == "VESSEL 0743")
+    cargo = next(o for o in orders if o["order_id"] == "760048718644701974")
+    python_answers["m01"] = sorted(v["vessel_id"] for v in latest.values() if _matches(cargo, v, today))
 
     agreed = 0
     for case_id in sorted(sql_answers):

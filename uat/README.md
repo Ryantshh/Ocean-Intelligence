@@ -61,6 +61,13 @@ Replies are compared after the odd spaces and hyphens the model puts inside
 names (narrow no-break spaces and the like) are made plain, as the chat page
 does before display.
 
+### The matching case (m01)
+
+`m01` asks which open vessels can carry one of the C3 orders, the demo's
+matching step. Its expected vessels come from the matching rule written as
+SQL, and it is cross-checked like the others. It is reported by case but kept
+out of the score out of 20, which covers US-1.1 and US-1.2 only.
+
 ## Checking the expected answers
 
 `verify_expected.py` computes every expected answer a second time, in plain

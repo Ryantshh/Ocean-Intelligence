@@ -1,0 +1,4 @@
+case,story,run,prompt,expected_count,rows_returned,reported_count,passed,asked_ok,option_ok,names_ok,rows_ok,count_ok,invented_ok,reply_ok,format_ok,seconds,error
+v07,US-1.2,1,Show me the position history of VESSEL 0743.,20,20,20,True,True,,True,True,True,True,,True,6.5,
+v07,US-1.2,2,Show me the position history of VESSEL 0743.,20,20,20,True,True,,True,True,True,True,,True,4.8,
+v07,US-1.2,3,Show me the position history of VESSEL 0743.,20,20,20,True,True,,True,True,True,True,,True,4.7,
