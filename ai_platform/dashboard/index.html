@@ -2819,12 +2819,8 @@
             .map(([label, cur, prev, fmt]) =>
               `<div class="field-diff"><span class="field-name">${escapeHtml(label)}:</span> <span class="field-old">${shown(fmt, row[prev])}</span> &rarr; <span class="field-new">${shown(fmt, row[cur])}</span></div>`)
             .join("") || '<div class="field-diff muted">No values changed</div>';
-          if (row.customer_name) {
-            detail += `<div class="field-diff"><span class="field-name">Customer:</span> ${escapeHtml(row.customer_name)}</div>`;
-          }
         }
-        const by = `<div class="muted" style="font-size:0.75rem;">by ${escapeHtml(row.entered_by)}${row.reason ? ` &mdash; ${escapeHtml(row.reason)}` : ""}</div>`;
-        return `<li>${id}${detail}${by}</li>`;
+        return `<li>${id}${detail}</li>`;
       }
 
       const EXPAND_ICON_SVG = `

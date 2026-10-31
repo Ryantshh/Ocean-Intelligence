@@ -1259,7 +1259,6 @@ _OVERRIDE_FEED_COLUMNS = (
     ("cargo_weight_max", "numeric"),
     ("old_assigned", "boolean"),
     ("assigned", "boolean"),
-    ("customer_name", "text"),
 )
 
 
@@ -1276,8 +1275,7 @@ def _overrides_sql(
         (
             "SELECT * FROM ("
             f"  SELECT '{kind}'::text AS kind, a.id, {action} AS action, "
-            f"  a.created_at - (now() - {clock}()) AS simulated_at, "
-            f"  a.entered_by, a.reason, {selected} "
+            f"  a.created_at - (now() - {clock}()) AS simulated_at, {selected} "
             f"  FROM public.{table} a"
             ") s "
             # The bounds are naive UTC (see change_window_bounds);
@@ -1363,7 +1361,6 @@ def order_overrides_sql(since: datetime, until: datetime) -> tuple[str, list]:
                 )
                 for prefix in ("old_", "")
             },
-            "customer_name": "a.customer_name",
         },
         since, until,
     )
