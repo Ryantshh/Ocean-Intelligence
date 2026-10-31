@@ -592,6 +592,7 @@
       .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
     <link rel="stylesheet" href="/static/workspace.css?v=voyage-3" />
+    <link rel="stylesheet" href="/static/maritime.css?v=7" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to workspace</a>
@@ -883,7 +884,7 @@
               The deletion is logged in the Audit Trail.
             </p>
             <form class="override-form" id="overrideForm">
-              <label class="field-required">Vessel
+              <label><span class="field-required">Vessel</span>
                 <div class="combobox" id="ovVesselCombobox">
                   <input
                     type="text" id="ovVesselInput" placeholder="Type to search a vessel&hellip;"
@@ -895,7 +896,7 @@
                 </div>
               </label>
               <div class="ov-wrap ov-hide">
-              <label class="field-required">Status
+              <label><span class="field-required">Status</span>
                 <select id="ovStatus" required>
                   <option value="" disabled selected>Select a status</option>
                 </select>
@@ -923,10 +924,10 @@
               </div>
 
               <p class="form-section-label">Attribution</p>
-              <label class="field-required">Entered by
+              <label><span class="field-required">Entered by</span>
                 <input id="ovEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
-              <label class="field-required">Reason
+              <label><span class="field-required">Reason</span>
                 <textarea id="ovReason" rows="2" placeholder="Why are you overriding or deleting this record?" required maxlength="500"></textarea>
               </label>
               <button type="submit" id="ovSubmit" class="ov-hide">Submit Update</button>
@@ -999,7 +1000,7 @@
               Order and Entered by are needed. The deletion is logged in the Audit Trail.
             </p>
             <form class="override-form" id="orderOverrideForm">
-              <label class="field-required">Order
+              <label><span class="field-required">Order</span>
                 <div class="combobox" id="ooOrderCombobox">
                   <input
                     type="text" id="ooOrderInput" placeholder="Type to search an order ID&hellip;"
@@ -1039,10 +1040,10 @@
               </div>
 
               <p class="form-section-label">Attribution</p>
-              <label class="field-required">Entered by
+              <label><span class="field-required">Entered by</span>
                 <input id="ooEnteredBy" type="text" placeholder="Your name" required maxlength="120" />
               </label>
-              <label class="field-required">Reason
+              <label><span class="field-required">Reason</span>
                 <textarea id="ooReason" rows="2" placeholder="Why are you overriding or deleting this order?" required maxlength="500"></textarea>
               </label>
               <button type="submit" id="ooSubmit" class="ov-hide">Submit Update</button>
@@ -1086,9 +1087,9 @@
         <div class="table-wrap"><table id="orderAuditTable">
           <thead><tr>
             <th>Order</th><th>Order seq</th><th>Laycan window</th><th>Cargo weight (min&ndash;max)</th>
-            <th>Assigned</th><th>Customer name</th><th>Entered by</th><th>Reason</th><th>When</th>
+            <th>Assigned</th><th>Entered by</th><th>Reason</th><th>When</th>
           </tr></thead>
-          <tbody><tr><td colspan="9"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
+          <tbody><tr><td colspan="8"><span class="loading-inline"><span class="spinner"></span>Loading&hellip;</span></td></tr></tbody>
         </table></div>
       </section>
       </div>
@@ -4286,7 +4287,6 @@
             <td>${auditRangeDiff(row, "old_laycan_start", "old_laycan_end", "laycan_start", "laycan_end", formatDate, row.action === "DELETE")}</td>
             <td>${auditRangeDiff(row, "old_cargo_weight_min", "old_cargo_weight_max", "cargo_weight_min", "cargo_weight_max", formatNumber, row.action === "DELETE")}</td>
             <td>${auditDiffText(formatAssigned(row.old_assigned), formatAssigned(row.assigned), row.action === "DELETE")}</td>
-            <td>${row.action === "DELETE" ? AUDIT_DELETED : row.customer_name ? escapeHtml(row.customer_name) : AUDIT_DASH}</td>
             <td>${escapeHtml(row.entered_by)}</td>
             <td>${row.reason ? escapeHtml(row.reason) : AUDIT_DASH}</td>
             <td>${formatDate(row.created_at)}</td>
@@ -4300,10 +4300,10 @@
           const rows = await getJson("/api/order-override/audit");
           tbody.innerHTML = rows.length
             ? rows.map(orderAuditRow).join("")
-            : '<tr><td colspan="9" class="muted">No updates submitted yet.</td></tr>';
+            : '<tr><td colspan="8" class="muted">No updates submitted yet.</td></tr>';
         } catch (error) {
           if (isRefresh) throw error;
-          tbody.innerHTML = `<tr><td colspan="9" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="error">Could not load audit trail: ${escapeHtml(error.message)}</td></tr>`;
         }
       }
 
@@ -4428,5 +4428,6 @@
       refreshTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     </script>
     <script src="/static/workspace.js"></script>
+    <script src="/static/maritime.js?v=7"></script>
   </body>
 </html>
