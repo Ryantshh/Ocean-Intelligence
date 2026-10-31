@@ -34,8 +34,111 @@ from ai_platform.backend.db import fetch_rows
 from ai_platform.backend.embeddings import embed_search_terms
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.sql import MAX_RANKED_ROWS
+from ai_platform.backend.vocabulary import load as load_vocabulary
 
 _logger = get_logger("agent")
+
+
+class SearchRejected(ValueError):
+    """A search refused before it runs, because it could not answer the question.
+
+    Raised rather than returned so the tool-error path reports it: the run's
+    evidence then records a failed search, not a search that found nothing.
+    """
+
+
+_STORED = {
+    group: {name.lower(): name for name in names}
+    for group, names in load_vocabulary().items()
+}
+"""Every stored name per vocabulary group, keyed by its lower-case spelling."""
+
+PLACE_FIELDS = {
+    "load_zone": ("zones", "load_port"),
+    "discharge_parent_zone": ("zones", "discharge_port"),
+    "parent_zone": ("zones", "open_area"),
+    "load_port": ("ports", "load_zone"),
+    "discharge_port": ("ports", "discharge_parent_zone"),
+    "open_area": ("ports", "parent_zone"),
+}
+"""Each place field, the names it takes, and the field on the same table that
+takes the other kind of place."""
+
+NAME_FIELDS = {"cargo_type": "cargo_types", "vessel_status": "statuses"}
+"""Single-name fields and the names each takes."""
+
+
+def _check_search(table: str, search: BaseModel | None) -> list[str]:
+    """Find what would make one table's search answer a different question.
+
+    Two things do. A table object with no filter returns every row on the book,
+    which overflows the model's context and answers nothing. A name that is not
+    stored where it was put matches nothing, so a question whose answer is
+    "nothing on the book" would look answered: North China searched as a zone,
+    say, when it is stored only as a port label. Names that are stored are
+    rewritten in their stored spelling, since zones match exactly.
+
+    Parameters
+    ----------
+    table : str
+        "cargoes" or "vessels", as the search names it.
+    search : BaseModel or None
+        That table's search, or None when it is not searched.
+
+    Returns
+    -------
+    list of str
+        One sentence per problem, written for the model; empty when the search
+        can run.
+    """
+    if search is None:
+        return []
+    filters = {
+        field: value
+        for field, value in search.model_dump(exclude_none=True).items()
+        if not isinstance(value, bool) and value != []
+    }
+    if not filters:
+        return [
+            f"The {table} search sets no filter, so it would return every row on "
+            f"the book. Leave {table} out, or set the filters the question needs."
+        ]
+
+    problems = []
+    for field, (group, other_field) in PLACE_FIELDS.items():
+        values = filters.get(field)
+        if not values:
+            continue
+        other_group = "ports" if group == "zones" else "zones"
+        spelled = []
+        for value in values:
+            key = value.strip().lower()
+            if key in _STORED[group]:
+                spelled.append(_STORED[group][key])
+            elif key in _STORED[other_group]:
+                problems.append(
+                    f'"{value}" is not a {group[:-1]}; it is stored as a '
+                    f"{other_group[:-1]}, so it goes in {other_field}."
+                )
+            else:
+                problems.append(
+                    f'"{value}" is stored nowhere. Use the stored name for that '
+                    "place, or ask the user which place they meant."
+                )
+        setattr(search, field, spelled)
+    for field, group in NAME_FIELDS.items():
+        value = filters.get(field)
+        if not value:
+            continue
+        stored = _STORED[group].get(value.strip().lower())
+        if stored is None:
+            problems.append(
+                f'"{value}" is not a stored {field.replace("_", " ")}. Use one '
+                "from the list, or ask the user what they meant."
+            )
+        else:
+            setattr(search, field, stored)
+    return problems
 
 
 async def _search(
@@ -115,8 +218,20 @@ async def search_orders_and_tonnage(**request: Any) -> dict[str, Any]:
         limit, meaning more matches exist than were returned — ask whether the
         user wants the closest fifty or every match, then re-run with
         ``exhaustive`` set. Name matches are never capped, however many rows.
+
+    Raises
+    ------
+    SearchRejected
+        When a table is asked for with no filter, or a name is not stored where
+        it was put. Nothing is searched; the message says what to change.
     """
     parsed = tables.Search(**request)
+    problems = _check_search("cargoes", parsed.cargoes) + _check_search(
+        "vessels", parsed.vessels
+    )
+    if problems:
+        _logger.info("search rejected: %s", problems)
+        raise SearchRejected(" ".join(problems))
     cargoes, vessels = await asyncio.gather(
         _search(tables.ORDERS, parsed.cargoes),
         _search(tables.TONNAGE, parsed.vessels),

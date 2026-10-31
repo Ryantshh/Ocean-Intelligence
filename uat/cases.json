@@ -20,14 +20,17 @@
     {
       "id": "c03", "story": "US-1.1",
       "prompt": "What orders are loading in ECSA?",
-      "expect_ask": true, "expect_option": "East Coast South America",
+      "expect_ask": "either", "expect_option": "East Coast South America",
+      "reply_must_match": "East Coast South America",
+      "review": "Desk shorthand: reading ECSA directly is accepted when the reply names East Coast South America (decided 31 Oct 2026, same rule as c01).",
       "answers": [{"when": ".", "say": "East Coast South America"}],
       "expected": "c03_orders_loading_ecsa.sql", "compare": "ids"
     },
     {
       "id": "c04", "story": "US-1.1",
       "prompt": "Show me orders from PDM to North China.",
-      "expect_ask": true, "expect_option": "Madeira",
+      "expect_ask": "either", "expect_option": "Madeira",
+      "reply_must_match": "Madeira",
       "answers": [
         {"when": "north china", "say": "North China"},
         {"when": ".", "say": "Madeira"}
@@ -85,14 +88,17 @@
     {
       "id": "v02", "story": "US-1.2",
       "prompt": "Show me the ECSA ballasters.",
-      "expect_ask": true, "expect_option": "East Coast South America",
+      "expect_ask": "either", "expect_option": "East Coast South America",
+      "reply_must_match": "East Coast South America",
+      "review": "Desk shorthand: reading ECSA directly is accepted when the reply names East Coast South America (decided 31 Oct 2026, same rule as c01).",
       "answers": [{"when": ".", "say": "East Coast South America"}],
       "expected": "v02_ecsa_ballasters.sql", "compare": "ids"
     },
     {
       "id": "v03", "story": "US-1.2",
       "prompt": "Show me the WAF openers.",
-      "expect_ask": true, "expect_option": "West Africa",
+      "expect_ask": "either", "expect_option": "West Africa",
+      "reply_must_match": "West Africa",
       "answers": [{"when": ".", "say": "West Africa"}],
       "expected": "v03_waf_openers.sql", "compare": "ids",
       "review": "Expected answer reads 'openers' as where the vessel opens, with no fixture-status filter. Confirm with the sponsor."

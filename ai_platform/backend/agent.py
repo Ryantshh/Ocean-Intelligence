@@ -28,6 +28,7 @@ from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.matching import match_orders
 from ai_platform.backend.prompts import AGENT_SYSTEM
 from ai_platform.backend.tools import (
+    SearchRejected,
     ask_user,
     flag_for_dev_team,
     new_vessels,
@@ -58,7 +59,8 @@ def _describe_tool_failure(error: Exception, request: object) -> str:
 
     Groq reports a context overflow as "reduce the length of the messages" with
     no numbers in it, so the row count is the only figure worth surfacing — and
-    the model can respond by narrowing rather than giving up.
+    the model can respond by narrowing rather than giving up. A search refused
+    before it ran already says what to change, so it gets no narrowing advice.
 
     Parameters
     ----------
@@ -73,6 +75,8 @@ def _describe_tool_failure(error: Exception, request: object) -> str:
         Message handed back to the model in place of the tool result.
     """
     _logger.warning("tool failed: %s", error)
+    if isinstance(error, SearchRejected):
+        return f"That search failed: {error} Nothing was searched; fix it and search again."
     return (
         f"That search failed: {error}. Narrow it with a tighter date range, a "
         "size bound or an id, then try again."
