@@ -200,6 +200,12 @@ body.chat-open .status-tile { min-width:0; padding:16px; }
   body:not(.chat-open) .trends-panel .trend-chart-primary { flex-grow:1.5; }
   body:not(.chat-open) .trends-panel :is(#chartNewVessels,#chartStatusChanges,#chartNewOrders) { flex:1 1 0; min-height:0; overflow:hidden; }
 }
+/* Change Feed: in fullscreen with the assistant closed, all five boxes sit in
+   one row. With the assistant open, or narrower, they keep index.html's
+   auto-fit wrapping. */
+@media(min-width:1101px) {
+  body:not(.chat-open) .change-groups { grid-template-columns:repeat(5,minmax(0,1fr)); }
+}
 .trend-chart-title { font-size:10px; line-height:1.5; }
 .change-group { border-radius:12px; padding:18px; }
 .change-group h3 { display:flex; align-items:center; gap:8px; margin-bottom:15px; font-size:12px; }

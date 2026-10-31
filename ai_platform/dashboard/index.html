@@ -2799,6 +2799,44 @@
         return `<li>${idChip("vessel", row.vessel_id)}${diffs}</li>`;
       }
 
+      // "Updated information (overrides)": one row per Tonnage or Order Status
+      // Override submission, from the audit tables (vessel_overrides_sql /
+      // order_overrides_sql in dashboard_queries.py), so the before side is
+      // what the trader actually overwrote. Only fields the submission changed
+      // are shown, labelled as on the override forms; a before-value logged as
+      // null reads "Null", as in the audit trails.
+      const OVERRIDE_FIELD_SPECS = {
+        vessel: [
+          ["Status", "status", "old_status", auditStatusBadge],
+          ["Open area", "open_area", "old_open_area", escapeHtml],
+          ["Open date start", "open_date_start", "old_open_date_start", formatDate],
+          ["Open date end", "open_date_end", "old_open_date_end", formatDate],
+        ],
+        order: [
+          ["Laycan start", "laycan_start", "old_laycan_start", formatDate],
+          ["Laycan end", "laycan_end", "old_laycan_end", formatDate],
+          ["Cargo weight min (mt)", "cargo_weight_min", "old_cargo_weight_min", formatNumber],
+          ["Cargo weight max (mt)", "cargo_weight_max", "old_cargo_weight_max", formatNumber],
+          ["Assigned", "assigned", "old_assigned", (v) => escapeHtml(formatAssigned(v))],
+        ],
+      };
+
+      function overrideRow(row) {
+        const id = row.kind === "vessel" ? idChip("vessel", row.vessel_id) : `Order ${orderIdCell(row)}`;
+        const shown = (fmt, value) => (value === null || value === undefined || value === "" ? AUDIT_DASH : fmt(value));
+        let detail;
+        if (row.action === "DELETE") {
+          detail = `<div class="field-diff">${AUDIT_DELETED}</div>`;
+        } else {
+          detail = OVERRIDE_FIELD_SPECS[row.kind]
+            .filter(([, cur, prev]) => String(row[cur] ?? "") !== String(row[prev] ?? ""))
+            .map(([label, cur, prev, fmt]) =>
+              `<div class="field-diff"><span class="field-name">${escapeHtml(label)}:</span> <span class="field-old">${shown(fmt, row[prev])}</span> &rarr; <span class="field-new">${shown(fmt, row[cur])}</span></div>`)
+            .join("") || '<div class="field-diff muted">No values changed</div>';
+        }
+        return `<li>${id}${detail}</li>`;
+      }
+
       const EXPAND_ICON_SVG = `
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" />
@@ -2973,6 +3011,8 @@
               "The same supply moves the Daily Trends chart counts, dated by the day the new status takes effect rather than the day it was reported: Fixed or On Subs back to Open, and Open to Fixed or On Subs. Fixed to On Subs is not listed. A change reported today for a later date appears when that date arrives."],
             ["Field changes", data.field_changes, fieldChangeRow, byDay ? "update_date" : null],
             ["New orders", data.new_orders, (r) => `<li>Order ${orderIdCell(r)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
+            ["Updated information (overrides)", data.overrides, overrideRow, byDay ? "simulated_at" : null,
+              "Every Tonnage and Order Status Override submission in this window, updates and deletes, with what the trader changed from and to. Dated by when it was submitted, on the same simulated clock as the rest of the feed."],
           ];
           currentChangeGroups = groups;
           el.innerHTML = `

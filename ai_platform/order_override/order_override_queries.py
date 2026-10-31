@@ -8,12 +8,12 @@ Whether such twins are one order recorded twice or two real orders is for
 the trader to judge, so each is read and updated on its own, and an update
 to one never touches the other.
 
-Unlike ``tonnage_test`` (a position-report log with several rows per
-vessel), each ``(order_id, order_seq)`` is one row, so an override here is a
-plain ``UPDATE`` in place, not the copy/delete/insert swap
-:mod:`ai_platform.trader_override.trader_override_queries` uses for
-tonnage. There is also no separate overrides table: the edited row lands
-directly in ``order_test``, same convention as the tonnage side.
+Each ``(order_id, order_seq)`` is one row, so an override here is a plain
+``UPDATE`` in place -- the same as the tonnage side
+(:func:`ai_platform.trader_override.trader_override_queries.override_tonnage_row_sql`),
+which updates the one ``tonnage_test`` row the trader chose. There is also
+no separate overrides table: the edited row lands directly in
+``order_test``, same convention as the tonnage side.
 
 ``laycan_start``/``laycan_end``/``cargo_weight_min``/``cargo_weight_max``
 are written here -- the latter two standing in for "quantity", since

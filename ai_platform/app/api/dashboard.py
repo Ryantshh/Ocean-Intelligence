@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Literal
 
+import asyncpg
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -546,6 +547,16 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     parent zone, and ballast/laden, per vessel report vs. its immediately
     preceding one.
 
+    ``overrides`` ("Updated information (overrides)") is every Tonnage and
+    Order Status Override submission in the window, updates and deletes,
+    newest first, read from the two audit tables so each row carries what
+    the trader changed from and to. Submissions are dated on the simulated
+    clock: real ``created_at`` moved back by the same offset as "now" -- see
+    the DEFINITION comment above
+    ``ai_platform.backend.dashboard_queries._OVERRIDE_FEED_COLUMNS``. Vessel
+    overrides use the tonnage window and order overrides the orders window.
+    A missing audit table leaves its half empty rather than failing the feed.
+
     "Now" is simulated, not real wall-clock time: treated as real time minus
     one year (see ``ai_platform.backend.dashboard_queries.reference_times_sql``
     for the full rationale), an explicit simulation request rather than a
@@ -564,8 +575,9 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
     dict
         ``window``, the two simulated reference instants and window bounds
         (``tonnage_reference_now``, ``tonnage_since``, ``tonnage_until``, ``orders_reference_now``,
-        ``orders_since``, ``orders_until``), and four row lists: ``new_vessels``,
-        ``vessel_status_changes``, ``field_changes``, ``new_orders``.
+        ``orders_since``, ``orders_until``), and five row lists: ``new_vessels``,
+        ``vessel_status_changes``, ``field_changes``, ``new_orders``,
+        ``overrides``.
     """
     reference = (await _run(*dq.reference_times_sql()))[0]
     # See daily_counts()'s matching comment -- fetch_rows() JSON-stringifies
@@ -583,11 +595,15 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         vessel_status_changes,
         field_changes,
         new_orders,
+        vessel_overrides,
+        order_overrides,
     ) = await asyncio.gather(
         _run(*dq.new_vessels_sql(tonnage_since, tonnage_until)),
         _run(*dq.vessel_status_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.vessel_field_changes_sql(tonnage_since, tonnage_until)),
         _run(*dq.new_orders_sql(orders_since, orders_until)),
+        _run_audit(*dq.vessel_overrides_sql(tonnage_since, tonnage_until)),
+        _run_audit(*dq.order_overrides_sql(orders_since, orders_until)),
     )
     return {
         "window": window,
@@ -601,4 +617,35 @@ async def change_feed(window: dq.ChangeWindow = "dod") -> dict[str, Any]:
         "vessel_status_changes": vessel_status_changes,
         "field_changes": field_changes,
         "new_orders": new_orders,
+        "overrides": sorted(
+            [*vessel_overrides, *order_overrides],
+            key=_simulated_instant,
+            reverse=True,
+        ),
     }
+
+
+async def _run_audit(sql: str, params: list[Any]) -> list[dict[str, Any]]:
+    """:func:`_run` for an override audit table, empty if the table is missing.
+
+    The audit tables are created by their own setup scripts, separately from
+    the gold views, and the override endpoints already treat a missing one
+    as an empty trail. The Change Feed does the same, so a database without
+    them still loads the other four lists.
+    """
+    try:
+        return await _run(sql, params)
+    except HTTPException as exc:
+        if isinstance(exc.__cause__, asyncpg.UndefinedTableError):
+            return []
+        raise
+
+
+def _simulated_instant(row: dict[str, Any]) -> datetime:
+    """Sort key for a merged override row: its ``simulated_at`` as aware UTC.
+
+    ``json_safe`` sends a midnight timestamp as a bare date, which parses
+    naive; it is read as UTC so it can be compared with the rest.
+    """
+    instant = datetime.fromisoformat(str(row["simulated_at"]))
+    return instant if instant.tzinfo else instant.replace(tzinfo=UTC)
