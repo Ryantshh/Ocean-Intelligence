@@ -626,19 +626,12 @@
       <div class="workspace-heading defaults-heading">
         <div><p class="eyebrow">VOYAGE PLANNING</p><h2 class="defaults-title">Set the course.</h2><p class="workspace-description">Your voyage assumptions, in one place.</p></div>
         <div class="hero-chart voyage-chart" aria-hidden="true">
-          <svg viewBox="0 0 360 180" fill="none" aria-hidden="true">
-            <g stroke="currentColor" opacity=".16"><ellipse cx="180" cy="119" rx="138" ry="37"/><ellipse cx="180" cy="119" rx="112" ry="27"/><path d="M28 119h304M180 72v91"/></g>
-            <g class="voyage-water" stroke="currentColor" opacity=".35"><path d="M55 130q35-12 70 0t70 0t70 0M80 145q35-12 70 0t70 0t70 0"/></g>
-            <g class="voyage-vessel" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
-              <path d="m80 94 131 32 72-44-132-28Z" fill="var(--hero-start)"/>
-              <path d="m80 94 15 25 112 28 4-21Z" fill="currentColor" opacity=".6"/>
-              <path d="m211 126-4 21 59-39 17-26Z" fill="currentColor" opacity=".9"/>
-              <path d="m115 85 93 23 42-25-94-22Z" fill="var(--hero-end)"/>
-              <path d="m129 80 81 20M142 72l81 20M159 64l79 20M151 68v25M174 74v25M198 80v25" opacity=".5"/>
-              <path d="m100 74 29 7 19-11-29-7Z" fill="var(--hero-ink)"/><path d="M100 74V55l29 7v19M129 62l19-11v19M100 55l19-10 29 6-19 11Z" fill="var(--hero-start)"/>
-              <path d="M108 60v8M117 62v8M137 60v8M119 45V30M115 35h14"/>
-            </g>
-          </svg><span>Every voyage, considered.</span>
+          <svg viewBox="0 0 360 150" fill="none">
+            <g stroke="currentColor" opacity=".15"><circle cx="255" cy="75" r="61"/><circle cx="255" cy="75" r="44"/><path d="M180 75h150M255 0v150M211 31l88 88M211 119l88-88"/></g>
+            <path class="voyage-route" d="M10 113C60 113 70 41 119 41s53 68 99 49l37-15" stroke="currentColor" stroke-opacity=".4" stroke-width="1.5" stroke-dasharray="4 6"/>
+            <circle cx="119" cy="41" r="5" fill="currentColor" opacity=".5"/>
+            <g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m235 81 20 9 20-9-5-16h-30l-5 16ZM255 48v34M247 58h16M236 99q9-7 19 0t19 0"/></g>
+          </svg><span>OCEAN INTELLIGENCE / VOYAGE PLANNING</span>
         </div>
       </div>
       <p class="sub defaults-guidance" id="defaultsIntro"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg><span>Set your starting values for the voyage calculator. Blank fields use the defaults shown. Changes apply to the next match.</span></p>
@@ -1596,16 +1589,12 @@
         }).join("");
 
         container.innerHTML = `
-          <div class="map-instrument"><span>GLOBAL MARKET ATLAS</span><div class="atlas-tools" role="group" aria-label="Map navigation"><button type="button" data-map-action="out" aria-label="Zoom map out">−</button><output aria-label="Map zoom">100%</output><button type="button" data-map-action="in" aria-label="Zoom map in">+</button><button type="button" data-map-action="reset" aria-label="Reset map view" title="Reset map view">⌖</button></div></div>
-          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="group" aria-label="Regional supply and demand map" tabindex="0">
-            <defs><linearGradient id="oceanLand" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#3b6371"/><stop offset="1" stop-color="#1d3c4b"/></linearGradient></defs>
+          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="group" aria-label="Regional supply and demand map">
             ${graticule}
             ${land}
             <g class="ocean-labels" aria-hidden="true"><text x="150" y="230">PACIFIC OCEAN</text><text x="400" y="235">ATLANTIC</text><text x="660" y="280">INDIAN OCEAN</text></g>
             ${bubbles}
-            <g class="map-compass" transform="translate(910 355)" aria-hidden="true"><circle r="17"/><path d="M0-22V22M-22 0H22M0-15 4 5 0 2-4 5Z"/><text x="-3" y="-28">N</text></g>
           </svg>
-          <p class="atlas-caption"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 1v6M12 17v6M1 12h6M17 12h6"/></svg>Select a region · zoom to explore</span><span>${mapped.length} regions · simulated</span></p>
           <div class="hover-tooltip" id="mapTooltip"></div>
           <div class="map-legend">
             <span class="swatch"><span class="dot" style="background:var(--status-critical)"></span>Tight (demand &gt; supply)</span>
