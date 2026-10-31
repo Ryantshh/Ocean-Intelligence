@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ocean Intelligence</title>
-    <link rel="icon" href="/chat/public/favicon.svg" />
+    <link rel="icon" href="/static/ocean-mark.svg" />
     <script>
       // Applied before the stylesheet paints anything, so a saved manual
       // choice doesn't flash the OS-preferred theme first. Left unset
@@ -391,7 +391,7 @@
       /* Chat is Chainlit's own /chat page in a full-screen frame. Hiding it
          keeps it loaded, so neither side reloads when switching tabs. */
       #tab-chat { position: fixed; inset: 0; }
-      .defaults-page { max-width: 46rem; margin: 0 auto; padding: 5rem 1.5rem 4rem; }
+      .defaults-page { width: 100%; }
       .defaults-page h2 { margin: 0; }
       form.override-form label.defaults-row { display: grid; flex-direction: initial; grid-template-columns: minmax(0, 1fr) 9rem 4.5rem; align-items: center; gap: 0.75rem; }
       .defaults-row span.unit { font-size: 0.78rem; color: var(--muted); }
@@ -592,6 +592,7 @@
       .combobox-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--muted); }
     </style>
     <link rel="stylesheet" href="/static/workspace.css?v=voyage-3" />
+    <link rel="stylesheet" href="/static/maritime.css?v=6" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to workspace</a>
@@ -601,8 +602,8 @@
         <span>Ocean Intelligence<small>CARGILL OCEAN TRANSPORTATION</small></span>
       </a>
       <nav class="tabs primary-tabs" aria-label="Workspace navigation">
-        <button type="button" class="tab-btn active" data-tab="dashboard" aria-current="page">Overview</button>
-        <button type="button" class="tab-btn" data-tab="voyage-defaults">Voyage defaults</button>
+        <button type="button" class="tab-btn active" data-tab="dashboard" aria-current="page"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Overview</span></button>
+        <button type="button" class="tab-btn" data-tab="voyage-defaults"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2 6-6 2 2-6 6-2Z"/></svg><span>Voyage defaults</span></button>
       </nav>
       <div class="header-actions">
         <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Switch theme"></button>
@@ -622,21 +623,34 @@
     <button type="button" id="chatPill" class="assistant-toggle chat-pill" hidden><svg class="assistant-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/><path d="M20 2v4M18 4h4"/></svg> <span>Ocean assistant</span></button>
 
     <div id="tab-voyage-defaults" class="tab-panel hidden defaults-page">
-      <p class="eyebrow">VOYAGE PLANNING</p><h2 class="defaults-title">Set the course.</h2><p class="defaults-subtitle">Your voyage assumptions, in one place.</p>
-      <p class="sub" id="defaultsIntro">
-        Your own starting values for the voyage calculator. Every vessel matched
-        to an order starts from these; a blank box uses the calculator default
-        shown. Changes apply to the next match.
-      </p>
+      <div class="workspace-heading defaults-heading">
+        <div><p class="eyebrow">VOYAGE PLANNING</p><h2 class="defaults-title">Set the course.</h2><p class="workspace-description">Your voyage assumptions, in one place.</p></div>
+        <div class="hero-chart voyage-chart" aria-hidden="true">
+          <svg viewBox="0 0 360 180" fill="none" aria-hidden="true">
+            <g stroke="currentColor" opacity=".16"><ellipse cx="180" cy="119" rx="138" ry="37"/><ellipse cx="180" cy="119" rx="112" ry="27"/><path d="M28 119h304M180 72v91"/></g>
+            <g class="voyage-water" stroke="currentColor" opacity=".35"><path d="M55 130q35-12 70 0t70 0t70 0M80 145q35-12 70 0t70 0t70 0"/></g>
+            <g class="voyage-vessel" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
+              <path d="m80 94 131 32 72-44-132-28Z" fill="var(--hero-start)"/>
+              <path d="m80 94 15 25 112 28 4-21Z" fill="currentColor" opacity=".6"/>
+              <path d="m211 126-4 21 59-39 17-26Z" fill="currentColor" opacity=".9"/>
+              <path d="m115 85 93 23 42-25-94-22Z" fill="var(--hero-end)"/>
+              <path d="m129 80 81 20M142 72l81 20M159 64l79 20M151 68v25M174 74v25M198 80v25" opacity=".5"/>
+              <path d="m100 74 29 7 19-11-29-7Z" fill="var(--hero-ink)"/><path d="M100 74V55l29 7v19M129 62l19-11v19M100 55l19-10 29 6-19 11Z" fill="var(--hero-start)"/>
+              <path d="M108 60v8M117 62v8M137 60v8M119 45V30M115 35h14"/>
+            </g>
+          </svg><span>Every voyage, considered.</span>
+        </div>
+      </div>
+      <p class="sub defaults-guidance" id="defaultsIntro"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg><span>Set your starting values for the voyage calculator. Blank fields use the defaults shown. Changes apply to the next match.</span></p>
       <form class="override-form" id="defaultsForm">
         <div id="defaultsFields" class="muted">Loading&hellip;</div>
         <div class="form-message" id="defaultsMessage"></div>
-        <div class="defaults-save-bar"><span>Blank fields use the calculator defaults shown.</span><button type="submit" id="defaultsSave">Save voyage defaults <span aria-hidden="true">↗</span></button></div>
+        <div class="defaults-save-bar"><span>Blank fields use the calculator defaults shown.</span><button type="submit" id="defaultsSave"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2 6-6 2 2-6 6-2Z"/></svg>Save voyage defaults <span aria-hidden="true">↗</span></button></div>
       </form>
     </div>
 
     <main id="workspace" tabindex="-1">
-      <div class="workspace-heading"><div><p class="eyebrow">MARKET INTELLIGENCE</p><h1>Your ocean. <span>In perspective.</span></h1><p class="workspace-description">Fleet availability, cargo demand, and the movements that matter.</p></div><div class="hero-chart" aria-hidden="true"><svg viewBox="0 0 360 150" fill="none"><defs><linearGradient id="chartFade"><stop stop-color="currentColor" stop-opacity="0"/><stop offset="1" stop-color="currentColor" stop-opacity=".4"/></linearGradient></defs><g stroke="currentColor" stroke-opacity=".16"><circle cx="258" cy="75" r="63"/><circle cx="258" cy="75" r="46"/><circle cx="258" cy="75" r="28"/><path d="M180 75h156M258 0v150M204 21l108 108M204 129 312 21"/></g><path d="M0 126C70 126 74 30 145 30s72 83 113 45 67-22 102-22" stroke="url(#chartFade)" stroke-width="1.5" stroke-dasharray="4 5"/><path d="m258 33 12 45-12-7-12 7 12-45Z" fill="currentColor" opacity=".7"/><circle cx="145" cy="30" r="4" fill="currentColor" opacity=".5"/><g fill="currentColor" opacity=".65" font-size="8" letter-spacing="2"><text x="254" y="11">N</text><text x="329" y="78">E</text><text x="254" y="148">S</text><text x="177" y="78">W</text></g></svg><span>INTELLIGENCE / IN EVERY DIRECTION</span></div></div>
+      <div class="workspace-heading"><div><p class="eyebrow">MARKET INTELLIGENCE</p><h1>Your ocean. <span>In perspective.</span></h1><p class="workspace-description">Fleet availability, cargo demand, and the movements that matter.</p></div><div class="hero-chart" aria-hidden="true"><svg viewBox="0 0 360 150" fill="none"><defs><linearGradient id="chartFade"><stop stop-color="currentColor" stop-opacity="0"/><stop offset="1" stop-color="currentColor" stop-opacity=".4"/></linearGradient></defs><g stroke="currentColor" stroke-opacity=".16"><circle cx="258" cy="75" r="63"/><circle cx="258" cy="75" r="46"/><circle cx="258" cy="75" r="28"/><path d="M180 75h156M258 0v150M204 21l108 108M204 129 312 21"/></g><path d="M0 126C70 126 74 30 145 30s72 83 113 45 67-22 102-22" stroke="url(#chartFade)" stroke-width="1.5" stroke-dasharray="4 5"/><path d="m258 33 12 45-12-7-12 7 12-45Z" fill="currentColor" opacity=".7"/><circle cx="145" cy="30" r="4" fill="currentColor" opacity=".5"/><g fill="currentColor" opacity=".65" font-size="8" letter-spacing="2"><text x="254" y="11">N</text><text x="329" y="78">E</text><text x="254" y="148">S</text><text x="177" y="78">W</text></g></svg><span>A wider horizon.</span></div></div>
       <div class="refresh-bar">
         <span class="muted" id="lastRefreshed">Loading&hellip;</span>
         <button type="button" id="refreshNowBtn" class="history-btn"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 13-3l2 3M4 16l2 3a8 8 0 0 0 13-3"/></svg> Refresh data</button>
@@ -644,14 +658,14 @@
       <div class="stale-banner hidden" id="staleBanner"></div>
 
       <nav class="tabs sub-tabs" aria-label="Market tools">
-        <button type="button" class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button type="button" class="tab-btn" data-tab="tonnage-overrides">Tonnage overrides</button>
-        <button type="button" class="tab-btn" data-tab="order-overrides">Order overrides</button>
+        <button type="button" class="tab-btn active" data-tab="dashboard"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Dashboard</span></button>
+        <button type="button" class="tab-btn" data-tab="tonnage-overrides"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 15 9 4 9-4-3-7H6l-3 7ZM12 3v12M8 6h8M3 21q4-3 9 0t9 0"/></svg><span>Tonnage overrides</span></button>
+        <button type="button" class="tab-btn" data-tab="order-overrides"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 9-4 9 4v10l-9 4-9-4V7Zm0 0 9 4 9-4M12 11v10M7 5l10 4"/></svg><span>Order overrides</span></button>
       </nav>
 
       <div id="tab-dashboard" class="tab-panel">
       <section id="summary-section">
-        <div class="section-head"><h2><span class="section-number">01</span> Market overview</h2><span class="section-note">Select a status to explore the fleet</span></div>
+        <div class="section-head"><h2><span class="section-number section-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span> Market overview</h2><span class="section-note">Select a status to explore the fleet</span></div>
         <div class="status-tiles" id="statusTiles">
           <button type="button" class="status-tile status-tile-open" data-status="OPEN">
             <span class="value" id="statusTileOpen">—</span>
@@ -731,7 +745,7 @@
 
       <section id="changes-section">
         <div class="section-head">
-          <h2><span class="section-number">02</span> Change Feed</h2>
+          <h2><span class="section-number section-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h5l3-8 4 16 3-8h5"/></svg></span> Change Feed</h2>
           <div class="toolbar">
             <button type="button" class="window-btn active" data-window="dod" title="Since the previous working day; Monday compares to Friday">Day-on-day</button>
             <button type="button" class="window-btn" data-window="wow" title="Seven completed days, ending yesterday">Week-on-week</button>
@@ -742,7 +756,7 @@
 
       <section id="vessels-section">
         <div class="section-head">
-          <h2><span class="section-number">03</span> Vessel Tracker</h2>
+          <h2><span class="section-number section-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 15 9 4 9-4-3-7H6l-3 7ZM12 3v12M8 6h8M3 21q4-3 9 0t9 0"/></svg></span> Vessel Tracker</h2>
         </div>
         <div id="vesselDayFilterBanner" class="day-filter-banner hidden">
           <span id="vesselDayFilterLabel"></span>
@@ -793,7 +807,7 @@
 
       <section id="orders-section">
         <div class="section-head">
-          <h2><span class="section-number">04</span> Order Tracker</h2>
+          <h2><span class="section-number section-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 9-4 9 4v10l-9 4-9-4V7Zm0 0 9 4 9-4M12 11v10M7 5l10 4"/></svg></span> Order Tracker</h2>
         </div>
         <div id="orderDayFilterBanner" class="day-filter-banner hidden">
           <span id="orderDayFilterLabel"></span>
@@ -833,7 +847,7 @@
       </section>
 
       <section id="ecsa-section">
-        <div class="section-head"><h2><span class="section-number">05</span> ECSA Ballast Tracker</h2></div>
+        <div class="section-head"><h2><span class="section-number section-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="M8 5h7a4 4 0 0 1 0 8H9a3 3 0 0 0 0 6h7"/></svg></span> ECSA Ballast Tracker</h2></div>
         <p class="sub" style="margin:0 0 0.75rem;">Every vessel currently ballasting (empty, repositioning) toward East Coast South America. Expand a row for its status history trail. Last-carried-cargo data isn't available in this dataset, so "Destination" below is the vessel's next reported AIS destination, not what it last carried.</p>
         <div class="ecsa-summary">
           <span class="muted" id="ecsaCount">Loading&hellip;</span>
@@ -1145,7 +1159,7 @@
       // root class. Override both without reloading or interrupting the session.
       const chatFrame = document.getElementById("chatFrame");
       let chatThemeObserver;
-      const chatPalette = fetch("/chat/public/theme.json")
+      const chatPalette = fetch("/chat/public/theme.json?v=ocean-4")
         .then((response) => { if (!response.ok) throw new Error("Theme unavailable"); return response.json(); })
         .then((data) => data.variables)
         .catch(() => null);
@@ -1275,15 +1289,38 @@
             groups.get(field.group).push(field);
           });
           holder.className = "defaults-grid";
-          holder.innerHTML = [...groups].map(([name, items], index) => `
-            <fieldset class="defaults-card"><legend><span class="section-number">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(name)}</legend>
-            ${items.map((field) => {
-              const value = saved[field.name] ?? "";
-              return `<label class="defaults-row"><span>${escapeHtml(field.label)}</span>
-                <input type="number" step="any" min="0" name="${escapeHtml(field.name)}"
-                  value="${escapeHtml(value)}" placeholder="${escapeHtml(field.default)}" />
-                <span class="unit">${escapeHtml(field.unit)}</span></label>`;
-            }).join("")}</fieldset>`).join("");
+          const sectionIcons = {
+            "Voyage basics": '<circle cx="12" cy="12" r="9"/><path d="m16 8-2 6-6 2 2-6 6-2Z"/>',
+            "Hire and freight": '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V4h8v3M3 12h18M10 12v3h4v-3"/>',
+            "Fuel consumption": '<path d="M12 3C10 7 5 11 5 15a7 7 0 0 0 14 0c0-4-5-8-7-12ZM9 16a3 3 0 0 0 3 3"/>',
+            "Prices and costs": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2m4 0h2M8 15h2m4 0h2M8 18h2m4 0h2"/>',
+            "Port operations": '<circle cx="12" cy="5" r="2"/><path d="M12 7v14M8 11h8M3 14v3a9 9 0 0 0 18 0v-3M3 14l3 3m15-3-3 3"/>',
+          };
+          const sections = [
+            { title: "Voyage basics", groups: ["Speed", "Sailing empty to the load port", "Cargo"] },
+            { title: "Hire and freight", groups: ["Hire", "Freight"] },
+            { title: "Fuel consumption", groups: ["Fuel burned per day"] },
+            { title: "Prices and costs", groups: ["Prices and costs"] },
+            { title: "Port operations", groups: ["Port"], wide: true },
+          ];
+          const assigned = new Set(sections.flatMap(section => section.groups));
+          for (const name of groups.keys()) {
+            if (!assigned.has(name)) sections.push({ title: name, groups: [name] });
+          }
+          holder.innerHTML = sections.map(section => {
+            const items = section.groups.flatMap(name => groups.get(name) || []);
+            if (!items.length) return "";
+            return `<fieldset class="defaults-card${section.wide ? " defaults-card-wide" : ""}">
+              <legend><span class="defaults-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${sectionIcons[section.title] || sectionIcons["Voyage basics"]}</svg></span>${escapeHtml(section.title)}</legend>
+              <div class="defaults-card-fields">${items.map(field => {
+                const value = saved[field.name] ?? "";
+                return `<label class="defaults-row"><span>${escapeHtml(field.label)}</span>
+                  <input type="number" step="any" min="0" name="${escapeHtml(field.name)}"
+                    value="${escapeHtml(value)}" placeholder="${escapeHtml(field.default)}" />
+                  <span class="unit">${escapeHtml(field.unit)}</span></label>`;
+              }).join("")}</div>
+            </fieldset>`;
+          }).join("");
         } catch (error) {
           holder.className = "error";
           holder.textContent = `Could not load your defaults: ${error.message}`;
@@ -1552,6 +1589,8 @@
           return `
             <g data-region="${escapeHtml(r.region)}" data-supply="${r.supply}" data-demand="${r.demand}" data-status="${status.label}" data-days="${consistency ? consistency.days : ""}" data-window="${consistency ? consistency.windowDays : ""}">
               <circle class="map-bubble" cx="${x}" cy="${y}" r="${radius}" fill="${status.color}" fill-opacity="0.82" stroke="${isActive ? "var(--fg)" : "var(--map-water)"}" stroke-width="${isActive ? 3 : 2}"></circle>
+              <circle class="map-marker-ring" cx="${x}" cy="${y}" r="${radius + 4}" stroke="${status.color}"></circle>
+              <circle class="map-marker-core" cx="${x}" cy="${y}" r="1.8"></circle>
               <circle class="map-bubble-hit" cx="${x}" cy="${y}" r="${Math.max(radius, 12)}" tabindex="0" role="button" aria-label="${ariaLabel}"></circle>
               ${label}
             </g>
@@ -1559,12 +1598,16 @@
         }).join("");
 
         container.innerHTML = `
-          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="group" aria-label="Regional supply and demand map">
+          <div class="map-instrument"><span>GLOBAL MARKET ATLAS</span><div class="atlas-tools" role="group" aria-label="Map navigation"><button type="button" data-map-action="out" aria-label="Zoom map out">−</button><output aria-label="Map zoom">100%</output><button type="button" data-map-action="in" aria-label="Zoom map in">+</button><button type="button" data-map-action="reset" aria-label="Reset map view" title="Reset map view">⌖</button></div></div>
+          <svg viewBox="0 0 ${MAP_W} ${MAP_H}" role="group" aria-label="Regional supply and demand map" tabindex="0">
+            <defs><linearGradient id="oceanLand" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#3b6371"/><stop offset="1" stop-color="#1d3c4b"/></linearGradient></defs>
             ${graticule}
             ${land}
             <g class="ocean-labels" aria-hidden="true"><text x="150" y="230">PACIFIC OCEAN</text><text x="400" y="235">ATLANTIC</text><text x="660" y="280">INDIAN OCEAN</text></g>
             ${bubbles}
+            <g class="map-compass" transform="translate(910 355)" aria-hidden="true"><circle r="17"/><path d="M0-22V22M-22 0H22M0-15 4 5 0 2-4 5Z"/><text x="-3" y="-28">N</text></g>
           </svg>
+          <p class="atlas-caption"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 1v6M12 17v6M1 12h6M17 12h6"/></svg>Select a region · zoom to explore</span><span>${mapped.length} regions · simulated</span></p>
           <div class="hover-tooltip" id="mapTooltip"></div>
           <div class="map-legend">
             <span class="swatch"><span class="dot" style="background:var(--status-critical)"></span>Tight (demand &gt; supply)</span>
@@ -1962,8 +2005,8 @@
       // opened or closed), so the charts refit or return to their usual shape.
       let trendsResizeFrame = 0;
       new ResizeObserver(() => {
-        cancelAnimationFrame(trendsResizeFrame);
-        trendsResizeFrame = requestAnimationFrame(renderDailyTrendsCharts);
+        clearTimeout(trendsResizeFrame);
+        trendsResizeFrame = setTimeout(renderDailyTrendsCharts, 120);
       }).observe(trendsPanel);
 
       function renderDailyTrendsCharts() {
@@ -2756,6 +2799,44 @@
         return `<li>${idChip("vessel", row.vessel_id)}${diffs}</li>`;
       }
 
+      // "Updated information (overrides)": one row per Tonnage or Order Status
+      // Override submission, from the audit tables (vessel_overrides_sql /
+      // order_overrides_sql in dashboard_queries.py), so the before side is
+      // what the trader actually overwrote. Only fields the submission changed
+      // are shown, labelled as on the override forms; a before-value logged as
+      // null reads "Null", as in the audit trails.
+      const OVERRIDE_FIELD_SPECS = {
+        vessel: [
+          ["Status", "status", "old_status", auditStatusBadge],
+          ["Open area", "open_area", "old_open_area", escapeHtml],
+          ["Open date start", "open_date_start", "old_open_date_start", formatDate],
+          ["Open date end", "open_date_end", "old_open_date_end", formatDate],
+        ],
+        order: [
+          ["Laycan start", "laycan_start", "old_laycan_start", formatDate],
+          ["Laycan end", "laycan_end", "old_laycan_end", formatDate],
+          ["Cargo weight min (mt)", "cargo_weight_min", "old_cargo_weight_min", formatNumber],
+          ["Cargo weight max (mt)", "cargo_weight_max", "old_cargo_weight_max", formatNumber],
+          ["Assigned", "assigned", "old_assigned", (v) => escapeHtml(formatAssigned(v))],
+        ],
+      };
+
+      function overrideRow(row) {
+        const id = row.kind === "vessel" ? idChip("vessel", row.vessel_id) : `Order ${orderIdCell(row)}`;
+        const shown = (fmt, value) => (value === null || value === undefined || value === "" ? AUDIT_DASH : fmt(value));
+        let detail;
+        if (row.action === "DELETE") {
+          detail = `<div class="field-diff">${AUDIT_DELETED}</div>`;
+        } else {
+          detail = OVERRIDE_FIELD_SPECS[row.kind]
+            .filter(([, cur, prev]) => String(row[cur] ?? "") !== String(row[prev] ?? ""))
+            .map(([label, cur, prev, fmt]) =>
+              `<div class="field-diff"><span class="field-name">${escapeHtml(label)}:</span> <span class="field-old">${shown(fmt, row[prev])}</span> &rarr; <span class="field-new">${shown(fmt, row[cur])}</span></div>`)
+            .join("") || '<div class="field-diff muted">No values changed</div>';
+        }
+        return `<li>${id}${detail}</li>`;
+      }
+
       const EXPAND_ICON_SVG = `
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" />
@@ -2930,6 +3011,8 @@
               "The same supply moves the Daily Trends chart counts, dated by the day the new status takes effect rather than the day it was reported: Fixed or On Subs back to Open, and Open to Fixed or On Subs. Fixed to On Subs is not listed. A change reported today for a later date appears when that date arrives."],
             ["Field changes", data.field_changes, fieldChangeRow, byDay ? "update_date" : null],
             ["New orders", data.new_orders, (r) => `<li>Order ${orderIdCell(r)}: ${escapeHtml(r.load_port || "—")} &rarr; ${escapeHtml(r.discharge_port || "—")}</li>`, byDay ? "date_received" : null],
+            ["Updated information (overrides)", data.overrides, overrideRow, byDay ? "simulated_at" : null,
+              "Every Tonnage and Order Status Override submission in this window, updates and deletes, with what the trader changed from and to. Dated by when it was submitted, on the same simulated clock as the rest of the feed."],
           ];
           currentChangeGroups = groups;
           el.innerHTML = `
@@ -4398,6 +4481,7 @@
 
       refreshTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     </script>
-    <script src="/static/workspace.js"></script>
+    <script src="/static/workspace.js?v=6"></script>
+    <script src="/static/maritime.js?v=6"></script>
   </body>
 </html>

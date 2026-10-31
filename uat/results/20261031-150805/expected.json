@@ -1,0 +1,28 @@
+{
+  "v07": {
+    "sql": "-- v07  \"Show me the position history of VESSEL 0743.\"\n-- Every report of VESSEL 0743 up to today, one row per report. Compared by\n-- count, since the same vessel appears once per report.\nSELECT t.vessel_id AS id\nFROM tonnage_test t\nWHERE t.vessel_id = 'VESSEL 0743'\n  AND t.update_date < $1::date + 1;\n",
+    "ids": [
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743",
+      "VESSEL 0743"
+    ],
+    "count": 20
+  }
+}

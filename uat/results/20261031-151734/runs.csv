@@ -1,0 +1,7 @@
+case,story,run,prompt,expected_count,rows_returned,reported_count,passed,asked_ok,option_ok,names_ok,rows_ok,count_ok,invented_ok,reply_ok,format_ok,seconds,error
+v03,US-1.2,1,Show me the WAF openers.,18,18,18,True,True,,True,True,True,True,True,True,6.9,
+v03,US-1.2,2,Show me the WAF openers.,18,18,18,True,True,,True,True,True,True,True,True,5.1,
+v03,US-1.2,3,Show me the WAF openers.,18,18,18,True,True,,True,True,True,True,True,True,4.6,
+v04,US-1.2,1,"Show me open vessels in the Far East of at least 180,000 dwt.",131,131,131,True,True,,True,True,True,True,,True,5.6,
+v04,US-1.2,2,"Show me open vessels in the Far East of at least 180,000 dwt.",131,131,131,True,True,,True,True,True,True,,True,5.0,
+v04,US-1.2,3,"Show me open vessels in the Far East of at least 180,000 dwt.",131,131,131,True,True,,True,True,True,True,,True,5.5,

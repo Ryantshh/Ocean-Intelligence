@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
+import { Sheet, SheetPortal } from "@/components/ui/sheet";
+
 const PAGE_SIZE = 12;
 const SELECTION_CAP = 25;
 const PAGE_WINDOW = 2;
@@ -97,7 +99,7 @@ function Table({ columns, rows, noun }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
-  const [sendMenuSide, setSendMenuSide] = useState("right");
+  const [sendMenuBox, setSendMenuBox] = useState({});
   const sendMenuRef = useRef(null);
   const [openColumn, setOpenColumn] = useState(null);
   const [menuAt, setMenuAt] = useState(null);
@@ -742,18 +744,18 @@ ${toMarkdown(columns, chosen)}`);
             aria-haspopup="menu"
             aria-expanded={sendMenuOpen}
             onClick={(event) => {
-              // Open toward the side with room: once the bar wraps, the button
-              // sits at the left edge and a right-aligned menu is clipped.
-              const root = rootRef.current?.getBoundingClientRect();
+              // The browser top layer keeps actions outside scrolling clips.
               const button = event.currentTarget.getBoundingClientRect();
-              setSendMenuSide(root && button.right - root.left < 256 ? "left" : "right");
+              setSendMenuBox({ left: Math.max(8, Math.min(button.left, window.innerWidth - 272)), bottom: window.innerHeight - button.top + 6 });
               setSendMenuOpen((open) => !open);
             }}
           >
             {`Send ${selected.size || ""}`} &#9662;
           </button>
           {sendMenuOpen && (
-            <div className="oi-t-sendmenu" role="menu" style={{ [sendMenuSide]: 0 }}>
+            <div className="oi-t-sendmenu" role="menu" popover="manual"
+              ref={(node) => { if (node && !node.matches(":popover-open")) node.showPopover(); }}
+              style={{ position: "fixed", margin: 0, top: "auto", right: "auto", ...sendMenuBox }}>
               <button
                 role="menuitem"
                 className="oi-t-sendopt"
@@ -1335,6 +1337,37 @@ function Voyages({ set }) {
   );
 }
 
+// Render through Chainlit's supported portal so React retains ownership and actions.
+function ArtifactDock({ children, label }) {
+  const [host, setHost] = useState(null);
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    const slot = document.createElement("section");
+    slot.className = "oi-artifact-slot";
+    const attach = () => {
+      const composer = document.querySelector("#message-composer");
+      if (composer && slot.nextSibling !== composer) {
+        composer.before(slot);
+        setHost(slot);
+      }
+    };
+    const observer = new MutationObserver(attach);
+    observer.observe(document.body, { childList: true, subtree: true });
+    attach();
+    return () => { observer.disconnect(); slot.remove(); };
+  }, []);
+  if (!host) return null;
+  return <Sheet open modal={false}><SheetPortal container={host} forceMount>
+    <div className="oi-artifact-dock">
+      <button className="oi-artifact-toggle" aria-expanded={expanded}
+        aria-controls="oi-artifact-body" onClick={() => setExpanded(!expanded)}>
+        <span className="oi-artifact-label"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M9 10v10"/></svg>Artifacts · {label}</span><span>{expanded ? "Hide results −" : "Show results +"}</span>
+      </button>
+      <div id="oi-artifact-body" className="oi-artifact-body" hidden={!expanded}>{children}</div>
+    </div>
+  </SheetPortal></Sheet>;
+}
+
 export default function Results() {
   const sets = (props.sets ?? []).filter((set) => (set.rows ?? []).length);
   const seq = Number(props.seq) || 0;
@@ -1364,7 +1397,7 @@ export default function Results() {
 
   const active = sets[Math.min(tab, sets.length - 1)];
   return (
-    <div className="oi-t-tabwrap">
+    <ArtifactDock label={active.label ?? active.noun}><div className="oi-t-tabwrap">
       {sets.length > 1 && (
         <div className="oi-t-tabs">
           {sets.map((set, at) => (
@@ -1389,6 +1422,6 @@ export default function Results() {
       ) : (
         <Table key={active.label ?? active.noun} {...active} />
       )}
-    </div>
+    </div></ArtifactDock>
   );
 }

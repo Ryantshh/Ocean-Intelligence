@@ -1,0 +1,242 @@
+[
+  {
+    "case": "v07",
+    "story": "US-1.2",
+    "run": 1,
+    "prompt": "Show me the position history of VESSEL 0743.",
+    "thread_id": "uat-v07-1-23b54c01",
+    "seconds": 6.5,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "include_history": true,
+            "vessel_ids": [
+              "VESSEL 0743"
+            ]
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE vessel_id::text = ANY($2) AND update_date < $1 ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['VESSEL 0743']"
+        ],
+        "row_count": 20
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0743"
+    ],
+    "reply": "20 position reports found for VESSEL\u202f0743.\n\n- 10\u202fJun\u202f2025 \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean); open window\u202f14\u201117\u202fJul\u202f2025.  \n- 6\u202fJun\u202f2025 \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean); open window\u202f14\u201117\u202fJun\u202f2025.  \n- 12\u202fMay\u202f2025 \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean); open on\u202f12\u202fMay\u202f2025.  \n- 12\u202fMay\u202f2025 \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean); open on\u202f12\u202fMay\u202f2025 (duplicate entry).  \n- 15\u202fApr\u202f2025 \u2013 anchored at **Lanshan** (Far\u202fEast); open on\u202f25\u202fMar\u202f2025.\n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel shown at its latest reported position; history included per the request.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 20,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v07",
+    "story": "US-1.2",
+    "run": 2,
+    "prompt": "Show me the position history of VESSEL 0743.",
+    "thread_id": "uat-v07-2-c8f37a98",
+    "seconds": 4.8,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "include_history": true,
+            "vessel_ids": [
+              "VESSEL 0743"
+            ]
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE vessel_id::text = ANY($2) AND update_date < $1 ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['VESSEL 0743']"
+        ],
+        "row_count": 20
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0743"
+    ],
+    "reply": "20 position reports found for VESSEL\u202f0743.\n\n- **Jul\u202f14\u201117\u202f2025** \u2013 Open in **Port\u202fSaid** (East\u202fMediterranean); anchored, LADEN.  \n- **Jun\u202f14\u201117\u202f2025** \u2013 Open in **Port\u202fSaid** (East\u202fMediterranean); anchored, LADEN.  \n- **Apr\u202f25\u202f2025** \u2013 Open in **Port\u202fSaid** (East\u202fMediterranean); anchored, LADEN.  \n- **May\u202f12\u202f2025** \u2013 Open in **Port\u202fSaid** (East\u202fMediterranean); anchored, LADEN.  \n- **Mar\u202f25\u202f2025** \u2013 Open in **Lanshan** (Far\u202fEast); anchored, LADEN.  \n\n*Assumed: each row reflects the vessel\u2019s reported position at the update time; history included as requested.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 20,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": true,
+      "passed": true
+    }
+  },
+  {
+    "case": "v07",
+    "story": "US-1.2",
+    "run": 3,
+    "prompt": "Show me the position history of VESSEL 0743.",
+    "thread_id": "uat-v07-3-974c392e",
+    "seconds": 4.7,
+    "forms": [],
+    "tool_calls": [
+      {
+        "name": "search_orders_and_tonnage",
+        "args": {
+          "cargoes": null,
+          "vessels": {
+            "include_history": true,
+            "vessel_ids": [
+              "VESSEL 0743"
+            ]
+          }
+        }
+      }
+    ],
+    "searches": [
+      {
+        "table": "vessels",
+        "sql": "SELECT \"vessel_id\", \"dwt\", \"grain_capacity\", \"ship_size\", \"ship_type\", \"vessel_status\", \"ballast_laden\", CASE WHEN \"commercial_status\" IN ('FIXED', 'ON SUBS') AND \"open_date_start\" <= tonnage_reference_now() AND \"open_date_end\" + interval '1 day' > tonnage_reference_now() THEN \"commercial_status\" ELSE 'OPEN' END AS \"commercial_status\", \"open_area\", \"parent_zone\", \"open_date_start\", \"open_date_end\", \"destination\", \"eta\", \"update_date\", \"first_date_received\" FROM public.tonnage_test WHERE vessel_id::text = ANY($2) AND update_date < $1 ORDER BY update_date DESC",
+        "params": [
+          "2025-06-18",
+          "['VESSEL 0743']"
+        ],
+        "row_count": 20
+      }
+    ],
+    "final_rows": {
+      "vessels": [
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743",
+        "VESSEL 0743"
+      ]
+    },
+    "all_ids": [
+      "VESSEL 0743"
+    ],
+    "reply": "20 position reports found for VESSEL\u202f0743.\n\n- **July\u202f14\u201117\u202f2025** \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean).  \n- **June\u202f14\u201117\u202f2025** \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean).  \n- **May\u202f12\u202f2025** \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean).  \n- **May\u202f4\u20118\u202f2025** \u2013 anchored at **Tubarao** (East\u202fCoast\u202fSouth\u202fAmerica).  \n- **April\u202f25\u202f2025** \u2013 anchored at **Port\u202fSaid** (East\u202fMediterranean).  \n\n*Assumed: as of Tuesday\u202f17\u202fJune\u202f2025; each vessel shown at its latest reported position; history included as requested.*",
+    "error": "",
+    "missing": [],
+    "extra": [],
+    "reported_count": 20,
+    "unknown_names": [],
+    "invented": [],
+    "raw_names": [],
+    "checks": {
+      "asked_ok": true,
+      "option_ok": null,
+      "rows_ok": true,
+      "count_ok": true,
+      "names_ok": true,
+      "invented_ok": true,
+      "reply_ok": null,
+      "format_ok": true,
+      "passed": true
+    }
+  }
+]

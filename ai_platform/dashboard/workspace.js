@@ -7,10 +7,10 @@
   const pill = document.getElementById('chatPill');
   const read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
   const save = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
-  const savedWidth = () => Number(read('ocean-chat-width')) || 440;
+  const savedWidth = () => Number(read('ocean-chat-width')) || Math.min(880, innerWidth * 0.62);
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   function resize(width, persist = true) {
-    const max = Math.max(360, Math.min(innerWidth - 320, innerWidth / 2));
+    const max = Math.max(360, Math.min(innerWidth - 320, innerWidth * 0.72));
     width = Math.round(clamp(width, 360, max));
     document.documentElement.style.setProperty('--chat-width', `${width}px`);
     handle.setAttribute('aria-valuenow', width);
@@ -106,10 +106,20 @@
     handle.setPointerCapture(event.pointerId);
     document.body.classList.add('chat-resizing');
   });
+  let dockResizeFrame = 0, pendingDockWidth = null;
   handle.addEventListener('pointermove', (event) => {
-    if (handle.hasPointerCapture(event.pointerId)) resize(innerWidth - event.clientX);
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    pendingDockWidth = innerWidth - event.clientX;
+    if (!dockResizeFrame) dockResizeFrame = requestAnimationFrame(() => {
+      dockResizeFrame = 0;
+      resize(pendingDockWidth, false);
+    });
   });
-  const stop = () => document.body.classList.remove('chat-resizing');
+  const stop = () => {
+    cancelAnimationFrame(dockResizeFrame); dockResizeFrame = 0;
+    if (pendingDockWidth !== null) { resize(pendingDockWidth); pendingDockWidth = null; }
+    document.body.classList.remove('chat-resizing');
+  };
   handle.addEventListener('pointerup', stop);
   handle.addEventListener('pointercancel', stop);
   handle.addEventListener('lostpointercapture', stop);
