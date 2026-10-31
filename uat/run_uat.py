@@ -85,12 +85,13 @@ def _install_recorder() -> None:
 
 
 _ODD_CHARACTERS = str.maketrans({
-    " ": " ", " ": " ", " ": " ", " ": " ",
-    "‐": "-", "‑": "-", "‒": "-", "–": "-",
-    "​": None, "‌": None, "‍": None, "﻿": None,
+    "\u00a0": " ", "\u2007": " ", "\u2009": " ", "\u202f": " ",
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+    "\u200b": None, "\u200c": None, "\u200d": None, "\ufeff": None,
 })
 """Spaces and hyphens the model puts inside names, made plain, as the chat page
-does before display, so "West Australia" reads as "West Australia"."""
+does before display: a name written with a narrow no-break space, such as
+"West\u202fAustralia", reads as "West Australia"."""
 
 
 def _plain(text: str) -> str:
@@ -125,7 +126,7 @@ def _answer_form(case: dict[str, Any], form: dict[str, Any]) -> tuple[dict[str, 
             + [f"{o.get('label', '')} {o.get('description', '')}" for o in question.get("options", [])]
         )
         rule = next(
-            (r for r in case.get("answers", []) if re.search(r["when"], haystack, re.I)),
+            (r for r in case.get("answers", []) if re.search(r["when"], haystack, re.IGNORECASE)),
             None,
         )
         if rule is None:
@@ -182,7 +183,7 @@ async def run_once(agent: Any, case: dict[str, Any], run_no: int, callbacks: lis
             if case.get("stop_at_ask"):
                 break
             payload = Command(resume=answers)
-    except Exception as exc:  # recorded and scored as a failed run
+    except Exception as exc:  # noqa: BLE001 -- any crash is recorded and scored as a failed run
         error = f"{type(exc).__name__}: {exc}"
 
     return {
@@ -228,11 +229,11 @@ def reported_count(reply: str) -> int | None:
     """Read the count from the reply's opening sentence."""
     opening = re.split(r"(?<=[.!?])\s|\n", reply.strip(), maxsplit=1)[0] if reply else ""
     opening = re.sub(r"\*", "", opening)
-    counted = re.search(rf"\b(\d[\d,]*)\s+{COUNTED_NOUN}", opening, re.I)
+    counted = re.search(rf"\b(\d[\d,]*)\s+{COUNTED_NOUN}", opening, re.IGNORECASE)
     if counted:
         return int(counted.group(1).replace(",", ""))
     digits = re.search(r"\b\d[\d,]*\b", opening)
-    words = re.search(r"\b(" + "|".join(sorted(NUMBER_WORDS, key=len, reverse=True)) + r")\b", opening, re.I)
+    words = re.search(r"\b(" + "|".join(sorted(NUMBER_WORDS, key=len, reverse=True)) + r")\b", opening, re.IGNORECASE)
     if digits and (not words or digits.start() < words.start()):
         return int(digits.group().replace(",", ""))
     if words:
@@ -335,7 +336,7 @@ def score(
     checks["invented_ok"] = not run["invented"]
 
     if case.get("reply_must_match") and not stopped:
-        checks["reply_ok"] = bool(re.search(case["reply_must_match"], reply, re.I))
+        checks["reply_ok"] = bool(re.search(case["reply_must_match"], reply, re.IGNORECASE))
     else:
         checks["reply_ok"] = None
 
@@ -371,8 +372,10 @@ def write_report(out: Path, cases: list[dict[str, Any]], runs: list[dict[str, An
         "",
         f"Working date: {today}. Runs per case: {max(r['run'] for r in runs)}.",
         "",
-        f"**Cases passed: {sum(case_passed.values())}/{len(case_passed)}** (a case passes only when every one of its runs passes). "
-        f"Runs passed: {sum(r['checks']['passed'] for r in runs)}/{len(runs)}.",
+        (
+            f"**Cases passed: {sum(case_passed.values())}/{len(case_passed)}** (a case passes only when every one of its runs passes). "
+            f"Runs passed: {sum(r['checks']['passed'] for r in runs)}/{len(runs)}."
+        ),
         "",
         "## By user story",
         "",
