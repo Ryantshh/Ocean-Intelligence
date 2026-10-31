@@ -218,9 +218,10 @@ def _all_ids() -> set[str]:
     return {_row_id(s["table"], row) for s in recorded_searches for row in s["rows"]}
 
 
-COUNTED_NOUN = r"(?:\S+\s+){0,3}?(?:cargo|order|vessel|enquir|ship|stem|position|report)"
-"""A count is a number followed within a few words by what was counted, so the
-30 in "opening within the next 30 days" is not read as the count."""
+COUNTED_NOUN = r"(?:[^\d\s]\S*\s+){0,3}?(?:cargo|order|vessel|enquir|ship|stem|position|report|match|result|hit|found)"
+"""A count is a number followed within a few words by what was counted, with no
+other number in between: the 30 in "opening within the next 30 days" and the
+180 in "180 kt dwt: 131 matches" are not read as the count."""
 
 
 def reported_count(reply: str) -> int | None:
