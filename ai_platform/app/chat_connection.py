@@ -4,8 +4,8 @@ Profile selection can overlap two connections using one session ID. Chainlit's
 restore() moves the session to the newest socket, but the browser can retain the
 other socket. Its next client_message otherwise raises 'Session not found'.
 """
-from functools import wraps
 import logging
+from functools import wraps
 
 logger = logging.getLogger(__name__)
 
