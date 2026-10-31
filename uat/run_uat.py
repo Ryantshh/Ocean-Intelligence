@@ -72,7 +72,10 @@ def _install_recorder() -> None:
 
     async def recording_fetch_rows(sql: str, params: list[Any]) -> list[dict[str, Any]]:
         rows = await original(sql, params)
-        table = "vessels" if "tonnage_test" in sql else "cargoes"
+        # new_vessels reads the dashboard's views, not tonnage_test, so its
+        # rows' own vessel_id says which table they belong to
+        is_vessels = "tonnage_test" in sql or bool(rows and "vessel_id" in rows[0] and "order_id" not in rows[0])
+        table = "vessels" if is_vessels else "cargoes"
         recorded_searches.append(
             {"table": table, "sql": sql, "params": [str(p) for p in params], "rows": rows}
         )
