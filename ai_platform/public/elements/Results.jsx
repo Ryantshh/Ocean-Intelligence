@@ -19,6 +19,8 @@ function mountedPanels() {
 
 function isNewestPanel(id) {
   const { panels } = mountedPanels();
+  const selected = mountedPanels().selected;
+  if (selected && panels.has(selected)) return selected === id;
   const mine = panels.get(id);
   if (!mine) return false;
   return [...panels.values()].every(
@@ -1342,6 +1344,11 @@ function ArtifactDock({ children, label }) {
   const [host, setHost] = useState(null);
   const [expanded, setExpanded] = useState(true);
   useEffect(() => {
+    const expand = () => setExpanded(true);
+    window.addEventListener("oi-results-expand", expand);
+    return () => window.removeEventListener("oi-results-expand", expand);
+  }, []);
+  useEffect(() => {
     const slot = document.createElement("section");
     slot.className = "oi-artifact-slot";
     const attach = () => {
@@ -1380,6 +1387,7 @@ export default function Results() {
     store.mounts += 1;
     const id = store.mounts;
     store.panels.set(id, { seq, order: id });
+    store.selected = null;
     const onChange = () => setChanges((count) => count + 1);
     window.addEventListener(CHANGE_EVENT, onChange);
     setPanelId(id);
@@ -1393,11 +1401,21 @@ export default function Results() {
 
   // an older panel mounted beside a newer one renders nothing; mounted alone,
   // as when its message link is clicked, it is the newest and shows
-  if (!sets.length || !isNewestPanel(panelId)) return null;
+  if (!sets.length) return null;
+  const selected = isNewestPanel(panelId);
+  const openArtifact = () => {
+    mountedPanels().selected = panelId;
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+    window.dispatchEvent(new Event("oi-results-expand"));
+  };
 
   const active = sets[Math.min(tab, sets.length - 1)];
   return (
-    <ArtifactDock label={active.label ?? active.noun}><div className="oi-t-tabwrap">
+    <>
+    <button className="oi-results-link" onClick={openArtifact} aria-pressed={selected}>
+      View results · {sets.map(set => `${set.label ?? set.noun} (${set.rows.length})`).join(" · ")}
+    </button>
+    {selected && <ArtifactDock label={active.label ?? active.noun}><div className="oi-t-tabwrap">
       {sets.length > 1 && (
         <div className="oi-t-tabs">
           {sets.map((set, at) => (
@@ -1422,6 +1440,7 @@ export default function Results() {
       ) : (
         <Table key={active.label ?? active.noun} {...active} />
       )}
-    </div></ArtifactDock>
+    </div></ArtifactDock>}
+    </>
   );
 }
