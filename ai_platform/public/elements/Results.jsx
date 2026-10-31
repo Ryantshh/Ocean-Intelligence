@@ -887,11 +887,27 @@ function Voyages({ set }) {
   const [drafts, setDrafts] = useState(set.voyages ?? []);
   const [vesselId, setVesselId] = useState(drafts[0]?.vessel_id ?? null);
   const [openId, setOpenId] = useState(null);
+  const [rowMenu, setRowMenu] = useState(null);
+  const rowMenuRef = useRef(null);
   const [orderEdits, setOrderEdits] = useState({ ports: {}, values: {} });
   const [vesselEdits, setVesselEdits] = useState({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const portNames = usePortNames();
+
+  useEffect(() => {
+    if (!rowMenu) return undefined;
+    const close = (event) => {
+      if (rowMenuRef.current && !rowMenuRef.current.contains(event.target)) setRowMenu(null);
+    };
+    const onKey = (event) => event.key === "Escape" && setRowMenu(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [rowMenu]);
 
   const draft = drafts.find((each) => each.vessel_id === vesselId) ?? drafts[0];
   const first = drafts[0];
@@ -1176,6 +1192,24 @@ function Voyages({ set }) {
     setVesselId(id);
     setOpenId((open) => (open === id ? null : id));
   };
+  // Only inside the dashboard, which owns the override forms; see Table's override.
+  const inDashboard = window.parent !== window;
+  const orderAt = columns.indexOf("order_id");
+  const orderId = orderAt >= 0 ? (set.rows ?? [])[0]?.[orderAt] : null;
+  const sendOverride = (kind, id) => {
+    setRowMenu(null);
+    window.parent.postMessage({ type: "oi-open-override", kind, id: String(id) }, window.location.origin);
+    setNotice(`Opened ${kind} ${id} in the override form`);
+  };
+  const openRowMenu = (event, id) => {
+    event.stopPropagation();
+    const button = event.currentTarget.getBoundingClientRect();
+    setRowMenu((open) =>
+      open?.id === id
+        ? null
+        : { id, left: Math.max(8, Math.min(button.right - 264, window.innerWidth - 272)), top: button.bottom + 4 },
+    );
+  };
 
   return (
     <div className="oi-v">
@@ -1204,6 +1238,15 @@ function Voyages({ set }) {
         .oi-v-chevron[data-open="true"] { transform: rotate(90deg); }
         .oi-v-rank td[data-num="true"] { text-align: right; font-variant-numeric: tabular-nums; }
         .oi-v-muted { color: hsl(var(--muted-foreground)); }
+        .oi-v-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.3rem 0.8rem; margin-bottom: 0.4rem; }
+        .oi-v-head .oi-v-title { margin-bottom: 0; }
+        .oi-v-override, .oi-v-menu {
+          font: inherit; font-size: 0.7rem; padding: 0.2rem 0.55rem; border-radius: 0.375rem; cursor: pointer;
+          border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--foreground)); white-space: nowrap;
+        }
+        .oi-v-override:hover, .oi-v-menu:hover, .oi-v-menu[aria-expanded="true"] { border-color: hsl(var(--primary)); color: hsl(var(--primary)); }
+        .oi-v-actions { text-align: right; width: 1%; }
+        .oi-v-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
         .oi-v-group { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.35rem 0; }
         .oi-v-group + .oi-v-group { border-top: 1px solid hsl(var(--border) / 0.6); }
         .oi-v-group-name { font-weight: 600; font-size: 0.74rem; }
@@ -1238,9 +1281,21 @@ function Voyages({ set }) {
       `}</style>
 
       <div className="oi-v-card">
-        <div className="oi-v-title">Vessel comparison <span className="oi-v-muted">· highest profit first</span></div>
+        <div className="oi-v-head">
+          <div className="oi-v-title">Vessel comparison <span className="oi-v-muted">· highest profit first</span></div>
+          {inDashboard && !isBlank(orderId) && (
+            <button
+              type="button"
+              className="oi-v-override"
+              onClick={() => sendOverride("order", orderId)}
+              title="Open this order in the dashboard's Order Status Override form"
+            >
+              Order {String(orderId)} → Order Status Override
+            </button>
+          )}
+        </div>
         <div className="oi-v-rank-scroll" role="region" aria-label="Vessel ranking" tabIndex={0}><table className="oi-v-rank">
-          <thead><tr><th scope="col">Rank</th><th scope="col">Vessel</th><th scope="col">Net revenue</th><th scope="col">Profit</th></tr></thead>
+          <thead><tr><th scope="col">Rank</th><th scope="col">Vessel</th><th scope="col">Net revenue</th><th scope="col">Profit</th>{inDashboard && <th scope="col"><span className="oi-v-sr">Actions</span></th>}</tr></thead>
           <tbody>
             {[...ranked, ...waiting].map((each) => {
               const isOpen = each.vessel_id === openId;
@@ -1269,10 +1324,24 @@ function Voyages({ set }) {
                     ) : (
                       <td className="oi-v-muted" colSpan={2}>{statusText(each)}</td>
                     )}
+                    {inDashboard && (
+                      <td className="oi-v-actions">
+                        <button
+                          type="button"
+                          className="oi-v-menu"
+                          aria-haspopup="menu"
+                          aria-expanded={rowMenu?.id === each.vessel_id}
+                          aria-label={`Send ${each.vessel_id} to an override form`}
+                          onClick={(event) => openRowMenu(event, each.vessel_id)}
+                        >
+                          Override &#9662;
+                        </button>
+                      </td>
+                    )}
                   </tr>
                   {isOpen && (
                     <tr className="oi-v-detail-row">
-                      <td colSpan={4}>
+                      <td colSpan={inDashboard ? 5 : 4}>
                         <dl className="oi-v-facts">
                           {factColumns.map((column) => {
                             const value = vesselRow(each.vessel_id)?.[columns.indexOf(column)];
@@ -1292,6 +1361,19 @@ function Voyages({ set }) {
             })}
           </tbody>
         </table></div>
+        {rowMenu && (
+          <div className="oi-t-sendmenu" role="menu" popover="manual"
+            ref={(node) => {
+              rowMenuRef.current = node;
+              if (node && !node.matches(":popover-open")) node.showPopover();
+            }}
+            style={{ position: "fixed", margin: 0, right: "auto", bottom: "auto", left: rowMenu.left, top: rowMenu.top }}>
+            <button role="menuitem" className="oi-t-sendopt" onClick={() => sendOverride("vessel", rowMenu.id)}>
+              <span className="oi-t-sendopt-label">Open in Tonnage Status Override</span>
+              <span className="oi-t-sendopt-desc">Dashboard form with {rowMenu.id} filled in</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="oi-v-card">
@@ -1340,9 +1422,30 @@ function Voyages({ set }) {
 }
 
 // Render through Chainlit's supported portal so React retains ownership and actions.
+// The panel slides over the transcript from the right edge, like Chainlit's
+// history sheet: a dimmed backdrop covers the rest and closes it on click.
+const ARTIFACT_WIDTH_KEY = "oi-artifact-width";
+const ARTIFACT_MIN_WIDTH = 280;
+const BACKDROP_MIN_WIDTH = 56;
+
+function clampArtifactWidth(width) {
+  const widest = Math.max(ARTIFACT_MIN_WIDTH, window.innerWidth - BACKDROP_MIN_WIDTH);
+  return Math.round(Math.min(Math.max(width, ARTIFACT_MIN_WIDTH), widest));
+}
+
+function savedArtifactWidth() {
+  try {
+    return Number(localStorage.getItem(ARTIFACT_WIDTH_KEY)) || null;
+  } catch {
+    return null;
+  }
+}
+
 function ArtifactDock({ children, label }) {
   const [host, setHost] = useState(null);
   const [expanded, setExpanded] = useState(true);
+  const [width, setWidth] = useState(savedArtifactWidth);
+  const dragStart = useRef(null);
   useEffect(() => {
     const expand = () => setExpanded(true);
     window.addEventListener("oi-results-expand", expand);
@@ -1351,27 +1454,87 @@ function ArtifactDock({ children, label }) {
   useEffect(() => {
     const slot = document.createElement("section");
     slot.className = "oi-artifact-slot";
-    const attach = () => {
-      const composer = document.querySelector("#message-composer");
-      if (composer && slot.nextSibling !== composer) {
-        composer.before(slot);
-        setHost(slot);
-      }
-    };
-    const observer = new MutationObserver(attach);
-    observer.observe(document.body, { childList: true, subtree: true });
-    attach();
-    return () => { observer.disconnect(); slot.remove(); };
+    document.body.append(slot);
+    setHost(slot);
+    return () => slot.remove();
   }, []);
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const onKey = (event) => event.key === "Escape" && setExpanded(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [expanded]);
+  useEffect(() => {
+    const root = document.documentElement.style;
+    const apply = () => {
+      if (width) root.setProperty("--oi-artifact-width", `${clampArtifactWidth(width)}px`);
+      else root.removeProperty("--oi-artifact-width");
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [width]);
+
+  const startDrag = (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const dock = event.currentTarget.parentElement.getBoundingClientRect();
+    dragStart.current = { x: event.clientX, width: dock.width };
+    document.body.classList.add("oi-artifact-resizing");
+  };
+  const moveDrag = (event) => {
+    if (!dragStart.current) return;
+    setWidth(clampArtifactWidth(dragStart.current.width + dragStart.current.x - event.clientX));
+  };
+  const endDrag = () => {
+    if (!dragStart.current) return;
+    dragStart.current = null;
+    document.body.classList.remove("oi-artifact-resizing");
+    setWidth((current) => {
+      try {
+        if (current) localStorage.setItem(ARTIFACT_WIDTH_KEY, String(current));
+      } catch {}
+      return current;
+    });
+  };
+  const nudge = (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const current = event.currentTarget.parentElement.getBoundingClientRect().width;
+    const next = clampArtifactWidth(current + (event.key === "ArrowLeft" ? 24 : -24));
+    setWidth(next);
+    try {
+      localStorage.setItem(ARTIFACT_WIDTH_KEY, String(next));
+    } catch {}
+  };
   if (!host) return null;
   return <Sheet open modal={false}><SheetPortal container={host} forceMount>
-    <div className="oi-artifact-dock">
-      <button className="oi-artifact-toggle" aria-expanded={expanded}
-        aria-controls="oi-artifact-body" onClick={() => setExpanded(!expanded)}>
-        <span className="oi-artifact-label"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M9 10v10"/></svg>Artifacts · {label}</span><span>{expanded ? "Hide results −" : "Show results +"}</span>
+    {expanded ? (
+      <>
+      <div className="oi-artifact-backdrop" aria-hidden="true" onClick={() => setExpanded(false)} />
+      <aside className="oi-artifact-dock" aria-label={`Results · ${label}`}>
+        <div className="oi-artifact-resize" role="separator" aria-orientation="vertical" tabIndex={0}
+          aria-label="Resize results panel" title="Drag to resize"
+          onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag}
+          onPointerCancel={endDrag} onLostPointerCapture={endDrag} onKeyDown={nudge} />
+        <div className="oi-artifact-head">
+          <span className="oi-artifact-label"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M9 10v10"/></svg>Results · {label}</span>
+          <button className="oi-artifact-toggle" aria-expanded="true" aria-controls="oi-artifact-body"
+            title="Hide results" aria-label="Hide results" onClick={() => setExpanded(false)}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16M9 10l2 2-2 2"/></svg>
+          </button>
+        </div>
+        <div id="oi-artifact-body" className="oi-artifact-body">{children}</div>
+      </aside>
+      </>
+    ) : (
+      <button className="oi-artifact-reopen" aria-expanded="false" aria-controls="oi-artifact-body"
+        title="Show results" onClick={() => setExpanded(true)}>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16M11 10l-2 2 2 2"/></svg>
+        <span>Results</span>
       </button>
-      <div id="oi-artifact-body" className="oi-artifact-body" hidden={!expanded}>{children}</div>
-    </div>
+    )}
   </SheetPortal></Sheet>;
 }
 
