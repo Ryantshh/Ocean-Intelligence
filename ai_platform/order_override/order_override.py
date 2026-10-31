@@ -11,7 +11,7 @@ so every endpoint here names both. Each pair is one row (unlike
 ``tonnage_test``'s ``vessel_id``), so there is no copy/delete/insert swap to
 do, and no separate overrides table.
 
-``laycan_start``/``laycan_end``/``cargo_weight_min``/``cargo_weight_max``
+``laycan_start``/``laycan_end``/``cargo_weight_min``/``cargo_weight_max``/``assigned``
 are persisted -- the weight pair standing in for "quantity", since
 ``order_test`` has no single quantity column. ``customer_name`` isn't a
 column ``order_test`` has -- adding one is an open schema question -- so
@@ -81,6 +81,8 @@ class OrderOverrideRequest(BaseModel):
     cargo_weight_min: float | None = Field(default=None, ge=0)
     cargo_weight_max: float | None = Field(default=None, ge=0)
     customer_name: str | None = Field(default=None, max_length=200)
+    # order_test.assigned (boolean); None leaves it unchanged.
+    assigned: bool | None = None
 
 
 @router.get("/orders")
@@ -183,6 +185,7 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
             laycan_end=body.laycan_end,
             cargo_weight_min=body.cargo_weight_min,
             cargo_weight_max=body.cargo_weight_max,
+            assigned=body.assigned,
         )
     )
     if not rows:
@@ -217,6 +220,8 @@ async def submit_order_override(body: OrderOverrideRequest) -> dict[str, Any]:
                 old_laycan_end=_to_timestamp(snapshot["laycan_end"]),
                 old_cargo_weight_min=snapshot["cargo_weight_min"],
                 old_cargo_weight_max=snapshot["cargo_weight_max"],
+                assigned=new_row["assigned"],
+                old_assigned=snapshot["assigned"],
             )
         )
     except asyncpg.UndefinedTableError:
@@ -276,6 +281,7 @@ async def delete_order(
                 old_laycan_end=_to_timestamp(old["laycan_end"]),
                 old_cargo_weight_min=old["cargo_weight_min"],
                 old_cargo_weight_max=old["cargo_weight_max"],
+                old_assigned=old["assigned"],
                 action="DELETE",
             )
         )

@@ -1,6 +1,6 @@
 """Compile the chartering agent.
 
-One agent, three tools, three middleware. Everything the old ``StateGraph`` did by
+One agent, five tools, three middleware. Everything the old ``StateGraph`` did by
 routing between nodes is now either a tool call the model chooses or a middleware
 hook on the loop.
 
@@ -27,7 +27,12 @@ from ai_platform.backend.llm import get_chat_model
 from ai_platform.backend.logging_utils import get_logger
 from ai_platform.backend.matching import match_orders
 from ai_platform.backend.prompts import AGENT_SYSTEM
-from ai_platform.backend.tools import ask_user, search_orders_and_tonnage
+from ai_platform.backend.tools import (
+    ask_user,
+    flag_for_dev_team,
+    new_vessels,
+    search_orders_and_tonnage,
+)
 
 _logger = get_logger("agent")
 
@@ -90,7 +95,7 @@ _middleware: list[AgentMiddleware[Any, Any, Any]] = [
 
 agent = create_agent(
     model=model,
-    tools=[search_orders_and_tonnage, match_orders, ask_user],
+    tools=[search_orders_and_tonnage, match_orders, new_vessels, ask_user, flag_for_dev_team],
     system_prompt=AGENT_SYSTEM,
     middleware=_middleware,
     checkpointer=InMemorySaver(),
