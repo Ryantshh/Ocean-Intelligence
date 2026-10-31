@@ -146,6 +146,16 @@ class RepeatedQuestionTests(unittest.TestCase):
         self.assertIn(tools.ALREADY_ANSWERED_KEY, result)
 
 
+class RetryTests(unittest.TestCase):
+    def test_only_a_malformed_tool_call_is_retried(self):
+        from ai_platform.backend.agent import is_malformed_tool_call
+
+        malformed = Exception("Error code: 400 - {'error': {'code': 'tool_use_failed', 'message': 'attempted to call tool x'}}")
+        self.assertTrue(is_malformed_tool_call(malformed))
+        self.assertFalse(is_malformed_tool_call(Exception("Error code: 400 - context_length_exceeded")))
+        self.assertFalse(is_malformed_tool_call(TimeoutError("timed out")))
+
+
 def tables_question(text, header):
     return tools.Question(question=text, header=header, options=[tools.Option(label="Tianjin", description="a port")])
 
@@ -186,6 +196,16 @@ class MonthTests(unittest.TestCase):
         search = tables.VesselSearch(open_month="2028-02")
         self.assertEqual(search.open_end_from, date(2028, 2, 1))
         self.assertEqual(search.open_start_to, date(2028, 2, 29))
+
+    def test_updated_within_days_counts_back_from_the_working_date(self):
+        from ai_platform.backend.clock import working_date
+
+        cargoes = tables.OrderSearch(updated_within_days=30, updated_from=date(2025, 5, 31))
+        self.assertEqual(cargoes.updated_from, working_date() - timedelta(days=30))
+        vessels = tables.VesselSearch(updated_within_days=3)
+        self.assertEqual(vessels.updated_from, working_date() - timedelta(days=3))
+        with self.assertRaises(ValueError):
+            tables.OrderSearch(updated_within_days=0)
 
     def test_a_malformed_month_is_rejected(self):
         with self.assertRaises(ValueError):

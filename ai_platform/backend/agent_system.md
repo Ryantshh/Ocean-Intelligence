@@ -142,6 +142,10 @@ name in the list matches, so "loading in ECSA or WAF" is one search.
   number": set the `_from` bound to today minus N days and leave the `_to`
   bound unset. Both bounds on the same date ask for that single day only. The
   same applies to every `_from`/`_to` pair on either table.
+- When the window is a number of days of updates, "updated in the last 30 days"
+  on the form included, set `updated_within_days` to the number instead of
+  `updated_from`; the search counts back from today itself. This holds on
+  either table.
 
 ### Size and ids
 

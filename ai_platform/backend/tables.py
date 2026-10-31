@@ -127,6 +127,12 @@ class OrderSearch(BaseModel):
     )
     updated_from: date | None = Field(default=None, description="last updated on or after")
     updated_to: date | None = Field(default=None, description="last updated on or before")
+    updated_within_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=366,
+        description="updated in the last N days, counted back from today; replaces updated_from",
+    )
     weight_min: float | None = Field(
         default=None, description="whole stem at or above this, in tonnes"
     )
@@ -168,8 +174,12 @@ class OrderSearch(BaseModel):
         The laycan cancels on or after the month's first day and opens by its
         last. Done here rather than asked of the model, which sometimes put both
         bounds on the start and so dropped laycans that opened the month before.
-        The month replaces every other laycan bound.
+        The month replaces every other laycan bound. ``updated_within_days`` is
+        turned into ``updated_from`` the same way, counted back from the working
+        date, because the model sometimes miscounted "the last 30 days".
         """
+        if self.updated_within_days:
+            self.updated_from = working_date() - timedelta(days=self.updated_within_days)
         if self.laycan_month:
             first, last = month_bounds(self.laycan_month)
             self.laycan_start_from = None
@@ -217,6 +227,12 @@ class VesselSearch(BaseModel):
     updated_to: date | None = Field(
         default=None, description="position last updated on or before"
     )
+    updated_within_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=366,
+        description="position updated in the last N days, counted back from today; replaces updated_from",
+    )
     received_from: date | None = Field(
         default=None, description="position first reported on or after"
     )
@@ -262,8 +278,11 @@ class VesselSearch(BaseModel):
         """Turn ``open_month`` into the overlap a month asks for, as for cargoes.
 
         The open window closes on or after the month's first day and opens by
-        its last. The month replaces every other open bound.
+        its last. The month replaces every other open bound. ``updated_within_days``
+        is turned into ``updated_from`` as for cargoes.
         """
+        if self.updated_within_days:
+            self.updated_from = working_date() - timedelta(days=self.updated_within_days)
         if self.open_month:
             first, last = month_bounds(self.open_month)
             self.open_start_from = None
