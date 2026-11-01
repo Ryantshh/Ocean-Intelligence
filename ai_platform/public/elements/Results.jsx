@@ -31,6 +31,11 @@ function isNewestPanel(id) {
   );
 }
 
+function hideArtifact() {
+  mountedPanels().hidden = true;
+  window.dispatchEvent(new Event("oi-results-collapse"));
+}
+
 function isBlank(value) {
   return value === null || value === undefined || value === "";
 }
@@ -245,6 +250,7 @@ function Table({ columns, rows, noun }) {
     if (!chosen.length) return;
     const markdown = toMarkdown(columns, chosen);
     if (writeToComposer(markdown)) {
+      hideArtifact();
       setNotice(`${chosen.length} ${noun} added below — press enter to send`);
       return;
     }
@@ -265,6 +271,7 @@ function Table({ columns, rows, noun }) {
     sendUserMessage(`${ask}
 
 ${toMarkdown(columns, chosen)}`);
+    hideArtifact();
     setSelected(new Set());
     setNotice(`Asked for vessels for ${chosen.length} ${chosen.length === 1 ? "order" : "orders"}`);
   };
@@ -1443,13 +1450,24 @@ function savedArtifactWidth() {
 
 function ArtifactDock({ children, label }) {
   const [host, setHost] = useState(null);
-  const [expanded, setExpanded] = useState(true);
+  // hidden lives on the shared store, not in this component, so a result block
+  // the chat rebuilds stays hidden; only a newer result reopens the panel
+  const [expanded, setExpandedState] = useState(() => !mountedPanels().hidden);
+  const setExpanded = (open) => {
+    mountedPanels().hidden = !open;
+    setExpandedState(open);
+  };
   const [width, setWidth] = useState(savedArtifactWidth);
   const dragStart = useRef(null);
   useEffect(() => {
     const expand = () => setExpanded(true);
+    const collapse = () => setExpanded(false);
     window.addEventListener("oi-results-expand", expand);
-    return () => window.removeEventListener("oi-results-expand", expand);
+    window.addEventListener("oi-results-collapse", collapse);
+    return () => {
+      window.removeEventListener("oi-results-expand", expand);
+      window.removeEventListener("oi-results-collapse", collapse);
+    };
   }, []);
   useEffect(() => {
     const slot = document.createElement("section");
@@ -1551,6 +1569,10 @@ export default function Results() {
     const id = store.mounts;
     store.panels.set(id, { seq, order: id });
     store.selected = null;
+    if (seq > (store.newestSeq ?? 0)) {
+      store.newestSeq = seq;
+      store.hidden = false;
+    }
     const onChange = () => setChanges((count) => count + 1);
     window.addEventListener(CHANGE_EVENT, onChange);
     setPanelId(id);
