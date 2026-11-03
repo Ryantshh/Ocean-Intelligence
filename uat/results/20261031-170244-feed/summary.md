@@ -1,4 +1,4 @@
-# Change Feed UAT results — 2026-10-27 17:31
+# Change Feed UAT results — 2026-10-31 17:03
 
 Lists matching exactly: 20/20. Window bounds correct: 5/5.
 
